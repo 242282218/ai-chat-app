@@ -13,6 +13,12 @@
 
 ## Android
 
+下载测试版 APK：
+
+- GitHub Releases：<https://github.com/242282218/ai-chat-app/releases>
+
+当前 Release 中的 APK 使用测试签名，适合安装体验；后续如果切换正式签名，可能需要先卸载旧版本再安装。
+
 前置要求：
 
 - JDK 17。
