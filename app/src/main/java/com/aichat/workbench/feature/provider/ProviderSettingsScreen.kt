@@ -10,22 +10,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,7 +48,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.domain.model.ModelConfig
@@ -52,6 +61,12 @@ import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
+import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.SectionHeader
+import com.aichat.workbench.ui.component.StatusPill
+import com.aichat.workbench.ui.component.StatusTone
+import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.util.UUID
 import kotlinx.coroutines.launch
 
@@ -76,7 +91,22 @@ fun ProviderSettingsScreen(
     var headers by rememberSaveable { mutableStateOf("") }
     var enabled by rememberSaveable { mutableStateOf(true) }
     var allowHttp by rememberSaveable { mutableStateOf(false) }
+    var storedApiKeyRef by rememberSaveable { mutableStateOf<String?>(null) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingResetForm by rememberSaveable { mutableStateOf(false) }
+    var pendingLoadProvider by remember { mutableStateOf<ProviderConfig?>(null) }
+    var pendingDeleteProvider by remember { mutableStateOf<ProviderConfig?>(null) }
+
+    val hasProviderDraft = editingId != null ||
+        name != "OpenAI" ||
+        type != ProviderType.OpenAI ||
+        baseUrl != "https://api.openai.com/v1" ||
+        model.isNotBlank() ||
+        apiKey.isNotBlank() ||
+        headers.isNotBlank() ||
+        !enabled ||
+        allowHttp ||
+        storedApiKeyRef != null
 
     fun loadProvider(provider: ProviderConfig) {
         editingId = provider.id.value
@@ -88,6 +118,7 @@ fun ProviderSettingsScreen(
         headers = provider.headers.entries.joinToString("\n") { (key, value) -> "$key: $value" }
         enabled = provider.enabled
         allowHttp = provider.baseUrl.startsWith("http://")
+        storedApiKeyRef = provider.apiKeyRef
         message = null
     }
 
@@ -101,6 +132,24 @@ fun ProviderSettingsScreen(
         headers = ""
         enabled = true
         allowHttp = false
+        storedApiKeyRef = null
+        message = null
+    }
+
+    fun requestResetForm() {
+        if (hasProviderDraft) {
+            pendingResetForm = true
+        } else {
+            resetForm()
+        }
+    }
+
+    fun requestLoadProvider(provider: ProviderConfig) {
+        if (hasProviderDraft) {
+            pendingLoadProvider = provider
+        } else {
+            loadProvider(provider)
+        }
     }
 
     fun currentProvider(): ProviderConfig {
@@ -122,6 +171,10 @@ fun ProviderSettingsScreen(
             enabled = enabled,
         )
     }
+    val canSubmitProvider =
+        name.isNotBlank() &&
+            baseUrl.isValidProviderBaseUrl(allowHttp) &&
+            headers.hasValidHeaderLines()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -136,6 +189,11 @@ fun ProviderSettingsScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = { requestResetForm() }) {
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = "New provider")
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -148,6 +206,7 @@ fun ProviderSettingsScreen(
         ) {
             item {
                 ProviderForm(
+                    editing = editingId != null,
                     name = name,
                     onNameChange = { name = it },
                     type = type,
@@ -162,6 +221,7 @@ fun ProviderSettingsScreen(
                     model = model,
                     onModelChange = { model = it },
                     apiKey = apiKey,
+                    hasStoredKey = storedApiKeyRef != null,
                     onApiKeyChange = { apiKey = it },
                     headers = headers,
                     onHeadersChange = { headers = it },
@@ -170,6 +230,8 @@ fun ProviderSettingsScreen(
                     allowHttp = allowHttp,
                     onAllowHttpChange = { allowHttp = it },
                     message = message,
+                    canSave = canSubmitProvider,
+                    canTest = canSubmitProvider,
                     onSave = {
                         val provider = currentProvider()
 
@@ -212,43 +274,84 @@ fun ProviderSettingsScreen(
             }
 
             item {
-                Text(
-                    text = "Configured",
-                    style = MaterialTheme.typography.titleMedium,
+                SectionHeader(
+                    title = "Configured",
+                    description = "Stored locally; API keys stay behind encrypted references.",
                 )
             }
 
             if (providers.isEmpty()) {
                 item {
-                    Text(
-                        text = "No providers",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    WorkbenchPanel(
+                        title = "No providers",
+                        description = "Add a provider to unlock chat, images, and model routing.",
+                        icon = Icons.Filled.Tune,
+                    ) {
+                        StatusPill(text = "Setup needed", tone = StatusTone.Warning)
+                    }
                 }
             } else {
                 items(providers, key = { it.id.value }) { provider ->
                     ProviderRow(
                         provider = provider,
-                        onClick = { loadProvider(provider) },
-                        onDelete = {
-                            scope.launch {
-                                deleteProvider(provider.id)
-                                if (editingId == provider.id.value) {
-                                    resetForm()
-                                }
-                            }
-                        },
+                        onClick = { requestLoadProvider(provider) },
+                        onDelete = { pendingDeleteProvider = provider },
                     )
-                    HorizontalDivider(color = DividerDefaults.color.copy(alpha = 0.48f))
                 }
             }
         }
+    }
+
+    pendingDeleteProvider?.let { provider ->
+        WorkbenchConfirmDialog(
+            title = "Delete provider?",
+            message = "This removes \"${provider.name}\" plus its stored key reference from this device.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                pendingDeleteProvider = null
+                scope.launch {
+                    deleteProvider(provider.id)
+                    if (editingId == provider.id.value) {
+                        resetForm()
+                    }
+                }
+            },
+            onDismiss = { pendingDeleteProvider = null },
+        )
+    }
+
+    pendingLoadProvider?.let { provider ->
+        WorkbenchConfirmDialog(
+            title = "Discard provider draft?",
+            message = "Discard the current form values and load \"${provider.name}\".",
+            confirmLabel = "Load",
+            onConfirm = {
+                pendingLoadProvider = null
+                loadProvider(provider)
+            },
+            onDismiss = { pendingLoadProvider = null },
+            tone = StatusTone.Warning,
+        )
+    }
+
+    if (pendingResetForm) {
+        WorkbenchConfirmDialog(
+            title = "Clear provider draft?",
+            message = "Discard the current provider form values and return to a new provider draft.",
+            confirmLabel = "Clear",
+            onConfirm = {
+                pendingResetForm = false
+                resetForm()
+            },
+            onDismiss = { pendingResetForm = false },
+            tone = StatusTone.Warning,
+        )
     }
 }
 
 @Composable
 private fun ProviderForm(
+    editing: Boolean,
     name: String,
     onNameChange: (String) -> Unit,
     type: ProviderType,
@@ -258,6 +361,7 @@ private fun ProviderForm(
     model: String,
     onModelChange: (String) -> Unit,
     apiKey: String,
+    hasStoredKey: Boolean,
     onApiKeyChange: (String) -> Unit,
     headers: String,
     onHeadersChange: (String) -> Unit,
@@ -266,14 +370,35 @@ private fun ProviderForm(
     allowHttp: Boolean,
     onAllowHttpChange: (Boolean) -> Unit,
     message: String?,
+    canSave: Boolean,
+    canTest: Boolean,
     onSave: () -> Unit,
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    var showApiKey by rememberSaveable { mutableStateOf(false) }
+
+    WorkbenchPanel(
+        title = if (editing) "Edit provider" else "New provider",
+        description = "Bring your own key; requests go directly to the configured endpoint.",
+        icon = Icons.Filled.Tune,
+        modifier = modifier,
+        trailing = {
+            StatusPill(
+                text = if (enabled) "Enabled" else "Disabled",
+                tone = if (enabled) StatusTone.Success else StatusTone.Neutral,
+            )
+        },
     ) {
+        ProviderFormSummary(
+            name = name,
+            baseUrl = baseUrl,
+            model = model,
+            apiKey = apiKey,
+            hasStoredKey = hasStoredKey,
+            headers = headers,
+            allowHttp = allowHttp,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = type == ProviderType.OpenAI,
@@ -287,6 +412,10 @@ private fun ProviderForm(
             )
         }
 
+        MetadataRow(
+            label = "Provider type",
+            value = type.providerTypeLabel(),
+        )
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
@@ -299,6 +428,7 @@ private fun ProviderForm(
             onValueChange = onBaseUrlChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text(text = "Base URL") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
         )
         OutlinedTextField(
@@ -313,8 +443,21 @@ private fun ProviderForm(
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text(text = "API key") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (showApiKey) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(onClick = { showApiKey = !showApiKey }) {
+                    Icon(
+                        imageVector = if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (showApiKey) "Hide API key" else "Show API key",
+                    )
+                }
+            },
         )
         OutlinedTextField(
             value = headers,
@@ -323,10 +466,18 @@ private fun ProviderForm(
                 .fillMaxWidth()
                 .height(112.dp),
             label = { Text(text = "Headers") },
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = enabled,
+                    role = Role.Switch,
+                    onValueChange = onEnabledChange,
+                )
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -334,37 +485,131 @@ private fun ProviderForm(
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            Switch(checked = enabled, onCheckedChange = null)
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = allowHttp,
+                    role = Role.Checkbox,
+                    onValueChange = onAllowHttpChange,
+                )
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Checkbox(checked = allowHttp, onCheckedChange = onAllowHttpChange)
+            Checkbox(checked = allowHttp, onCheckedChange = null)
             Text(text = "Allow HTTP")
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onSave) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onSave,
+                enabled = canSave,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
-                Spacer(modifier = Modifier.padding(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "Save")
             }
-            OutlinedButton(onClick = onTest) {
+            OutlinedButton(
+                onClick = onTest,
+                enabled = canTest,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
-                Spacer(modifier = Modifier.padding(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "Test")
             }
         }
 
         message?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ProviderFormFeedback(message = it)
+        }
+    }
+}
+
+@Composable
+private fun ProviderFormSummary(
+    name: String,
+    baseUrl: String,
+    model: String,
+    apiKey: String,
+    hasStoredKey: Boolean,
+    headers: String,
+    allowHttp: Boolean,
+) {
+    val urlStatus = baseUrl.providerUrlStatus(allowHttp)
+    val headerStatus = headers.headerStatus()
+    val keyStatus = providerKeyStatus(apiKey, hasStoredKey)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            StatusPill(
+                text = if (name.isBlank()) "Name required" else "Named",
+                tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
+        item {
+            StatusPill(text = urlStatus.label, tone = urlStatus.tone)
+        }
+        item {
+            StatusPill(
+                text = model.ifBlank { "No default model" },
+                tone = if (model.isBlank()) StatusTone.Neutral else StatusTone.Success,
+            )
+        }
+        item {
+            StatusPill(
+                text = keyStatus.label,
+                tone = keyStatus.tone,
+            )
+        }
+        item {
+            StatusPill(
+                text = headerStatus.label,
+                tone = headerStatus.tone,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProviderFormFeedback(message: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        StatusPill(
+            text = providerMessageLabel(message),
+            tone = providerMessageTone(message),
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun providerMessageLabel(message: String): String =
+    when {
+        message == "Saved" -> "Saved"
+        message == "Testing..." -> "Testing"
+        providerMessageTone(message) == StatusTone.Critical -> "Attention"
+        else -> "Connection"
+    }
+
+private fun providerMessageTone(message: String): StatusTone {
+    val normalized = message.lowercase()
+    return when {
+        message == "Saved" -> StatusTone.Success
+        message == "Testing..." -> StatusTone.Accent
+        normalized.contains("failed") ||
+            normalized.contains("invalid") ||
+            normalized.contains("missing") ||
+            normalized.contains("returned") ||
+            normalized.contains("enable allow http") ||
+            normalized.contains("must") ->
+            StatusTone.Critical
+        else -> StatusTone.Success
     }
 }
 
@@ -374,40 +619,65 @@ private fun ProviderRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ListItem(
-        headlineContent = { Text(text = provider.name) },
-        supportingContent = {
-            Text(text = "${provider.type.name} / ${provider.defaultModel ?: "No default model"}")
-        },
-        overlineContent = {
-            Text(text = if (provider.apiKeyRef == null) "No key" else "Key stored")
-        },
-        trailingContent = {
+    WorkbenchPanel(
+        title = provider.name,
+        description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "No default model"}",
+        icon = Icons.Filled.CheckCircle,
+        modifier = Modifier.clickable(onClick = onClick),
+        trailing = {
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Delete provider ${provider.name}",
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    )
-    Spacer(modifier = Modifier.height(0.dp))
+    ) {
+        ProviderRowSummary(provider)
+        MetadataRow(label = "Base URL", value = provider.baseUrl)
+    }
 }
 
-private fun parseHeaderLines(value: String): Map<String, String> =
-    value.lineSequence()
-        .mapNotNull { line ->
-            val separator = line.indexOf(':')
-            if (separator <= 0) return@mapNotNull null
-
-            val name = line.substring(0, separator).trim()
-            val headerValue = line.substring(separator + 1).trim()
-            if (name.isBlank() || headerValue.isBlank()) null else name to headerValue
+@Composable
+private fun ProviderRowSummary(provider: ProviderConfig) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            StatusPill(
+                text = if (provider.enabled) "Enabled" else "Disabled",
+                tone = if (provider.enabled) StatusTone.Success else StatusTone.Neutral,
+            )
         }
-        .toMap()
+        item {
+            StatusPill(
+                text = if (provider.apiKeyRef == null) "No key" else "Key stored",
+                tone = if (provider.apiKeyRef == null) StatusTone.Warning else StatusTone.Success,
+            )
+        }
+        item {
+            StatusPill(text = provider.type.providerTypeLabel(), tone = StatusTone.Neutral)
+        }
+        item {
+            StatusPill(
+                text = if (provider.models.isEmpty()) "No models" else "${provider.models.size} models",
+                tone = if (provider.models.isEmpty()) StatusTone.Warning else StatusTone.Success,
+            )
+        }
+        if (provider.supportsImageGeneration()) {
+            item {
+                StatusPill(text = "Images", tone = StatusTone.Accent)
+            }
+        }
+        if (provider.supportsToolCalling()) {
+            item {
+                StatusPill(text = "Tools", tone = StatusTone.Accent)
+            }
+        }
+    }
+}
+
+private fun ProviderConfig.supportsImageGeneration(): Boolean =
+    models.any { it.capability?.imageGeneration == true }
+
+private fun ProviderConfig.supportsToolCalling(): Boolean =
+    models.any { it.capability?.toolCalling == true }

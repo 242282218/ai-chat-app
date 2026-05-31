@@ -11,7 +11,6 @@ import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.domain.model.ModelParameters
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.model.ProviderConfig
@@ -218,7 +217,7 @@ class ChatViewModel(
     fun saveConversationSettings() {
         val current = _state.value
         val conversation = current.selectedConversation() ?: return
-        val parameters = runCatching { current.modelParameters() }
+        val parameters = runCatching { current.validatedModelParameters() }
             .onFailure { error ->
                 _state.update { it.copy(error = error.message ?: "Invalid model parameters.") }
             }
@@ -453,10 +452,10 @@ class ChatViewModel(
         if (existing != null) return existing
 
         val conversation = CreateConversationUseCase(conversationRepository, clock)(
-            title = firstMessage.take(40),
+            title = conversationTitlePreview(firstMessage),
             defaultProviderId = _state.value.selectedProviderId?.let(::ProviderId),
             defaultModel = _state.value.modelDraft.trim().ifBlank { null },
-            modelParameters = _state.value.modelParameters(),
+            modelParameters = _state.value.validatedModelParameters(),
             systemPrompt = _state.value.systemPromptDraft.trim().ifBlank { null },
             isTemporary = _state.value.temporaryDraft,
             isSensitive = _state.value.sensitiveDraft,
@@ -468,7 +467,7 @@ class ChatViewModel(
 
     private suspend fun maybeRenameConversation(conversation: Conversation, firstMessage: String) {
         if (conversation.title != "New chat" && conversation.title != "Temporary chat") return
-        conversationRepository.renameConversation(conversation.id, firstMessage.take(40))
+        conversationRepository.renameConversation(conversation.id, conversationTitlePreview(firstMessage))
     }
 
     private fun providerFor(
@@ -579,39 +578,6 @@ class ChatViewModel(
 
     private fun ChatUiState.selectedConversation(): Conversation? =
         selectedConversationId?.let { id -> conversations.firstOrNull { it.id == id } }
-
-    private fun ChatUiState.modelParameters(): ModelParameters {
-        val temperature = temperatureDraft.toNullableDouble("temperature")
-        val topP = topPDraft.toNullableDouble("top_p")
-        val maxTokens = maxTokensDraft.toNullableInt("max_tokens")
-
-        require(temperature == null || temperature in 0.0..2.0) {
-            "temperature must be between 0 and 2."
-        }
-        require(topP == null || topP in 0.0..1.0) {
-            "top_p must be between 0 and 1."
-        }
-        require(maxTokens == null || maxTokens > 0) {
-            "max_tokens must be greater than 0."
-        }
-        return ModelParameters(
-            temperature = temperature,
-            topP = topP,
-            maxTokens = maxTokens,
-        )
-    }
-
-    private fun String.toNullableDouble(name: String): Double? {
-        val trimmed = trim()
-        if (trimmed.isBlank()) return null
-        return trimmed.toDoubleOrNull() ?: error("$name must be a number.")
-    }
-
-    private fun String.toNullableInt(name: String): Int? {
-        val trimmed = trim()
-        if (trimmed.isBlank()) return null
-        return trimmed.toIntOrNull() ?: error("$name must be an integer.")
-    }
 
     private fun ChatUiState.withSelectedConversation(
         conversations: List<Conversation>,

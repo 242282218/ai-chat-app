@@ -159,6 +159,10 @@ class ToolsViewModel(
             _state.update { it.copy(status = "Enable Gateway before searching.") }
             return
         }
+        if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
+            _state.update { it.copy(status = "Gateway URL is invalid.") }
+            return
+        }
         val searchTool = current.remoteTools.firstOrNull { it.name == "web_search" }
         if (searchTool == null) {
             _state.update { it.copy(status = "Load gateway manifest before searching.") }
@@ -189,6 +193,10 @@ class ToolsViewModel(
         }
         if (!current.gatewayEnabled) {
             _state.update { it.copy(status = "Enable Gateway before running code.") }
+            return
+        }
+        if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
+            _state.update { it.copy(status = "Gateway URL is invalid.") }
             return
         }
         val sandboxTool = current.remoteTools.firstOrNull { it.name == "code_sandbox" }

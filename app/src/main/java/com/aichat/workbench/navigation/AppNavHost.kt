@@ -1,12 +1,12 @@
 package com.aichat.workbench.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.aichat.workbench.feature.chat.ChatScreen
 import com.aichat.workbench.feature.home.HomeScreen
-import com.aichat.workbench.feature.home.PlaceholderScreen
 import com.aichat.workbench.feature.image.ImageGenerationScreen
 import com.aichat.workbench.feature.prompt.PromptPresetScreen
 import com.aichat.workbench.feature.provider.ProviderSettingsScreen
@@ -24,7 +24,7 @@ fun AppNavHost() {
         composable(AppDestination.Home.route) {
             HomeScreen(
                 destinations = AppDestination.topLevel,
-                onDestinationClick = { destination -> navController.navigate(destination.route) },
+                onDestinationClick = { destination -> navController.navigateSingleTop(destination) },
             )
         }
 
@@ -34,7 +34,7 @@ fun AppNavHost() {
                     AppDestination.Chat -> {
                         ChatScreen(
                             onBack = { navController.popBackStack() },
-                            onOpenProviders = { navController.navigate(AppDestination.Providers.route) },
+                            onOpenProviders = { navController.navigateSingleTop(AppDestination.Providers) },
                         )
                     }
                     AppDestination.Providers -> {
@@ -50,7 +50,7 @@ fun AppNavHost() {
                     AppDestination.Images -> {
                         ImageGenerationScreen(
                             onBack = { navController.popBackStack() },
-                            onOpenProviders = { navController.navigate(AppDestination.Providers.route) },
+                            onOpenProviders = { navController.navigateSingleTop(AppDestination.Providers) },
                         )
                     }
                     AppDestination.Tools -> {
@@ -63,14 +63,15 @@ fun AppNavHost() {
                             onBack = { navController.popBackStack() },
                         )
                     }
-                    else -> {
-                        PlaceholderScreen(
-                            destination = destination,
-                            onBack = { navController.popBackStack() },
-                        )
-                    }
+                    AppDestination.Home -> Unit
                 }
             }
         }
+    }
+}
+
+private fun NavController.navigateSingleTop(destination: AppDestination) {
+    navigate(destination.route) {
+        launchSingleTop = true
     }
 }

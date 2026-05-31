@@ -1,5 +1,6 @@
 package com.aichat.workbench.ui.markdown
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -89,7 +91,9 @@ private fun HeadingText(block: MarkdownBlock.Heading) {
 @Composable
 private fun QuoteContent(block: MarkdownBlock.Quote) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.24f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f)),
+        shape = MaterialTheme.shapes.small,
         tonalElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -104,21 +108,45 @@ private fun QuoteContent(block: MarkdownBlock.Quote) {
 
 @Composable
 private fun BulletListContent(block: MarkdownBlock.BulletList) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         block.items.forEach { item ->
-            Text(text = "• $item", style = MaterialTheme.typography.bodyLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "•",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun OrderedListContent(block: MarkdownBlock.OrderedList) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         block.items.forEachIndexed { index, item ->
-            Text(
-                text = "${block.startNumber + index}. $item",
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "${block.startNumber + index}.",
+                    modifier = Modifier.width(28.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
         }
     }
 }
@@ -126,25 +154,19 @@ private fun OrderedListContent(block: MarkdownBlock.OrderedList) {
 @Composable
 private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
     val title = when {
-        block.mermaid -> "Mermaid preview unavailable"
+        block.mermaid -> "Mermaid"
         block.language != null -> block.language
         else -> "code"
     }
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
         tonalElevation = 2.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             CopyHeader(label = title, value = block.content)
-            if (block.mermaid) {
-                Text(
-                    text = "Original Mermaid source is shown below.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             SelectionContainer {
                 Text(
                     text = block.content.ifBlank { " " },
@@ -163,7 +185,8 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
 @Composable
 private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
         tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
@@ -183,7 +206,8 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
 @Composable
 private fun TableContent(block: MarkdownBlock.Table) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
         tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
@@ -233,9 +257,23 @@ private fun CopyHeader(label: String, value: String) {
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         IconButton(onClick = { clipboardManager.setText(AnnotatedString(value)) }) {
-            Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = "Copy")
+            Icon(
+                imageVector = Icons.Filled.ContentCopy,
+                contentDescription = copyContentDescription(label),
+            )
         }
     }
 }
+
+private fun copyContentDescription(label: String): String =
+    when (label.lowercase()) {
+        "code" -> "Copy code"
+        "latex" -> "Copy LaTeX"
+        "mermaid" -> "Copy Mermaid source"
+        else -> "Copy $label code"
+    }

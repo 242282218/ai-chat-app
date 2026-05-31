@@ -79,4 +79,26 @@ class MarkdownBlockParserTest {
 
         assertEquals(MarkdownBlock.LatexBlock("a^2 + b^2 = c^2"), blocks.single())
     }
+
+    @Test
+    fun parsesQuotesListsAndDividers() {
+        val blocks = parser.parse(
+            """
+            > Keep answers traceable.
+
+            - web search
+            - code sandbox
+
+            3. inspect
+            4. verify
+
+            ---
+            """.trimIndent(),
+        )
+
+        assertEquals(MarkdownBlock.Quote("Keep answers traceable."), blocks[0])
+        assertEquals(MarkdownBlock.BulletList(listOf("web search", "code sandbox")), blocks[1])
+        assertEquals(MarkdownBlock.OrderedList(startNumber = 3, items = listOf("inspect", "verify")), blocks[2])
+        assertEquals(MarkdownBlock.Divider, blocks[3])
+    }
 }

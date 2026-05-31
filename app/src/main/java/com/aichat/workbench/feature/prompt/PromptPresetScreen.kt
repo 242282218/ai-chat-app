@@ -12,19 +12,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
-import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,12 +39,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.usecase.SavePromptPresetUseCase
+import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.SectionHeader
+import com.aichat.workbench.ui.component.StatusPill
+import com.aichat.workbench.ui.component.StatusTone
+import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.util.UUID
 import kotlinx.coroutines.launch
 
@@ -67,6 +71,15 @@ fun PromptPresetScreen(
     var defaultModel by rememberSaveable { mutableStateOf("") }
     var defaultTools by rememberSaveable { mutableStateOf("") }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingClearDraft by rememberSaveable { mutableStateOf(false) }
+    var pendingDeletePreset by remember { mutableStateOf<PromptPreset?>(null) }
+
+    val hasPromptDraft = editingId != null ||
+        name.isNotBlank() ||
+        description.isNotBlank() ||
+        systemPrompt.isNotBlank() ||
+        defaultModel.isNotBlank() ||
+        defaultTools.isNotBlank()
 
     fun resetForm() {
         editingId = null
@@ -75,6 +88,15 @@ fun PromptPresetScreen(
         systemPrompt = ""
         defaultModel = ""
         defaultTools = ""
+        message = null
+    }
+
+    fun requestResetForm() {
+        if (hasPromptDraft) {
+            pendingClearDraft = true
+        } else {
+            resetForm()
+        }
     }
 
     fun loadPreset(preset: PromptPreset) {
@@ -101,7 +123,7 @@ fun PromptPresetScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { resetForm() }) {
+                    IconButton(onClick = { requestResetForm() }) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = "New prompt")
                     }
                 },
@@ -129,6 +151,8 @@ fun PromptPresetScreen(
                     defaultTools = defaultTools,
                     onDefaultToolsChange = { defaultTools = it },
                     message = message,
+                    canSave = name.isNotBlank() && systemPrompt.isNotBlank(),
+                    canClear = hasPromptDraft,
                     onSave = {
                         val now = AppGraph.clock.instant()
                         val existing = editingId?.let { id ->
@@ -156,41 +180,67 @@ fun PromptPresetScreen(
                             }
                         }
                     },
+                    onClear = { requestResetForm() },
                 )
             }
 
             item {
-                Text(
-                    text = "Saved prompts",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                SectionHeader(
+                    title = "Saved prompts",
+                    description = "Reusable local instructions for fast task switching.",
                 )
             }
 
             if (presets.isEmpty()) {
                 item {
-                    Text(
-                        text = "No prompt presets",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    WorkbenchPanel(
+                        title = "No prompt presets",
+                        description = "Create one to pin a system prompt, model, and tool set.",
+                        icon = Icons.Filled.AutoAwesome,
+                    ) {
+                        StatusPill(text = "Local", tone = StatusTone.Success)
+                    }
                 }
             } else {
                 items(presets, key = { it.id.value }) { preset ->
                     PromptPresetRow(
                         preset = preset,
                         onClick = { loadPreset(preset) },
-                        onDelete = {
-                            scope.launch {
-                                repository.deletePromptPreset(preset.id)
-                                if (editingId == preset.id.value) resetForm()
-                            }
-                        },
+                        onDelete = { pendingDeletePreset = preset },
                     )
-                    HorizontalDivider(color = DividerDefaults.color.copy(alpha = 0.48f))
                 }
             }
         }
+    }
+
+    pendingDeletePreset?.let { preset ->
+        WorkbenchConfirmDialog(
+            title = "Delete prompt?",
+            message = "This removes \"${preset.name}\" from local prompt presets.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                pendingDeletePreset = null
+                scope.launch {
+                    repository.deletePromptPreset(preset.id)
+                    if (editingId == preset.id.value) resetForm()
+                }
+            },
+            onDismiss = { pendingDeletePreset = null },
+        )
+    }
+
+    if (pendingClearDraft) {
+        WorkbenchConfirmDialog(
+            title = "Clear prompt draft?",
+            message = "Discard the current form values and return to a new prompt draft.",
+            confirmLabel = "Clear",
+            onConfirm = {
+                pendingClearDraft = false
+                resetForm()
+            },
+            onDismiss = { pendingClearDraft = false },
+            tone = StatusTone.Warning,
+        )
     }
 }
 
@@ -208,17 +258,29 @@ private fun PromptPresetForm(
     defaultTools: String,
     onDefaultToolsChange: (String) -> Unit,
     message: String?,
+    canSave: Boolean,
+    canClear: Boolean,
     onSave: () -> Unit,
+    onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    WorkbenchPanel(
+        title = if (editing) "Edit prompt" else "New prompt",
+        description = "Keep repeated instructions local and apply them from chat.",
+        icon = Icons.Filled.AutoAwesome,
+        modifier = modifier,
+        trailing = {
+            StatusPill(
+                text = if (editing) "Editing" else "Draft",
+                tone = if (editing) StatusTone.Accent else StatusTone.Neutral,
+            )
+        },
     ) {
-        Text(
-            text = if (editing) "Edit prompt" else "New prompt",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+        PromptFormSummary(
+            name = name,
+            systemPrompt = systemPrompt,
+            defaultModel = defaultModel,
+            defaultTools = defaultTools,
         )
         OutlinedTextField(
             value = name,
@@ -256,29 +318,83 @@ private fun PromptPresetForm(
             label = { Text(text = "Default tools") },
             singleLine = true,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onSave) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onSave,
+                enabled = canSave,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "Save")
             }
-            OutlinedButton(onClick = {
-                onNameChange("")
-                onDescriptionChange("")
-                onSystemPromptChange("")
-                onDefaultModelChange("")
-                onDefaultToolsChange("")
-            }) {
-                Text(text = "Clear")
+            OutlinedButton(
+                onClick = onClear,
+                enabled = canClear,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = "Clear draft")
             }
         }
         message?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            PromptFormFeedback(
+                message = it,
+                success = it == "Saved",
             )
         }
+    }
+}
+
+@Composable
+private fun PromptFormSummary(
+    name: String,
+    systemPrompt: String,
+    defaultModel: String,
+    defaultTools: String,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            StatusPill(
+                text = if (name.isBlank()) "Name required" else "Named",
+                tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
+            )
+        }
+        item {
+            StatusPill(
+                text = if (systemPrompt.isBlank()) "System required" else "System ready",
+                tone = if (systemPrompt.isBlank()) StatusTone.Warning else StatusTone.Success,
+            )
+        }
+        item {
+            StatusPill(
+                text = defaultModel.ifBlank { "No model" },
+                tone = StatusTone.Neutral,
+            )
+        }
+        item {
+            StatusPill(
+                text = "${parseToolNames(defaultTools).size} tools",
+                tone = if (defaultTools.isBlank()) StatusTone.Neutral else StatusTone.Accent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PromptFormFeedback(
+    message: String,
+    success: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        StatusPill(
+            text = if (success) "Saved" else "Save failed",
+            tone = if (success) StatusTone.Success else StatusTone.Critical,
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -288,30 +404,63 @@ private fun PromptPresetRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ListItem(
-        headlineContent = { Text(text = preset.name) },
-        supportingContent = {
-            Text(text = preset.description ?: preset.systemPrompt.take(80))
-        },
-        overlineContent = {
-            Text(text = preset.defaultModel ?: "No default model")
-        },
-        trailingContent = {
+    WorkbenchPanel(
+        title = preset.name.preview(72),
+        description = preset.description ?: preset.systemPrompt.preview(96),
+        icon = Icons.Filled.AutoAwesome,
+        modifier = Modifier.clickable(onClick = onClick),
+        trailing = {
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Delete prompt ${preset.name}",
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    )
+    ) {
+        PromptPresetSummary(preset)
+        MetadataRow(label = "System prompt", value = preset.systemPrompt.preview(128))
+    }
+}
+
+@Composable
+private fun PromptPresetSummary(preset: PromptPreset) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            StatusPill(text = preset.defaultModel ?: "No model", tone = StatusTone.Neutral)
+        }
+        item {
+            StatusPill(
+                text = if (preset.defaultToolNames.isEmpty()) "No tools" else "${preset.defaultToolNames.size} tools",
+                tone = if (preset.defaultToolNames.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
+            )
+        }
+        item {
+            StatusPill(
+                text = "${preset.systemPrompt.length} chars",
+                tone = StatusTone.Success,
+            )
+        }
+        item {
+            StatusPill(
+                text = if (preset.description == null) "No description" else "Described",
+                tone = if (preset.description == null) StatusTone.Neutral else StatusTone.Success,
+            )
+        }
+    }
 }
 
 private fun parseToolNames(value: String): List<String> =
     value.split(',')
         .map { it.trim() }
         .filter { it.isNotBlank() }
+
+private fun String.preview(maxLength: Int): String {
+    val normalized = trim()
+    return if (normalized.length <= maxLength) {
+        normalized
+    } else {
+        "${normalized.take(maxLength - 3)}..."
+    }
+}

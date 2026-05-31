@@ -35,6 +35,10 @@ class DataSettingsViewModel(
         _state.update { it.copy(importJson = value, importSummary = null, status = null) }
     }
 
+    fun updateStatus(message: String) {
+        _state.update { it.copy(status = message) }
+    }
+
     fun createExport() {
         val includeChats = _state.value.includeChats
         viewModelScope.launch {
