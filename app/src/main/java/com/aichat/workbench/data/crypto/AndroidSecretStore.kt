@@ -1,0 +1,75 @@
+package com.aichat.workbench.data.crypto
+
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import java.security.SecureRandom
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+
+class AndroidSecretStore(context: Context) : SecretStore {
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    override suspend fun putSecret(ref: String, value: String) {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        val iv = ByteArray(GCM_IV_BYTES).also { SecureRandom().nextBytes(it) }
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
+        preferences.edit()
+            .putString(ref, "${iv.toBase64()}:${ciphertext.toBase64()}")
+            .apply()
+    }
+
+    override suspend fun getSecret(ref: String): String? {
+        val encoded = preferences.getString(ref, null) ?: return null
+        val parts = encoded.split(":", limit = 2)
+        if (parts.size != 2) return null
+
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        val iv = Base64.getDecoder().decode(parts[0])
+        val ciphertext = Base64.getDecoder().decode(parts[1])
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        return String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
+    }
+
+    override suspend fun deleteSecret(ref: String) {
+        preferences.edit().remove(ref).apply()
+    }
+
+    private fun getOrCreateKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        if (!keyStore.containsAlias(KEY_ALIAS)) {
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            val spec = KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+            generator.init(spec)
+            generator.generateKey()
+        }
+
+        return (keyStore.getEntry(KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
+    }
+
+    private fun ByteArray.toBase64(): String =
+        Base64.getEncoder().encodeToString(this)
+
+    private companion object {
+        const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val KEY_ALIAS = "ai_chat_secret_master_key"
+        const val PREFERENCES_NAME = "ai_chat_secrets"
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val GCM_IV_BYTES = 12
+        const val GCM_TAG_BITS = 128
+    }
+}

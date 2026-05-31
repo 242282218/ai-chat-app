@@ -1,0 +1,186 @@
+package com.aichat.workbench.feature.image
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.aichat.workbench.app.AppGraph
+import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.repository.ImageGenerationRepository
+import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.usecase.GenerateImageRequest
+import com.aichat.workbench.domain.usecase.GenerateImageUseCase
+import com.aichat.workbench.provider.image.ImageGenerationProvider
+import java.time.Clock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class ImageGenerationUiState(
+    val generations: List<ImageGeneration> = emptyList(),
+    val providers: List<ProviderConfig> = emptyList(),
+    val selectedProviderId: String? = null,
+    val prompt: String = "",
+    val model: String = DEFAULT_OPENAI_IMAGE_MODEL,
+    val size: String = "1024x1024",
+    val quality: String = "auto",
+    val count: String = "1",
+    val isGenerating: Boolean = false,
+    val error: String? = null,
+) {
+    val selectedProvider: ProviderConfig?
+        get() = selectedProviderId?.let { id -> providers.firstOrNull { it.id.value == id } }
+
+    val selectedModelUnsupported: Boolean
+        get() {
+            val modelConfig = selectedProvider?.models?.firstOrNull { it.id == model.trim() }
+            return modelConfig?.capability?.imageGeneration == false
+        }
+}
+
+class ImageGenerationViewModel(
+    private val imageRepository: ImageGenerationRepository,
+    private val providerRepository: ProviderConfigRepository,
+    private val imageProvider: ImageGenerationProvider,
+    private val imageStorage: ImageStorage,
+    private val clock: Clock,
+) : ViewModel() {
+    private val _state = MutableStateFlow(ImageGenerationUiState())
+    val state: StateFlow<ImageGenerationUiState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            imageRepository.observeImageGenerations().collect { generations ->
+                _state.update { it.copy(generations = generations) }
+            }
+        }
+        viewModelScope.launch {
+            providerRepository.observeProviders().collect { providers ->
+                _state.update { current ->
+                    val selected = current.selectedProviderId
+                        ?.let { id -> providers.firstOrNull { it.id.value == id && it.enabled } }
+                    val fallback = selected ?: providers.firstOrNull { it.enabled }
+                    current.copy(
+                        providers = providers,
+                        selectedProviderId = fallback?.id?.value,
+                        model = current.model.ifBlank { fallback?.defaultImageModel().orEmpty() },
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectProvider(id: String) {
+        val provider = _state.value.providers.firstOrNull { it.id.value == id }
+        _state.update {
+            it.copy(
+                selectedProviderId = id,
+                model = provider?.defaultImageModel().orEmpty().ifBlank { it.model },
+            )
+        }
+    }
+
+    fun updatePrompt(value: String) {
+        _state.update { it.copy(prompt = value) }
+    }
+
+    fun updateModel(value: String) {
+        _state.update { it.copy(model = value) }
+    }
+
+    fun updateSize(value: String) {
+        _state.update { it.copy(size = value) }
+    }
+
+    fun updateQuality(value: String) {
+        _state.update { it.copy(quality = value) }
+    }
+
+    fun updateCount(value: String) {
+        _state.update { it.copy(count = value) }
+    }
+
+    fun reusePrompt(prompt: String) {
+        _state.update { it.copy(prompt = prompt, error = null) }
+    }
+
+    fun regenerate(prompt: String) {
+        _state.update { it.copy(prompt = prompt, error = null) }
+        generate()
+    }
+
+    fun generate() {
+        if (_state.value.isGenerating) return
+        viewModelScope.launch {
+            val current = _state.value
+            val provider = current.selectedProvider
+            val imageCount = current.count.trim().toIntOrNull()
+            runCatching {
+                requireNotNull(provider) { "Provider is not configured." }
+                require(current.prompt.isNotBlank()) { "Image prompt must not be blank." }
+                require(!current.selectedModelUnsupported) { "Selected model does not support image generation." }
+                require(imageCount != null && imageCount in 1..4) { "Image count must be between 1 and 4." }
+                val apiKey = providerRepository.getApiKey(provider.id)
+                if (provider.type == ProviderType.OpenAI) {
+                    require(!apiKey.isNullOrBlank()) { "API key is missing." }
+                }
+
+                _state.update { it.copy(isGenerating = true, error = null) }
+                GenerateImageUseCase(
+                    repository = imageRepository,
+                    imageProvider = imageProvider,
+                    imageStorage = imageStorage,
+                    clock = clock,
+                )(
+                    GenerateImageRequest(
+                        conversationId = null,
+                        provider = provider,
+                        apiKey = apiKey,
+                        model = current.model.trim(),
+                        prompt = current.prompt.trim(),
+                        size = current.size.trim().ifBlank { null },
+                        quality = current.quality.trim().ifBlank { null },
+                        count = imageCount,
+                    ),
+                )
+            }.onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "Image generation failed.") }
+            }
+            _state.update { it.copy(isGenerating = false) }
+        }
+    }
+
+    fun clearHistory() {
+        if (_state.value.isGenerating) return
+        viewModelScope.launch {
+            imageStorage.deleteAllImages()
+            imageRepository.deleteAllImageGenerations()
+            _state.update { it.copy(error = null) }
+        }
+    }
+
+    private fun ProviderConfig.defaultImageModel(): String =
+        models.firstOrNull { it.capability?.imageGeneration == true }?.id
+            ?: defaultModel?.takeIf { type != ProviderType.OpenAI }
+            ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else defaultModel.orEmpty()
+
+    companion object {
+        val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                ImageGenerationViewModel(
+                    imageRepository = AppGraph.imageGenerationRepository,
+                    providerRepository = AppGraph.providerConfigRepository,
+                    imageProvider = AppGraph.imageGenerationProvider,
+                    imageStorage = AppGraph.imageStorage,
+                    clock = AppGraph.clock,
+                ) as T
+        }
+    }
+}
+
+private const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"

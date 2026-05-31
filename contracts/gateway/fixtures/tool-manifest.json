@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-31T00:00:00Z",
+  "tools": [
+    {
+      "name": "web_search",
+      "description": "Search web or news sources through the configured gateway search adapter.",
+      "permissionLevel": "Network",
+      "inputSchema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "name": "code_sandbox",
+      "description": "Run short code snippets in the remote sandbox when enabled.",
+      "permissionLevel": "Execute",
+      "inputSchema": {
+        "type": "object",
+        "required": ["language", "code"],
+        "properties": {
+          "language": {
+            "enum": ["python"]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "timeoutSeconds": 10
+    }
+  ]
+}

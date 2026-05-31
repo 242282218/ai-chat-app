@@ -1,0 +1,91 @@
+package com.aichat.workbench.provider.image
+
+import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderId
+import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.provider.api.ProviderHttpException
+import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+class OpenAiImageGenerationProviderTest {
+    private lateinit var server: MockWebServer
+
+    @Before
+    fun setUp() {
+        server = MockWebServer()
+        server.start()
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
+    }
+
+    @Test
+    fun generate_postsImageRequestAndParsesBase64Images() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"b64_json":"aW1hZ2U=","revised_prompt":"A cat"}]}"""),
+        )
+        val provider = OpenAiImageGenerationProvider()
+
+        val response = provider.generate(request())
+        val recorded = server.takeRequest()
+        val body = recorded.body.readUtf8()
+
+        assertEquals("/v1/images/generations", recorded.path)
+        assertEquals("Bearer test-key", recorded.getHeader("Authorization"))
+        assertTrue(body.contains(""""model":"gpt-image-1""""))
+        assertTrue(body.contains(""""prompt":"A cat""""))
+        assertTrue(body.contains(""""n":1"""))
+        assertEquals("aW1hZ2U=", response.images.single().base64)
+        assertEquals("A cat", response.images.single().revisedPrompt)
+    }
+
+    @Test
+    fun generate_mapsProviderErrors() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(429)
+                .setBody("""{"error":{"message":"slow down"}}"""),
+        )
+        val provider = OpenAiImageGenerationProvider()
+
+        val error = runCatching {
+            provider.generate(request())
+        }.exceptionOrNull()
+
+        require(error is ProviderHttpException)
+        assertEquals("rate_limited", error.error.code)
+        assertEquals("slow down", error.error.message)
+        assertEquals(429, error.error.statusCode)
+    }
+
+    private fun request(): ImageGenerationProviderRequest =
+        ImageGenerationProviderRequest(
+            provider = ProviderConfig(
+                id = ProviderId("provider-1"),
+                name = "OpenAI",
+                type = ProviderType.OpenAI,
+                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                apiKeyRef = null,
+                headers = emptyMap(),
+                models = emptyList(),
+                defaultModel = null,
+                enabled = true,
+            ),
+            apiKey = "test-key",
+            model = "gpt-image-1",
+            prompt = "A cat",
+            size = "1024x1024",
+            quality = "auto",
+            count = 1,
+        )
+}

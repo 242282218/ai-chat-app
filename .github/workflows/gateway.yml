@@ -1,0 +1,29 @@
+name: Gateway
+
+on:
+  push:
+    paths:
+      - "gateway/**"
+      - "contracts/gateway/**"
+      - ".github/workflows/gateway.yml"
+  pull_request:
+    paths:
+      - "gateway/**"
+      - "contracts/gateway/**"
+      - ".github/workflows/gateway.yml"
+
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: gateway/go.mod
+
+      - name: Run gateway tests
+        working-directory: gateway
+        run: go test ./...
