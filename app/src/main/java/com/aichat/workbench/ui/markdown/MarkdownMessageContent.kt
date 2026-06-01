@@ -91,17 +91,17 @@ private fun HeadingText(block: MarkdownBlock.Heading) {
 @Composable
 private fun QuoteContent(block: MarkdownBlock.Quote) {
     Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.24f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
         shape = MaterialTheme.shapes.small,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
             text = block.text,
             modifier = Modifier.padding(12.dp),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -159,9 +159,9 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
         else -> "代码"
     }
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
-        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)),
+        tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -176,6 +176,7 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
                         .padding(top = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -185,9 +186,9 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
 @Composable
 private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
-        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)),
+        tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -198,6 +199,7 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
                 modifier = Modifier.padding(top = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -206,9 +208,9 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
 @Composable
 private fun TableContent(block: MarkdownBlock.Table) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.74f)),
-        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.44f)),
+        tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -256,8 +258,8 @@ private fun CopyHeader(label: String, value: String) {
             text = label,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
