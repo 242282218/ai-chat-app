@@ -179,6 +179,7 @@ fun ChatScreen(
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onOpenControls = { showControls = true },
+                onUseStarterPrompt = viewModel::updateInput,
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
                 modifier = Modifier.weight(1f),
@@ -851,6 +852,7 @@ private fun MessageList(
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
     onOpenControls: () -> Unit,
+    onUseStarterPrompt: (String) -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     modifier: Modifier = Modifier,
@@ -872,6 +874,7 @@ private fun MessageList(
                 EmptyConversationPanel(
                     hasEnabledProvider = hasEnabledProvider,
                     onOpenProviders = onOpenProviders,
+                    onUseStarterPrompt = onUseStarterPrompt,
                 )
             }
         } else {
@@ -972,6 +975,7 @@ private fun CompressedMessagesCard(message: Message) {
 private fun EmptyConversationPanel(
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
+    onUseStarterPrompt: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1000,9 +1004,39 @@ private fun EmptyConversationPanel(
             ) {
                 Text(text = "配置模型连接")
             }
+        } else {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(top = 8.dp),
+            ) {
+                items(chatStarterPrompts) { prompt ->
+                    AssistChip(
+                        onClick = { onUseStarterPrompt(prompt.text) },
+                        label = {
+                            Text(
+                                text = prompt.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 }
+
+private data class ChatStarterPrompt(
+    val label: String,
+    val text: String,
+)
+
+private val chatStarterPrompts = listOf(
+    ChatStarterPrompt("总结材料", "请帮我总结下面这段材料，提炼关键结论、风险和下一步行动："),
+    ChatStarterPrompt("改写表达", "请把下面这段话改写得更清晰、专业、简洁："),
+    ChatStarterPrompt("拆解方案", "请把这个目标拆成可执行步骤，并说明每一步的验证标准："),
+    ChatStarterPrompt("排查问题", "请根据下面的信息分析可能原因，并按优先级给出排查路径："),
+)
 
 @Composable
 @Suppress("DEPRECATION")
