@@ -91,7 +91,9 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
@@ -171,9 +173,11 @@ fun ChatScreen(
                 .padding(innerPadding),
         ) {
             MessageList(
+                state = state,
                 messages = state.messages,
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
+                onOpenControls = { showControls = true },
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
                 modifier = Modifier.weight(1f),
@@ -407,8 +411,8 @@ private fun ChatControlSheet(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            SectionHeaderLike(
-                title = "更多",
+            QuietSectionHeader(
+                title = "控制",
                 description = "会话、模型、Prompt、参数和危险操作。",
             )
         }
@@ -420,29 +424,25 @@ private fun ChatControlSheet(
             )
         }
         item {
-            WorkbenchPanel(
-                title = "Provider",
-                description = if (state.providers.any { it.enabled }) "选择当前对话使用的模型连接" else "还不能发送消息",
-                icon = Icons.Filled.Tune,
-                trailing = {
-                    if (state.providers.none { it.enabled }) {
-                        StatusPill(text = "需要配置", tone = StatusTone.Warning)
+            if (state.providers.none { it.enabled }) {
+                InlineNotice(
+                    text = "添加 Provider 后才能发送消息，请求会从本机直接发送到你的 endpoint。",
+                    icon = Icons.Filled.Tune,
+                    tone = StatusTone.Warning,
+                ) {
+                    TextButton(onClick = onOpenProviders) {
+                        Text(text = "配置")
                     }
-                },
-            ) {
-                if (state.providers.none { it.enabled }) {
-                    Text(
-                        text = "添加 OpenAI 或兼容 Provider 后，请求会从本机直接发送到你的 endpoint。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuietSectionHeader(
+                        title = "Provider",
+                        description = "选择当前对话使用的模型连接。",
                     )
-                    Button(
-                        onClick = onOpenProviders,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(text = "配置 Provider")
-                    }
-                } else {
                     ProviderStrip(state = state, viewModel = viewModel, modifier = Modifier)
                 }
             }
@@ -496,28 +496,6 @@ private fun ChatControlSheet(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SectionHeaderLike(
-    title: String,
-    description: String,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-        )
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -871,9 +849,11 @@ private fun PromptPresetStrip(
 
 @Composable
 private fun MessageList(
+    state: ChatUiState,
     messages: List<Message>,
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
+    onOpenControls: () -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     modifier: Modifier = Modifier,
@@ -883,6 +863,13 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item {
+            ChatContextBar(
+                state = state,
+                hasEnabledProvider = hasEnabledProvider,
+                onOpenControls = onOpenControls,
+            )
+        }
         if (messages.isEmpty()) {
             item {
                 EmptyConversationPanel(
@@ -902,6 +889,70 @@ private fun MessageList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatContextBar(
+    state: ChatUiState,
+    hasEnabledProvider: Boolean,
+    onOpenControls: () -> Unit,
+) {
+    val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
+    val selectedProvider = selectedChatProvider(state)
+    val model = state.modelDraft.ifBlank { selectedProvider?.defaultModel.orEmpty() }
+    val mode = when {
+        state.isGenerating -> "生成中"
+        selectedConversation?.isTemporary == true || state.temporaryDraft -> "临时"
+        selectedConversation?.isSensitive == true || state.sensitiveDraft -> "敏感"
+        else -> "${state.messages.size} 条消息"
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = selectedProvider?.name ?: "未配置 Provider",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (hasEnabledProvider) model.ifBlank { "使用 Provider 默认 Model" } else "配置后即可开始聊天",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            StatusPill(
+                text = mode,
+                tone = when {
+                    state.isGenerating -> StatusTone.Accent
+                    selectedConversation?.isSensitive == true || state.sensitiveDraft -> StatusTone.Critical
+                    selectedConversation?.isTemporary == true || state.temporaryDraft -> StatusTone.Warning
+                    else -> StatusTone.Neutral
+                },
+            )
+            WorkbenchIconButton(
+                icon = Icons.Filled.Tune,
+                label = "打开聊天控制",
+                onClick = onOpenControls,
+            )
         }
     }
 }
@@ -1374,9 +1425,7 @@ private fun chatSubtitle(
     state: ChatUiState,
     selectedConversation: Conversation?,
 ): String {
-    val selectedProvider = state.selectedProviderId
-        ?.let { id -> state.providers.firstOrNull { it.id.value == id } }
-        ?: state.providers.firstOrNull { it.enabled }
+    val selectedProvider = selectedChatProvider(state)
     val model = state.modelDraft.ifBlank { selectedProvider?.defaultModel.orEmpty() }
     val providerText = selectedProvider?.let {
         if (model.isBlank()) it.name else "${it.name} / $model"
@@ -1389,6 +1438,11 @@ private fun chatSubtitle(
     }
     return listOfNotNull(stateText, providerText).joinToString(" · ")
 }
+
+private fun selectedChatProvider(state: ChatUiState) =
+    state.selectedProviderId
+        ?.let { id -> state.providers.firstOrNull { it.id.value == id } }
+        ?: state.providers.firstOrNull { it.enabled }
 
 private fun MessageRole.displayLabel(): String =
     when (this) {
