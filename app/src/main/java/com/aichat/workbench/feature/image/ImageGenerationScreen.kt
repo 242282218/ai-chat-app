@@ -129,10 +129,7 @@ fun ImageGenerationScreen(
                 )
             }
             item {
-                QuietSectionHeader(
-                    title = "作品库",
-                    description = "最近结果优先展示；可复用提示词、重新生成、保存或分享。",
-                )
+                ImageLibraryHeader(state = state)
             }
             if (state.generations.isEmpty()) {
                 item {
@@ -169,6 +166,41 @@ fun ImageGenerationScreen(
             },
             onDismiss = { confirmClearHistory = false },
         )
+    }
+}
+
+@Composable
+private fun ImageLibraryHeader(
+    state: ImageGenerationUiState,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "作品库",
+            description = "最近结果优先展示；可复用提示词、重新生成、保存或分享。",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = state.imageLibraryTotalLabel(), tone = StatusTone.Accent)
+            }
+            item {
+                StatusPill(text = state.imageLibraryCompletedLabel(), tone = StatusTone.Success)
+            }
+            val failedCount = state.generations.count { it.status == ImageGenerationStatus.Failed }
+            if (failedCount > 0) {
+                item {
+                    StatusPill(text = "$failedCount 个失败", tone = StatusTone.Critical)
+                }
+            }
+            if (state.isGenerating) {
+                item {
+                    StatusPill(text = "生成中", tone = StatusTone.Accent)
+                }
+            }
+        }
     }
 }
 
@@ -586,6 +618,22 @@ private fun ImageGenerationUiState.canGenerateImages(): Boolean {
         imageCount != null &&
         imageCount in 1..4 &&
         !selectedModelUnsupported
+}
+
+private fun ImageGenerationUiState.imageLibraryTotalLabel(): String =
+    when (generations.size) {
+        0 -> "暂无作品"
+        1 -> "1 个作品"
+        else -> "${generations.size} 个作品"
+    }
+
+private fun ImageGenerationUiState.imageLibraryCompletedLabel(): String {
+    val completedCount = generations.count { it.status == ImageGenerationStatus.Completed }
+    return when (completedCount) {
+        0 -> "暂无完成"
+        1 -> "1 个完成"
+        else -> "$completedCount 个完成"
+    }
 }
 
 private fun ImageGenerationUiState.imageCountOrNull(): Int? =
