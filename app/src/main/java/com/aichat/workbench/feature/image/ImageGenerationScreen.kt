@@ -130,14 +130,14 @@ fun ImageGenerationScreen(
             }
             item {
                 QuietSectionHeader(
-                    title = "Gallery",
-                    description = "最近结果优先展示；可复用 Prompt、重新生成、保存或分享。",
+                    title = "作品库",
+                    description = "最近结果优先展示；可复用提示词、重新生成、保存或分享。",
                 )
             }
             if (state.generations.isEmpty()) {
                 item {
                     InlineNotice(
-                        text = "先写 Prompt 并生成图片。失败后会保留输入，便于修改后重试。",
+                        text = "先写提示词并生成图片。失败后会保留输入，便于修改后重试。",
                         icon = Icons.Filled.Image,
                         tone = StatusTone.Neutral,
                     ) {
@@ -185,8 +185,8 @@ private fun ImageGenerationForm(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         QuietSectionHeader(
-            title = "Image Composer",
-            description = "Prompt 是主路径，参数按需展开。",
+            title = "图像创作台",
+            description = "先描述画面，细节参数按需展开。",
             trailing = {
                 StatusPill(
                     text = if (state.isGenerating) "生成中" else "就绪",
@@ -196,7 +196,7 @@ private fun ImageGenerationForm(
         )
         if (state.providers.none { it.enabled }) {
             InlineNotice(
-                text = "生成图片前请先配置支持图片生成的 Provider。",
+                text = "生成图片前请先配置支持图片生成的模型服务。",
                 icon = Icons.Filled.Image,
                 tone = StatusTone.Warning,
             ) {
@@ -247,7 +247,7 @@ private fun ImageGenerationForm(
                 value = state.model,
                 onValueChange = viewModel::updateModel,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Model") },
+                label = { Text(text = "模型") },
                 singleLine = true,
             )
             OutlinedTextField(
@@ -275,7 +275,7 @@ private fun ImageGenerationForm(
         }
         if (state.selectedModelUnsupported) {
             InlineNotice(
-                text = "所选 Model 未声明支持图片生成。",
+                text = "所选模型未声明支持图片生成。",
                 icon = Icons.Filled.Image,
                 tone = StatusTone.Warning,
             )
@@ -343,37 +343,37 @@ private fun imageGenerationReadiness(state: ImageGenerationUiState): ImageReadin
         state.isGenerating -> ImageReadiness(
             label = "生成中",
             tone = StatusTone.Accent,
-            description = "Provider 正在生成图片，可停止；已创建的记录会标记为已取消。",
+            description = "模型服务正在生成图片，可停止；已创建的记录会标记为已取消。",
         )
         state.selectedProvider == null -> ImageReadiness(
-            label = "需要 Provider",
+            label = "需要模型服务",
             tone = StatusTone.Warning,
-            description = "先配置支持图片生成的 Provider，再发起请求。",
+            description = "先配置支持图片生成的模型服务，再发起请求。",
         )
         state.prompt.isBlank() -> ImageReadiness(
-            label = "需要 Prompt",
+            label = "需要提示词",
             tone = StatusTone.Warning,
             description = "描述主体、风格和约束后再生成；失败后输入会保留。",
         )
         state.model.isBlank() -> ImageReadiness(
-            label = "需要 Model",
+            label = "需要模型",
             tone = StatusTone.Warning,
-            description = "展开 Compact Controls，填写或选择图片生成模型。",
+            description = "展开生成参数，填写或选择图片生成模型。",
         )
         imageCount == null || imageCount !in 1..4 -> ImageReadiness(
             label = "数量无效",
             tone = StatusTone.Critical,
-            description = "展开 Compact Controls，将数量设为 1 到 4。",
+            description = "展开生成参数，将数量设为 1 到 4。",
         )
         state.selectedModelUnsupported -> ImageReadiness(
-            label = "Model 不支持",
+            label = "模型不支持",
             tone = StatusTone.Critical,
-            description = "当前 Model 未声明支持图片生成，请切换模型或 Provider。",
+            description = "当前模型未声明支持图片生成，请切换模型或模型服务。",
         )
         else -> ImageReadiness(
             label = "就绪",
             tone = StatusTone.Success,
-            description = "生成后会写入本地 Gallery，可复用 Prompt、保存或分享。",
+            description = "生成后会写入本地作品库，可复用提示词、保存或分享。",
         )
     }
 }
@@ -394,12 +394,12 @@ private fun CompactGenerationControlsSummary(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = "Compact Controls",
+                    text = "生成参数",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${state.model.ifBlank { "未设置 Model" }} · ${state.size.ifBlank { "默认尺寸" }} · ${state.quality.ifBlank { "默认质量" }} · ${state.count.ifBlank { "?" }} 张",
+                    text = "${state.model.ifBlank { "未设置模型" }} · ${state.size.ifBlank { "默认尺寸" }} · ${state.quality.ifBlank { "默认质量" }} · ${state.count.ifBlank { "?" }} 张",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -469,7 +469,7 @@ private fun ImageGenerationRow(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
-                        StatusPill(text = generation.model.orEmpty().ifBlank { "无 Model" }, tone = StatusTone.Neutral)
+                        StatusPill(text = generation.model.orEmpty().ifBlank { "无模型" }, tone = StatusTone.Neutral)
                     }
                     item {
                         StatusPill(text = generation.size.orEmpty().ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
@@ -480,7 +480,7 @@ private fun ImageGenerationRow(
                 }
                 generation.errorSummary?.let {
                     Text(
-                        text = "$it\nPrompt 已保留，可复用后修改并重试。",
+                        text = "$it\n提示词已保留，可复用后修改并重试。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -492,7 +492,7 @@ private fun ImageGenerationRow(
             ) {
                 item {
                     OutlinedButton(onClick = onReusePrompt) {
-                        Text(text = "复用 Prompt")
+                        Text(text = "复用提示词")
                     }
                 }
                 item {
@@ -612,9 +612,9 @@ private fun ImageGenerationUiState.imageCountTone(): StatusTone {
 
 private fun ImageGenerationUiState.imageModelLabel(): String =
     when {
-        model.isBlank() -> "需要 Model"
-        selectedModelUnsupported -> "Model 不支持"
-        else -> "Model 就绪"
+        model.isBlank() -> "需要模型"
+        selectedModelUnsupported -> "模型不支持"
+        else -> "模型就绪"
     }
 
 private fun ImageGenerationUiState.imageModelTone(): StatusTone =

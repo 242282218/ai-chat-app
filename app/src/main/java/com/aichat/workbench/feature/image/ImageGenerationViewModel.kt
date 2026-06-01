@@ -121,9 +121,9 @@ class ImageGenerationViewModel(
             val provider = current.selectedProvider
             val imageCount = current.count.trim().toIntOrNull()
             runCatching {
-                requireNotNull(provider) { "Provider 未配置。" }
-                require(current.prompt.isNotBlank()) { "图片 Prompt 不能为空。" }
-                require(!current.selectedModelUnsupported) { "所选 Model 不支持图片生成。" }
+                requireNotNull(provider) { "模型服务未配置。" }
+                require(current.prompt.isNotBlank()) { "图片提示词不能为空。" }
+                require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
                 require(imageCount != null && imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
                 if (provider.type == ProviderType.OpenAI) {
@@ -150,7 +150,7 @@ class ImageGenerationViewModel(
                 )
             }.onFailure { error ->
                 if (error is CancellationException) {
-                    _state.update { it.copy(error = "已停止，Prompt 和参数已保留，可修改后重新生成。") }
+                    _state.update { it.copy(error = "已停止，提示词和参数已保留，可修改后重新生成。") }
                 } else {
                     _state.update { it.copy(error = error.message ?: "图片生成失败。") }
                 }
@@ -165,7 +165,7 @@ class ImageGenerationViewModel(
         _state.update {
             it.copy(
                 isGenerating = false,
-                error = "已停止，Prompt 和参数已保留，可修改后重新生成。",
+                error = "已停止，提示词和参数已保留，可修改后重新生成。",
             )
         }
     }
