@@ -36,7 +36,7 @@ internal fun String.gatewayUrlStatus(): GatewayUrlStatus =
             isWarning = true,
         )
         isValidGatewayBaseUrl() && trim().startsWith("http://") -> GatewayUrlStatus(
-            label = "HTTP Gateway",
+            label = "HTTP 网关",
             isValid = true,
             isWarning = true,
         )

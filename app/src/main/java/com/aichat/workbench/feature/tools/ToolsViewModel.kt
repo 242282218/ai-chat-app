@@ -114,7 +114,7 @@ class ToolsViewModel(
             }.onSuccess { health ->
                 _state.update { it.copy(status = "Gateway ${health.status} / ${health.version}") }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Gateway Health 检查失败。") }
+                _state.update { it.copy(status = error.message ?: "网关健康检查失败。") }
             }
             _state.update { it.copy(isLoading = false) }
         }
@@ -130,11 +130,11 @@ class ToolsViewModel(
                 _state.update {
                     it.copy(
                         remoteTools = manifest.tools,
-                        status = "已加载 ${manifest.tools.size} 个 Gateway Tools",
+                        status = "已加载 ${manifest.tools.size} 个网关工具",
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "加载 Manifest 失败。") }
+                _state.update { it.copy(status = error.message ?: "加载工具清单失败。") }
             }
             _state.update { it.copy(isLoading = false) }
         }
@@ -142,7 +142,7 @@ class ToolsViewModel(
 
     fun requestPermission(tool: ToolDescriptor) {
         if (!tool.permissionLevel.requiresConfirmation()) {
-            _state.update { it.copy(status = "${tool.displayName} 是只读 Tool") }
+            _state.update { it.copy(status = "${tool.displayName} 是只读工具") }
             return
         }
         _state.update { it.copy(pendingConfirmation = tool) }
@@ -154,17 +154,17 @@ class ToolsViewModel(
         if (query.isBlank()) {
             _state.update {
                 it.copy(
-                    status = "Search query 不能为空。",
+                    status = "搜索关键词不能为空。",
                     searchError = ToolError(
                         code = "invalid_query",
-                        message = "Search query 不能为空。",
+                        message = "搜索关键词不能为空。",
                     ),
                 )
             }
             return
         }
         if (!current.gatewayEnabled) {
-            _state.update { it.copy(status = "搜索前请启用 Gateway。") }
+            _state.update { it.copy(status = "搜索前请启用网关。") }
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
@@ -173,7 +173,7 @@ class ToolsViewModel(
         }
         val searchTool = current.remoteTools.firstOrNull { it.name == "web_search" }
         if (searchTool == null) {
-            _state.update { it.copy(status = "搜索前请先加载 Gateway Manifest。") }
+            _state.update { it.copy(status = "搜索前请先加载工具清单。") }
             return
         }
         _state.update {
@@ -190,17 +190,17 @@ class ToolsViewModel(
         if (code.isBlank()) {
             _state.update {
                 it.copy(
-                    status = "Sandbox code 不能为空。",
+                    status = "沙箱代码不能为空。",
                     sandboxError = ToolError(
                         code = "invalid_code",
-                        message = "Sandbox code 不能为空。",
+                        message = "沙箱代码不能为空。",
                     ),
                 )
             }
             return
         }
         if (!current.gatewayEnabled) {
-            _state.update { it.copy(status = "运行代码前请启用 Gateway。") }
+            _state.update { it.copy(status = "运行代码前请启用网关。") }
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
@@ -209,7 +209,7 @@ class ToolsViewModel(
         }
         val sandboxTool = current.remoteTools.firstOrNull { it.name == "code_sandbox" }
         if (sandboxTool == null) {
-            _state.update { it.copy(status = "运行代码前请先加载 Gateway Manifest。") }
+            _state.update { it.copy(status = "运行代码前请先加载工具清单。") }
             return
         }
         _state.update {
@@ -229,7 +229,7 @@ class ToolsViewModel(
                 pendingConfirmation = null,
                 pendingSearchQuery = null,
                 pendingSandboxCode = null,
-                status = "已确认${tool.permissionLevel.label()} Tool：${tool.displayName}",
+                status = "已确认${tool.permissionLevel.label()}工具：${tool.displayName}",
             )
         }
         if (tool.name == "web_search" && query != null) {
@@ -283,7 +283,7 @@ class ToolsViewModel(
                         searchResults = response.results,
                         searchFetchedAt = response.fetchedAt.toString(),
                         searchError = null,
-                        status = "Search 返回 ${response.results.size} 个来源",
+                        status = "网络搜索返回 ${response.results.size} 个来源",
                     )
                 }
             }.onFailure { error ->
@@ -302,7 +302,7 @@ class ToolsViewModel(
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
                     it.copy(
-                        status = "Search 失败。",
+                        status = "网络搜索失败。",
                         searchError = toolError,
                     )
                 }
@@ -349,13 +349,13 @@ class ToolsViewModel(
                     it.copy(
                         sandboxResult = response,
                         sandboxError = null,
-                        status = "Sandbox exit code ${response.exitCode}",
+                        status = "代码沙箱退出码 ${response.exitCode}",
                     )
                 }
             }.onFailure { error ->
                 val toolError = error.toToolError(
                     fallbackCode = "sandbox_failed",
-                    fallbackMessage = "Sandbox 运行失败。",
+                    fallbackMessage = "代码沙箱运行失败。",
                 )
                 val toolResult = ToolResult(
                     id = toolCallId,
@@ -371,7 +371,7 @@ class ToolsViewModel(
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
                     it.copy(
-                        status = "Sandbox 失败。",
+                        status = "代码沙箱失败。",
                         sandboxError = toolError,
                     )
                 }
@@ -383,7 +383,7 @@ class ToolsViewModel(
     private fun Throwable.toSearchToolError(): ToolError =
         toToolError(
             fallbackCode = "search_failed",
-            fallbackMessage = "Search 失败。",
+            fallbackMessage = "网络搜索失败。",
         )
 
     private fun Throwable.toToolError(

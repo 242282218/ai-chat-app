@@ -88,7 +88,7 @@ fun ToolsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Tools") },
+                title = { Text(text = "工具") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -122,7 +122,7 @@ fun ToolsScreen(
             }
             item {
                 QuietSectionHeader(
-                    title = "Tool Catalog",
+                    title = "工具清单",
                     description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
                 )
             }
@@ -152,9 +152,9 @@ private fun GatewayStatusHeader(state: ToolsUiState) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         QuietSectionHeader(
-            title = "Gateway Status",
+            title = "网关状态",
             description = if (state.gatewayEnabled) {
-                "Search 和 Sandbox 取决于 Manifest 中的工具能力。"
+                "网络搜索和代码沙箱取决于工具清单中的能力。"
             } else {
                 "可选能力，关闭时聊天仍可用。"
             },
@@ -171,19 +171,19 @@ private fun GatewayStatusHeader(state: ToolsUiState) {
             }
             item {
                 StatusPill(
-                    text = if (state.remoteTools.isEmpty()) "Manifest 未加载" else "${state.remoteTools.size} 个 Gateway Tools",
+                    text = if (state.remoteTools.isEmpty()) "工具清单未加载" else "${state.remoteTools.size} 个网关工具",
                     tone = if (state.remoteTools.isEmpty()) StatusTone.Warning else StatusTone.Success,
                 )
             }
             item {
                 StatusPill(
-                    text = if (state.hasSearchTool()) "Search 可用" else "Search 不可用",
+                    text = if (state.hasSearchTool()) "网络搜索可用" else "网络搜索不可用",
                     tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Neutral,
                 )
             }
             item {
                 StatusPill(
-                    text = if (state.hasSandboxTool()) "Sandbox 可用" else "Sandbox 不可用",
+                    text = if (state.hasSandboxTool()) "代码沙箱可用" else "代码沙箱不可用",
                     tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Neutral,
                 )
             }
@@ -215,8 +215,8 @@ private fun ToolTestWorkbench(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         QuietSectionHeader(
-            title = "Tool Test Workbench",
-            description = "Search 和 Sandbox 是调试区，不抢占工具目录主轴。",
+            title = "工具试运行",
+            description = "网络搜索和代码沙箱用于调试，不抢占工具清单主轴。",
         )
         ToolWorkbenchTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
         when (selectedTab) {
@@ -236,7 +236,7 @@ private fun ToolWorkbenchTabs(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { onTabSelected(0) },
-                text = { Text(text = "Search") },
+                text = { Text(text = "网络搜索") },
                 icon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) },
             )
         }
@@ -244,7 +244,7 @@ private fun ToolWorkbenchTabs(
             Tab(
                 selected = selectedTab == 1,
                 onClick = { onTabSelected(1) },
-                text = { Text(text = "Sandbox") },
+                text = { Text(text = "代码沙箱") },
                 icon = { Icon(imageVector = Icons.Filled.Code, contentDescription = null) },
             )
         }
@@ -318,8 +318,8 @@ private fun SandboxPanel(
     }
     if (framed) {
         WorkbenchPanel(
-            title = "Code Sandbox",
-            description = "通过配置的 Gateway 运行短 Python 代码片段。",
+            title = "代码沙箱",
+            description = "通过配置的网关运行短 Python 代码片段。",
             icon = Icons.Filled.Code,
             modifier = modifier,
             trailing = {
@@ -335,8 +335,8 @@ private fun SandboxPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             QuietSectionHeader(
-                title = "Code Sandbox",
-                description = "通过配置的 Gateway 运行短 Python 代码片段。",
+                title = "代码沙箱",
+                description = "通过配置的网关运行短 Python 代码片段。",
             )
             val (label, tone) = sandboxPanelStatus(state)
             StatusPill(text = label, tone = tone)
@@ -351,7 +351,7 @@ private fun SandboxPanelSummary(state: ToolsUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
+                text = if (state.gatewayEnabled) "网关开启" else "网关关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -360,7 +360,7 @@ private fun SandboxPanelSummary(state: ToolsUiState) {
         }
         item {
             StatusPill(
-                text = if (state.hasSandboxTool()) "Sandbox 已加载" else "需要 Manifest",
+                text = if (state.hasSandboxTool()) "代码沙箱已加载" else "需要工具清单",
                 tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -392,7 +392,7 @@ private fun SandboxResultRow(
     modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
-        title = "Sandbox 结果",
+        title = "代码沙箱结果",
         icon = Icons.Filled.Code,
         modifier = modifier,
     ) {
@@ -409,7 +409,7 @@ private fun SandboxResultSummary(result: SandboxRunResponse) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = "exit code ${result.exitCode}",
+                text = "退出码 ${result.exitCode}",
                 tone = if (result.exitCode == 0) StatusTone.Success else StatusTone.Critical,
             )
         }
@@ -481,8 +481,8 @@ private fun SearchPanel(
     }
     if (framed) {
         WorkbenchPanel(
-            title = "Web Search",
-            description = "先获取结构化来源，再交给 Model 汇总。",
+            title = "网络搜索",
+            description = "先获取结构化来源，再交给模型汇总。",
             icon = Icons.Filled.Search,
             modifier = modifier,
             trailing = {
@@ -498,8 +498,8 @@ private fun SearchPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             QuietSectionHeader(
-                title = "Web Search",
-                description = "先获取结构化来源，再交给 Model 汇总。",
+                title = "网络搜索",
+                description = "先获取结构化来源，再交给模型汇总。",
             )
             val (label, tone) = searchPanelStatus(state)
             StatusPill(text = label, tone = tone)
@@ -514,7 +514,7 @@ private fun SearchPanelSummary(state: ToolsUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
+                text = if (state.gatewayEnabled) "网关开启" else "网关关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -523,13 +523,13 @@ private fun SearchPanelSummary(state: ToolsUiState) {
         }
         item {
             StatusPill(
-                text = if (state.hasSearchTool()) "Search 已加载" else "需要 Manifest",
+                text = if (state.hasSearchTool()) "网络搜索已加载" else "需要工具清单",
                 tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Warning,
             )
         }
         item {
             StatusPill(
-                text = if (state.searchQuery.isBlank()) "需要 query" else "query 就绪",
+                text = if (state.searchQuery.isBlank()) "需要关键词" else "关键词就绪",
                 tone = if (state.searchQuery.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
@@ -622,8 +622,8 @@ private fun GatewaySettingsPanel(
     val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
     val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
     WorkbenchPanel(
-        title = "Gateway",
-        description = "Web Search、Manifest 和代码执行的可选边界。",
+        title = "工具网关",
+        description = "网络搜索、工具清单和代码执行的可选边界。",
         icon = Icons.Filled.CloudSync,
         trailing = {
             Switch(
@@ -674,7 +674,7 @@ private fun GatewaySettingsPanel(
                 enabled = gatewayUrlValid && !state.isLoading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Health 检查")
+                Text(text = "健康检查")
             }
             OutlinedButton(
                 onClick = viewModel::fetchManifest,
@@ -685,7 +685,7 @@ private fun GatewaySettingsPanel(
             ) {
                 Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "加载 Manifest")
+                Text(text = "加载工具清单")
             }
         }
         state.status?.let { message ->
@@ -707,7 +707,7 @@ private fun GatewaySettingsSummary(
         }
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
+                text = if (state.gatewayEnabled) "网关开启" else "网关关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Neutral,
             )
         }
@@ -716,7 +716,7 @@ private fun GatewaySettingsSummary(
         }
         if (state.remoteTools.isNotEmpty()) {
             item {
-                StatusPill(text = "${state.remoteTools.size} 个 Tools", tone = StatusTone.Accent)
+                StatusPill(text = "${state.remoteTools.size} 个工具", tone = StatusTone.Accent)
             }
         }
     }
@@ -787,13 +787,13 @@ private fun ToolPermissionDialog(
 ) {
     val warning = when (tool.permissionLevel) {
         ToolPermissionLevel.ReadOnly ->
-            "该 Tool 为只读。"
+            "该工具为只读。"
         ToolPermissionLevel.Network ->
-            "该 Tool 会通过配置的 Gateway 访问网络。"
+            "该工具会通过配置的网关访问网络。"
         ToolPermissionLevel.Execute ->
-            "该 Tool 会在远端 Gateway Sandbox 中运行代码。"
+            "该工具会在远端网关的代码沙箱中运行代码。"
         ToolPermissionLevel.HighRisk ->
-            "该 Tool 可执行高风险操作，请仔细确认。"
+            "该工具可执行高风险操作，请仔细确认。"
     }
     WorkbenchConfirmDialog(
         title = tool.displayName,

@@ -20,7 +20,7 @@ class GatewayDraftsTest {
             "gateway.local".gatewayUrlStatus(),
         )
         assertEquals(
-            GatewayUrlStatus(label = "HTTP Gateway", isValid = true, isWarning = true),
+            GatewayUrlStatus(label = "HTTP 网关", isValid = true, isWarning = true),
             "http://localhost:8080".gatewayUrlStatus(),
         )
         assertEquals(
