@@ -37,7 +37,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -63,8 +62,10 @@ import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.requiresConfirmation
+import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
-import com.aichat.workbench.ui.component.SectionHeader
+import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
@@ -120,7 +121,7 @@ fun ToolsScreen(
                 )
             }
             item {
-                SectionHeader(
+                QuietSectionHeader(
                     title = "Tool Catalog",
                     description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
                 )
@@ -146,21 +147,24 @@ fun ToolsScreen(
 @Composable
 private fun GatewayStatusHeader(state: ToolsUiState) {
     val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
-    WorkbenchPanel(
-        title = "Gateway Status",
-        description = if (state.gatewayEnabled) {
-            "Gateway 已启用；Search 和 Sandbox 取决于 Manifest 中的工具能力。"
-        } else {
-            "Gateway 是可选能力。关闭时聊天仍可用，但不会执行联网搜索或代码沙箱。"
-        },
-        icon = Icons.Filled.CloudSync,
-        trailing = {
-            StatusPill(
-                text = if (state.gatewayEnabled) "已启用" else "未启用",
-                tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Neutral,
-            )
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        QuietSectionHeader(
+            title = "Gateway Status",
+            description = if (state.gatewayEnabled) {
+                "Search 和 Sandbox 取决于 Manifest 中的工具能力。"
+            } else {
+                "可选能力，关闭时聊天仍可用。"
+            },
+            trailing = {
+                StatusPill(
+                    text = if (state.gatewayEnabled) "已启用" else "未启用",
+                    tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Neutral,
+                )
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(text = gatewayUrlStatus.label, tone = gatewayUrlStatus.tone())
@@ -210,27 +214,39 @@ private fun ToolTestWorkbench(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SectionHeader(
+        QuietSectionHeader(
             title = "Tool Test Workbench",
             description = "Search 和 Sandbox 是调试区，不抢占工具目录主轴。",
         )
-        TabRow(selectedTabIndex = selectedTab) {
+        ToolWorkbenchTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
+        when (selectedTab) {
+            0 -> SearchWorkbenchContent(state, viewModel)
+            else -> SandboxWorkbenchContent(state, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun ToolWorkbenchTabs(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
             Tab(
                 selected = selectedTab == 0,
                 onClick = { onTabSelected(0) },
                 text = { Text(text = "Search") },
                 icon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) },
             )
+        }
+        item {
             Tab(
                 selected = selectedTab == 1,
                 onClick = { onTabSelected(1) },
                 text = { Text(text = "Sandbox") },
                 icon = { Icon(imageVector = Icons.Filled.Code, contentDescription = null) },
             )
-        }
-        when (selectedTab) {
-            0 -> SearchWorkbenchContent(state, viewModel)
-            else -> SandboxWorkbenchContent(state, viewModel)
         }
     }
 }
@@ -246,7 +262,7 @@ private fun SearchWorkbenchContent(
             SearchErrorRow(error, modifier = Modifier.fillMaxWidth())
         }
         if (state.searchResults.isNotEmpty()) {
-            SectionHeader(
+            QuietSectionHeader(
                 title = searchResultHeader(state),
                 description = "保留 title / url / snippet，便于回答可追溯。",
             )
@@ -318,7 +334,7 @@ private fun SandboxPanel(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SectionHeader(
+            QuietSectionHeader(
                 title = "Code Sandbox",
                 description = "通过配置的 Gateway 运行短 Python 代码片段。",
             )
@@ -362,14 +378,12 @@ private fun SandboxErrorRow(
     error: ToolError,
     modifier: Modifier = Modifier,
 ) {
-    WorkbenchPanel(
-        title = error.code,
-        description = error.message,
+    InlineNotice(
+        text = "${error.code}: ${error.message}",
         icon = Icons.Filled.Security,
         modifier = modifier,
-    ) {
-        StatusPill(text = "Sandbox 错误", tone = StatusTone.Critical)
-    }
+        tone = StatusTone.Critical,
+    )
 }
 
 @Composable
@@ -483,7 +497,7 @@ private fun SearchPanel(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SectionHeader(
+            QuietSectionHeader(
                 title = "Web Search",
                 description = "先获取结构化来源，再交给 Model 汇总。",
             )
@@ -527,14 +541,12 @@ private fun SearchErrorRow(
     error: ToolError,
     modifier: Modifier = Modifier,
 ) {
-    WorkbenchPanel(
-        title = error.code,
-        description = error.message,
+    InlineNotice(
+        text = "${error.code}: ${error.message}",
         icon = Icons.Filled.Public,
         modifier = modifier,
-    ) {
-        StatusPill(text = "Search 错误", tone = StatusTone.Critical)
-    }
+        tone = StatusTone.Critical,
+    )
 }
 
 @Composable
@@ -712,15 +724,22 @@ private fun GatewaySettingsSummary(
 
 @Composable
 private fun ToolStatusFeedback(message: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         StatusPill(
             text = toolStatusLabel(message),
             tone = toolStatusTone(message),
         )
         Text(
             text = message,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -730,10 +749,11 @@ private fun ToolRow(
     tool: ToolDescriptor,
     onConfirm: () -> Unit,
 ) {
-    WorkbenchPanel(
+    QuietListRow(
         title = tool.displayName,
-        description = tool.description,
+        description = "${tool.permissionLevel.displayLabel()} / ${tool.source.displayLabel()} · ${tool.description}",
         icon = tool.permissionIcon(),
+        onClick = onConfirm,
         trailing = {
             WorkbenchIconButton(
                 icon = tool.permissionIcon(),
@@ -741,19 +761,7 @@ private fun ToolRow(
                 onClick = onConfirm,
             )
         },
-    ) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(
-                    text = tool.permissionLevel.displayLabel(),
-                    tone = tool.permissionTone(),
-                )
-            }
-            item {
-                StatusPill(text = tool.source.displayLabel(), tone = StatusTone.Neutral)
-            }
-        }
-    }
+    )
 }
 
 private fun ToolDescriptor.permissionIcon(): ImageVector =
