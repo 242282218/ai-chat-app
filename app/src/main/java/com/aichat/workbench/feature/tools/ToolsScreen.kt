@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,6 +44,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,6 +55,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -621,6 +625,7 @@ private fun GatewaySettingsPanel(
 ) {
     val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
     val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
+    var showGatewayApiToken by rememberSaveable { mutableStateOf(false) }
     WorkbenchPanel(
         title = "工具网关",
         description = "网络搜索、工具清单和代码执行的可选边界。",
@@ -656,7 +661,18 @@ private fun GatewaySettingsPanel(
             modifier = Modifier.fillMaxWidth(),
             label = { Text(text = "Gateway API Token") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (showGatewayApiToken) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                WorkbenchIconButton(
+                    icon = if (showGatewayApiToken) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    label = if (showGatewayApiToken) "隐藏 Gateway API Token" else "显示 Gateway API Token",
+                    onClick = { showGatewayApiToken = !showGatewayApiToken },
+                )
+            },
             singleLine = true,
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
