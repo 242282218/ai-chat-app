@@ -122,6 +122,7 @@ fun ChatScreen(
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
+    var starterPromptLabel by rememberSaveable { mutableStateOf<String?>(null) }
     val controlSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -179,7 +180,10 @@ fun ChatScreen(
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onOpenControls = { showControls = true },
-                onUseStarterPrompt = viewModel::updateInput,
+                onUseStarterPrompt = { prompt ->
+                    starterPromptLabel = prompt.label
+                    viewModel.updateInput(prompt.text)
+                },
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
                 modifier = Modifier.weight(1f),
@@ -199,9 +203,13 @@ fun ChatScreen(
                 imageDrafts = state.imageDrafts,
                 isGenerating = state.isGenerating,
                 isEditing = state.editingMessageId != null,
+                starterPromptLabel = starterPromptLabel,
                 canSend = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
-                onInputChange = viewModel::updateInput,
+                onInputChange = {
+                    starterPromptLabel = null
+                    viewModel.updateInput(it)
+                },
                 onPickImage = { imagePickerLauncher.launch("image/*") },
                 onRemoveImage = viewModel::removeImageDraft,
                 onSend = viewModel::sendMessage,
@@ -852,7 +860,7 @@ private fun MessageList(
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
     onOpenControls: () -> Unit,
-    onUseStarterPrompt: (String) -> Unit,
+    onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     modifier: Modifier = Modifier,
@@ -975,7 +983,7 @@ private fun CompressedMessagesCard(message: Message) {
 private fun EmptyConversationPanel(
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
-    onUseStarterPrompt: (String) -> Unit,
+    onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1016,7 +1024,7 @@ private fun EmptyConversationPanel(
             ) {
                 items(chatStarterPrompts) { prompt ->
                     AssistChip(
-                        onClick = { onUseStarterPrompt(prompt.text) },
+                        onClick = { onUseStarterPrompt(prompt) },
                         leadingIcon = {
                             Icon(
                                 imageVector = prompt.icon,
@@ -1303,6 +1311,7 @@ private fun InputBar(
     imageDrafts: List<MessagePart.Image>,
     isGenerating: Boolean,
     isEditing: Boolean,
+    starterPromptLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onInputChange: (String) -> Unit,
@@ -1328,6 +1337,7 @@ private fun InputBar(
             InputStatusRow(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
+                starterPromptLabel = starterPromptLabel,
                 canSend = canSend,
                 onOpenProviders = onOpenProviders,
                 onCancelEdit = onCancelEdit,
@@ -1400,11 +1410,12 @@ private fun ImageDraftRow(
 private fun InputStatusRow(
     isGenerating: Boolean,
     isEditing: Boolean,
+    starterPromptLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val status = inputStatus(isGenerating, isEditing, canSend) ?: return
+    val status = inputStatus(isGenerating, isEditing, starterPromptLabel, canSend) ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = status.label,
@@ -1435,6 +1446,7 @@ private data class InputStatus(
 private fun inputStatus(
     isGenerating: Boolean,
     isEditing: Boolean,
+    starterPromptLabel: String?,
     canSend: Boolean,
 ): InputStatus? =
     when {
@@ -1445,6 +1457,10 @@ private fun inputStatus(
         isEditing -> InputStatus(
             label = "编辑中",
             tone = StatusTone.Warning,
+        )
+        starterPromptLabel != null -> InputStatus(
+            label = "已套用：$starterPromptLabel",
+            tone = StatusTone.Neutral,
         )
         !canSend -> InputStatus(
             label = "需要模型连接",
