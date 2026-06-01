@@ -204,6 +204,7 @@ fun ChatScreen(
                 isGenerating = state.isGenerating,
                 isEditing = state.editingMessageId != null,
                 starterPromptLabel = starterPromptLabel,
+                providerLabel = selectedChatProvider(state)?.name,
                 canSend = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onInputChange = {
@@ -1325,6 +1326,7 @@ private fun InputBar(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
+    providerLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onInputChange: (String) -> Unit,
@@ -1351,6 +1353,7 @@ private fun InputBar(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
                 starterPromptLabel = starterPromptLabel,
+                providerLabel = providerLabel,
                 canSend = canSend,
                 onOpenProviders = onOpenProviders,
                 onCancelEdit = onCancelEdit,
@@ -1424,11 +1427,18 @@ private fun InputStatusRow(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
+    providerLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val status = inputStatus(isGenerating, isEditing, starterPromptLabel, canSend) ?: return
+    val status = inputStatus(
+        isGenerating = isGenerating,
+        isEditing = isEditing,
+        starterPromptLabel = starterPromptLabel,
+        providerLabel = providerLabel,
+        canSend = canSend,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = status.label,
@@ -1460,8 +1470,9 @@ private fun inputStatus(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
+    providerLabel: String?,
     canSend: Boolean,
-): InputStatus? =
+): InputStatus =
     when {
         isGenerating -> InputStatus(
             label = "生成中",
@@ -1479,7 +1490,10 @@ private fun inputStatus(
             label = "需要模型连接",
             tone = StatusTone.Critical,
         )
-        else -> null
+        else -> InputStatus(
+            label = "发送到 ${providerLabel ?: "当前模型连接"}",
+            tone = StatusTone.Success,
+        )
     }
 
 private fun Message.shouldShowHeader(): Boolean =
