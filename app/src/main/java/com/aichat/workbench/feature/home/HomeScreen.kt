@@ -37,7 +37,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,6 +55,7 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.repository.MessageSearchResult
 import com.aichat.workbench.navigation.AppDestination
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,7 +68,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var showCreateSheet by rememberSaveable { mutableStateOf(false) }
     var showManagementSheet by rememberSaveable { mutableStateOf(false) }

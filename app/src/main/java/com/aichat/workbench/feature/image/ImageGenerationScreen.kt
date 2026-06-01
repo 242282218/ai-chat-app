@@ -45,7 +45,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +70,7 @@ import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.io.File
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +81,7 @@ fun ImageGenerationScreen(
     modifier: Modifier = Modifier,
     viewModel: ImageGenerationViewModel = koinViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var confirmClearHistory by remember { mutableStateOf(false) }
     var controlsExpanded by rememberSaveable { mutableStateOf(false) }

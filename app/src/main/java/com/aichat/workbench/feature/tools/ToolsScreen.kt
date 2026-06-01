@@ -41,7 +41,6 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -71,6 +70,7 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,7 +80,7 @@ fun ToolsScreen(
     modifier: Modifier = Modifier,
     viewModel: ToolsViewModel = koinViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     var selectedWorkbenchTab by rememberSaveable { mutableIntStateOf(0) }
 
     Scaffold(

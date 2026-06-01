@@ -1,6 +1,5 @@
 package com.aichat.workbench.feature.prompt
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +23,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -31,10 +31,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +47,9 @@ import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.usecase.SavePromptPresetUseCase
-import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.InlineNotice
+import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
@@ -55,6 +57,7 @@ import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.time.Clock
 import java.util.UUID
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -67,7 +70,7 @@ fun PromptPresetScreen(
     val repository = koinInject<PromptPresetRepository>()
     val clock = koinInject<Clock>()
     val savePromptPreset = remember(repository) { SavePromptPresetUseCase(repository) }
-    val presets by repository.observePromptPresets().collectAsState(initial = emptyList())
+    val presets by repository.observePromptPresets().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -130,21 +133,21 @@ fun PromptPresetScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { openNewPromptEditor() },
+                icon = { Icon(imageVector = Icons.Filled.Add, contentDescription = null) },
+                text = { Text(text = "新建 Prompt") },
+            )
+        },
         topBar = {
             TopAppBar(
-                title = { Text(text = "Prompt 预设") },
+                title = { Text(text = "Prompts") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         label = "返回",
                         onClick = onBack,
-                    )
-                },
-                actions = {
-                    WorkbenchIconButton(
-                        icon = Icons.Filled.Add,
-                        label = "新建 Prompt",
-                        onClick = { openNewPromptEditor() },
                     )
                 },
             )
@@ -154,13 +157,12 @@ fun PromptPresetScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(20.dp),
+            contentPadding = PaddingValues(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
                 PromptLibraryHeader(
                     presets = presets,
-                    onCreatePrompt = { openNewPromptEditor() },
                 )
             }
 
@@ -174,33 +176,24 @@ fun PromptPresetScreen(
 
             if (presets.isEmpty()) {
                 item {
-                    WorkbenchPanel(
-                        title = "暂无 Prompt 预设",
-                        description = "创建后可固定 system prompt、Model 和 Tool 组合。",
+                    InlineNotice(
+                        text = "创建 Prompt 后可固定 system prompt、Model 和 Tool 组合。",
                         icon = Icons.Filled.AutoAwesome,
+                        tone = StatusTone.Neutral,
                     ) {
-                        StatusPill(text = "本地", tone = StatusTone.Success)
-                        Button(
-                            onClick = { openNewPromptEditor() },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "创建 Prompt")
+                        TextButton(onClick = { openNewPromptEditor() }) {
+                            Text(text = "创建")
                         }
                     }
                 }
             } else if (filteredPresets.isEmpty()) {
                 item {
-                    WorkbenchPanel(
-                        title = "没有匹配的 Prompt",
-                        description = "换一个关键词，或清空搜索后浏览全部预设。",
+                    InlineNotice(
+                        text = "没有匹配的 Prompt。换一个关键词，或清空搜索后浏览全部预设。",
                         icon = Icons.Filled.Search,
+                        tone = StatusTone.Neutral,
                     ) {
-                        OutlinedButton(
-                            onClick = { searchQuery = "" },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
+                        TextButton(onClick = { searchQuery = "" }) {
                             Text(text = "清空搜索")
                         }
                     }
@@ -314,23 +307,25 @@ fun PromptPresetScreen(
 @Composable
 private fun PromptLibraryHeader(
     presets: List<PromptPreset>,
-    onCreatePrompt: () -> Unit,
 ) {
     val withModelCount = presets.count { it.defaultModel != null }
     val withToolsCount = presets.count { it.defaultToolNames.isNotEmpty() }
     val describedCount = presets.count { it.description != null }
 
-    WorkbenchPanel(
-        title = "Prompt Library",
-        description = "浏览和维护本地任务模板；聊天页只负责选择应用。",
-        icon = Icons.Filled.AutoAwesome,
-        trailing = {
-            StatusPill(
-                text = "${presets.size} 个",
-                tone = if (presets.isEmpty()) StatusTone.Neutral else StatusTone.Success,
-            )
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        QuietSectionHeader(
+            title = "Prompt Library",
+            description = "本地任务模板，聊天页按需应用。",
+            trailing = {
+                StatusPill(
+                    text = "${presets.size} 个",
+                    tone = if (presets.isEmpty()) StatusTone.Neutral else StatusTone.Success,
+                )
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(
@@ -356,14 +351,6 @@ private fun PromptLibraryHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(
-            onClick = onCreatePrompt,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "新建 Prompt")
-        }
     }
 }
 
@@ -373,16 +360,19 @@ private fun PromptSearchPanel(
     onQueryChange: (String) -> Unit,
     resultCount: Int,
 ) {
-    WorkbenchPanel(
-        title = "搜索和筛选",
-        description = if (query.isBlank()) "按名称、描述、System prompt、Model 或 Tool 搜索。" else "$resultCount 个匹配结果",
-        icon = Icons.Filled.Search,
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        QuietSectionHeader(
+            title = "搜索",
+            description = if (query.isBlank()) "按名称、描述、System、Model 或 Tool 搜索。" else "$resultCount 个匹配结果",
+        )
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "搜索 Prompt") },
+            placeholder = { Text(text = "搜索 Prompt") },
             singleLine = true,
         )
     }
@@ -548,11 +538,11 @@ private fun PromptPresetRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    WorkbenchPanel(
+    QuietListRow(
         title = preset.name.preview(72),
         description = preset.description ?: preset.systemPrompt.preview(96),
         icon = Icons.Filled.AutoAwesome,
-        modifier = Modifier.clickable(onClick = onClick),
+        onClick = onClick,
         trailing = {
             WorkbenchIconButton(
                 icon = Icons.Filled.Delete,
@@ -561,37 +551,7 @@ private fun PromptPresetRow(
                 tint = MaterialTheme.colorScheme.error,
             )
         },
-    ) {
-        PromptPresetSummary(preset)
-        MetadataRow(label = "System prompt", value = preset.systemPrompt.preview(128))
-    }
-}
-
-@Composable
-private fun PromptPresetSummary(preset: PromptPreset) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(text = preset.defaultModel ?: "无 Model", tone = StatusTone.Neutral)
-        }
-        item {
-            StatusPill(
-                text = if (preset.defaultToolNames.isEmpty()) "无 Tools" else "${preset.defaultToolNames.size} 个 Tools",
-                tone = if (preset.defaultToolNames.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
-            )
-        }
-        item {
-            StatusPill(
-                text = "${preset.systemPrompt.length} 字符",
-                tone = StatusTone.Success,
-            )
-        }
-        item {
-            StatusPill(
-                text = if (preset.description == null) "无描述" else "已描述",
-                tone = if (preset.description == null) StatusTone.Neutral else StatusTone.Success,
-            )
-        }
-    }
+    )
 }
 
 private fun parseToolNames(value: String): List<String> =

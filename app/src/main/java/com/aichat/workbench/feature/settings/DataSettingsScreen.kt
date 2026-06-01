@@ -36,7 +36,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +55,7 @@ import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.nio.charset.StandardCharsets
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,7 +65,7 @@ fun DataSettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: DataSettingsViewModel = koinViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingClear by remember { mutableStateOf<ClearAction?>(null) }
     var pendingImportJson by remember { mutableStateOf<String?>(null) }

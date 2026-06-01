@@ -1,6 +1,5 @@
 package com.aichat.workbench.feature.provider
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,6 +27,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -39,10 +39,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,14 +68,17 @@ import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ProviderConnectionTester
+import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
-import com.aichat.workbench.ui.component.SectionHeader
+import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.util.UUID
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -89,7 +92,7 @@ fun ProviderSettingsScreen(
     val connectionTester = koinInject<ProviderConnectionTester>()
     val saveProvider = remember(repository) { SaveProviderConfigUseCase(repository) }
     val deleteProvider = remember(repository) { DeleteProviderConfigUseCase(repository) }
-    val providers by repository.observeProviders().collectAsState(initial = emptyList())
+    val providers by repository.observeProviders().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -217,21 +220,21 @@ fun ProviderSettingsScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { openNewProviderEditor() },
+                icon = { Icon(imageVector = Icons.Filled.Add, contentDescription = null) },
+                text = { Text(text = "添加 Provider") },
+            )
+        },
         topBar = {
             TopAppBar(
-                title = { Text(text = "Provider 设置") },
+                title = { Text(text = "Providers") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         label = "返回",
                         onClick = onBack,
-                    )
-                },
-                actions = {
-                    WorkbenchIconButton(
-                        icon = Icons.Filled.Add,
-                        label = "新建 Provider",
-                        onClick = { openNewProviderEditor() },
                     )
                 },
             )
@@ -241,38 +244,31 @@ fun ProviderSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(20.dp),
+            contentPadding = PaddingValues(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
                 ProviderHealthHeader(
                     providers = providers,
-                    onAddProvider = { openNewProviderEditor() },
                 )
             }
 
             item {
-                SectionHeader(
-                    title = "Provider 列表",
-                    description = "本地保存；API Key 仅以加密引用保留。",
+                QuietSectionHeader(
+                    title = "连接",
+                    description = "本地保存，密钥不进入备份。",
                 )
             }
 
             if (providers.isEmpty()) {
                 item {
-                    WorkbenchPanel(
-                        title = "暂无 Provider",
-                        description = "添加 Provider 后才能使用聊天、图片和 Model 路由。",
+                    InlineNotice(
+                        text = "添加 Provider 后才能使用聊天、图片和 Model 路由。",
                         icon = Icons.Filled.Tune,
+                        tone = StatusTone.Warning,
                     ) {
-                        StatusPill(text = "需要配置", tone = StatusTone.Warning)
-                        Button(
-                            onClick = { openNewProviderEditor() },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "添加 Provider")
+                        TextButton(onClick = { openNewProviderEditor() }) {
+                            Text(text = "添加")
                         }
                     }
                 }
@@ -420,7 +416,6 @@ fun ProviderSettingsScreen(
 @Composable
 private fun ProviderHealthHeader(
     providers: List<ProviderConfig>,
-    onAddProvider: () -> Unit,
 ) {
     val enabledCount = providers.count { it.enabled }
     val defaultProvider = providers.firstOrNull { it.enabled } ?: providers.firstOrNull()
@@ -428,21 +423,24 @@ private fun ProviderHealthHeader(
     val httpCount = providers.count { it.baseUrl.startsWith("http://") }
     val customHeaderCount = providers.count { it.headers.isNotEmpty() }
 
-    WorkbenchPanel(
-        title = "Provider Health",
-        description = if (providers.isEmpty()) {
-            "还没有模型连接。先添加 Provider，聊天和图片生成才可用。"
-        } else {
-            "先看连接健康，再进入单个 Provider 维护。"
-        },
-        icon = Icons.Filled.Tune,
-        trailing = {
-            StatusPill(
-                text = if (enabledCount > 0) "$enabledCount 可用" else "需要配置",
-                tone = if (enabledCount > 0) StatusTone.Success else StatusTone.Warning,
-            )
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        QuietSectionHeader(
+            title = "Provider",
+            description = if (providers.isEmpty()) {
+                "还没有模型连接。"
+            } else {
+                "检查连接健康和请求边界。"
+            },
+            trailing = {
+                StatusPill(
+                    text = if (enabledCount > 0) "$enabledCount 可用" else "需要配置",
+                    tone = if (enabledCount > 0) StatusTone.Success else StatusTone.Warning,
+                )
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(
@@ -477,41 +475,12 @@ private fun ProviderHealthHeader(
             label = "请求路径",
             value = "请求会从本机直接发送到配置的 endpoint；API Key 不进入备份。",
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(
-                onClick = onAddProvider,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "添加 Provider")
-            }
-            StatusPill(
-                text = "本地加密",
-                tone = StatusTone.Success,
-            )
-        }
         if (httpCount > 0 || customHeaderCount > 0) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            InlineNotice(
+                text = "HTTP endpoint 或自定义 headers 可能改变请求安全边界。",
+                icon = Icons.Filled.Lock,
+                tone = StatusTone.Warning,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Lock,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.tertiary,
-                )
-                Text(
-                    text = "HTTP endpoint 或自定义 headers 可能改变请求安全边界。",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 StatusPill(text = "检查配置后再启用", tone = StatusTone.Warning)
             }
         }
@@ -793,11 +762,11 @@ private fun ProviderRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    WorkbenchPanel(
+    QuietListRow(
         title = provider.name,
         description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "无默认 Model"}",
         icon = Icons.Filled.CheckCircle,
-        modifier = Modifier.clickable(onClick = onClick),
+        onClick = onClick,
         trailing = {
             WorkbenchIconButton(
                 icon = Icons.Filled.Delete,
@@ -806,62 +775,8 @@ private fun ProviderRow(
                 tint = MaterialTheme.colorScheme.error,
             )
         },
-    ) {
-        ProviderRowSummary(provider)
-        MetadataRow(label = "Base URL", value = provider.baseUrl)
-    }
+    )
 }
-
-@Composable
-private fun ProviderRowSummary(provider: ProviderConfig) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(
-                text = if (provider.enabled) "已启用" else "已禁用",
-                tone = if (provider.enabled) StatusTone.Success else StatusTone.Neutral,
-            )
-        }
-        item {
-            val requiresApiKey = ProviderRegistry.builtInDescriptor(provider.type)?.requiresApiKey ?: true
-            val keyStatus = providerKeyStatus(
-                apiKey = "",
-                hasStoredKey = provider.apiKeyRef != null,
-                requiresApiKey = requiresApiKey,
-            )
-            StatusPill(
-                text = keyStatus.label,
-                tone = keyStatus.tone,
-            )
-        }
-        item {
-            StatusPill(text = provider.type.providerTypeLabel(), tone = StatusTone.Neutral)
-        }
-        item {
-            StatusPill(
-                text = if (provider.models.isEmpty()) "无 Models" else "${provider.models.size} 个 Models",
-                tone = if (provider.models.isEmpty()) StatusTone.Warning else StatusTone.Success,
-            )
-        }
-        if (provider.supportsImageGeneration()) {
-            item {
-                StatusPill(text = "图片", tone = StatusTone.Accent)
-            }
-        }
-        if (provider.supportsToolCalling()) {
-            item {
-                StatusPill(text = "Tools", tone = StatusTone.Accent)
-            }
-        }
-    }
-}
-
-private fun ProviderConfig.supportsImageGeneration(): Boolean =
-    models.any { it.capability?.imageGeneration == true } ||
-        ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true
-
-private fun ProviderConfig.supportsToolCalling(): Boolean =
-    models.any { it.capability?.toolCalling == true } ||
-        ProviderRegistry.builtInDescriptor(type)?.capabilities?.toolCalling == true
 
 private fun ProviderType.defaultCapability(model: String): ModelCapability? {
     val descriptor = ProviderRegistry.builtInDescriptor(this) ?: return null

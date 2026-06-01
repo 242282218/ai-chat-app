@@ -66,7 +66,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,6 +99,7 @@ import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 import java.util.Base64
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -114,7 +114,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmArchiveConversation by rememberSaveable { mutableStateOf(false) }
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
