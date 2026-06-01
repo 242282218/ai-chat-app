@@ -93,6 +93,7 @@ import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.QuietListRow
 import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
@@ -439,47 +440,14 @@ private fun ChatControlSheet(
             PromptPresetStrip(state = state, viewModel = viewModel, modifier = Modifier)
         }
         item {
-            WorkbenchPanel(
-                title = "Danger Zone",
-                description = "这些操作会改变或删除当前会话内容。",
-                icon = Icons.Filled.Delete,
-            ) {
-                OutlinedButton(
-                    onClick = onRequestClearContext,
-                    enabled = state.messages.isNotEmpty() && !state.isGenerating,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ClearAll,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "清空上下文")
-                }
-                OutlinedButton(
-                    onClick = onRequestArchiveConversation,
-                    enabled = selectedConversation != null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(imageVector = Icons.Filled.Archive, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "归档对话")
-                }
-                OutlinedButton(
-                    onClick = onRequestDeleteConversation,
-                    enabled = selectedConversation != null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "删除对话")
-                }
-            }
+            DangerActions(
+                messageCount = state.messages.size,
+                canClearContext = state.messages.isNotEmpty() && !state.isGenerating,
+                hasConversation = selectedConversation != null,
+                onRequestClearContext = onRequestClearContext,
+                onRequestArchiveConversation = onRequestArchiveConversation,
+                onRequestDeleteConversation = onRequestDeleteConversation,
+            )
         }
     }
 }
@@ -490,17 +458,19 @@ private fun ConversationStrip(
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier,
 ) {
-    WorkbenchPanel(
-        title = "当前会话",
-        description = state.titleDraft.ifBlank { "未命名" },
-        icon = Icons.AutoMirrored.Filled.Chat,
-        modifier = modifier,
-        trailing = {
-            if (state.isGenerating) {
-                StatusPill(text = "生成中", tone = StatusTone.Accent)
-            }
-        },
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        QuietSectionHeader(
+            title = "当前会话",
+            description = state.titleDraft.ifBlank { "未命名" },
+            trailing = {
+                if (state.isGenerating) {
+                    StatusPill(text = "生成中", tone = StatusTone.Accent)
+                }
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.conversations, key = { it.id.value }) { conversation ->
                 ConversationChip(
@@ -572,6 +542,48 @@ private fun ConversationStrip(
                 Text(text = "临时")
             }
         }
+    }
+}
+
+@Composable
+private fun DangerActions(
+    messageCount: Int,
+    canClearContext: Boolean,
+    hasConversation: Boolean,
+    onRequestClearContext: () -> Unit,
+    onRequestArchiveConversation: () -> Unit,
+    onRequestDeleteConversation: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        QuietSectionHeader(
+            title = "危险操作",
+            description = "这些操作会改变或删除当前会话内容。",
+        )
+        QuietListRow(
+            title = "清空上下文",
+            description = if (messageCount == 0) "当前没有消息" else "删除 $messageCount 条消息，保留会话",
+            icon = Icons.Filled.ClearAll,
+            onClick = onRequestClearContext,
+            enabled = canClearContext,
+        )
+        QuietListRow(
+            title = "归档对话",
+            description = "从当前会话列表隐藏",
+            icon = Icons.Filled.Archive,
+            onClick = onRequestArchiveConversation,
+            enabled = hasConversation,
+        )
+        QuietListRow(
+            title = "删除对话",
+            description = "删除本地历史和消息",
+            icon = Icons.Filled.Delete,
+            onClick = onRequestDeleteConversation,
+            enabled = hasConversation,
+        )
     }
 }
 
