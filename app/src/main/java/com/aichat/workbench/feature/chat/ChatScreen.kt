@@ -1005,13 +1005,25 @@ private fun EmptyConversationPanel(
                 Text(text = "配置模型连接")
             }
         } else {
+            Text(
+                text = "选择一个起手式",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(top = 8.dp),
+                contentPadding = PaddingValues(top = 2.dp),
             ) {
                 items(chatStarterPrompts) { prompt ->
                     AssistChip(
                         onClick = { onUseStarterPrompt(prompt.text) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = prompt.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
                         label = {
                             Text(
                                 text = prompt.label,
@@ -1029,13 +1041,14 @@ private fun EmptyConversationPanel(
 private data class ChatStarterPrompt(
     val label: String,
     val text: String,
+    val icon: ImageVector,
 )
 
 private val chatStarterPrompts = listOf(
-    ChatStarterPrompt("总结材料", "请帮我总结下面这段材料，提炼关键结论、风险和下一步行动："),
-    ChatStarterPrompt("改写表达", "请把下面这段话改写得更清晰、专业、简洁："),
-    ChatStarterPrompt("拆解方案", "请把这个目标拆成可执行步骤，并说明每一步的验证标准："),
-    ChatStarterPrompt("排查问题", "请根据下面的信息分析可能原因，并按优先级给出排查路径："),
+    ChatStarterPrompt("总结材料", "请帮我总结下面这段材料，提炼关键结论、风险和下一步行动：", Icons.Filled.AutoAwesome),
+    ChatStarterPrompt("改写表达", "请把下面这段话改写得更清晰、专业、简洁：", Icons.Filled.Edit),
+    ChatStarterPrompt("拆解方案", "请把这个目标拆成可执行步骤，并说明每一步的验证标准：", Icons.Filled.Tune),
+    ChatStarterPrompt("排查问题", "请根据下面的信息分析可能原因，并按优先级给出排查路径：", Icons.Filled.Info),
 )
 
 @Composable
