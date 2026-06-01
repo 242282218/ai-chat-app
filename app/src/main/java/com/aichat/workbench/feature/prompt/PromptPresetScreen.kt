@@ -137,12 +137,12 @@ fun PromptPresetScreen(
             ExtendedFloatingActionButton(
                 onClick = { openNewPromptEditor() },
                 icon = { Icon(imageVector = Icons.Filled.Add, contentDescription = null) },
-                text = { Text(text = "新建 Prompt") },
+                text = { Text(text = "新建提示词") },
             )
         },
         topBar = {
             TopAppBar(
-                title = { Text(text = "Prompts") },
+                title = { Text(text = "提示词") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -177,7 +177,7 @@ fun PromptPresetScreen(
             if (presets.isEmpty()) {
                 item {
                     InlineNotice(
-                        text = "创建 Prompt 后可固定 system prompt、Model 和 Tool 组合。",
+                        text = "创建提示词后可固定系统指令、默认模型和工具组合。",
                         icon = Icons.Filled.AutoAwesome,
                         tone = StatusTone.Neutral,
                     ) {
@@ -189,7 +189,7 @@ fun PromptPresetScreen(
             } else if (filteredPresets.isEmpty()) {
                 item {
                     InlineNotice(
-                        text = "没有匹配的 Prompt。换一个关键词，或清空搜索后浏览全部预设。",
+                        text = "没有匹配的提示词。换一个关键词，或清空搜索后浏览全部预设。",
                         icon = Icons.Filled.Search,
                         tone = StatusTone.Neutral,
                     ) {
@@ -274,8 +274,8 @@ fun PromptPresetScreen(
 
     pendingDeletePreset?.let { preset ->
         WorkbenchConfirmDialog(
-            title = "删除 Prompt？",
-            message = "这会从本地 Prompt 预设中删除「${preset.name}」。",
+            title = "删除提示词？",
+            message = "这会从本地提示词库中删除「${preset.name}」。",
             confirmLabel = "删除",
             onConfirm = {
                 pendingDeletePreset = null
@@ -290,8 +290,8 @@ fun PromptPresetScreen(
 
     if (pendingClearDraft) {
         WorkbenchConfirmDialog(
-            title = "清空 Prompt 草稿？",
-            message = "丢弃当前表单内容并回到新 Prompt 草稿。",
+            title = "清空提示词草稿？",
+            message = "丢弃当前表单内容并回到新提示词草稿。",
             confirmLabel = "清空",
             onConfirm = {
                 pendingClearDraft = false
@@ -317,7 +317,7 @@ private fun PromptLibraryHeader(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         QuietSectionHeader(
-            title = "Prompt Library",
+            title = "提示词库",
             description = "本地任务模板，聊天页按需应用。",
             trailing = {
                 StatusPill(
@@ -329,13 +329,13 @@ private fun PromptLibraryHeader(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(
-                    text = "$withModelCount 个带 Model",
+                    text = "$withModelCount 个带默认模型",
                     tone = if (withModelCount == 0) StatusTone.Neutral else StatusTone.Accent,
                 )
             }
             item {
                 StatusPill(
-                    text = "$withToolsCount 个带 Tools",
+                    text = "$withToolsCount 个带工具",
                     tone = if (withToolsCount == 0) StatusTone.Neutral else StatusTone.Accent,
                 )
             }
@@ -347,7 +347,7 @@ private fun PromptLibraryHeader(
             }
         }
         Text(
-            text = "Prompt 保存在本机，可固定 system prompt、默认 model 和工具组合。",
+            text = "提示词保存在本机，可固定系统指令、默认模型和工具组合。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -366,13 +366,13 @@ private fun PromptSearchPanel(
     ) {
         QuietSectionHeader(
             title = "搜索",
-            description = if (query.isBlank()) "按名称、描述、System、Model 或 Tool 搜索。" else "$resultCount 个匹配结果",
+            description = if (query.isBlank()) "按名称、描述、系统指令、模型或工具搜索。" else "$resultCount 个匹配结果",
         )
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(text = "搜索 Prompt") },
+            placeholder = { Text(text = "搜索提示词") },
             singleLine = true,
         )
     }
@@ -399,7 +399,7 @@ private fun PromptPresetForm(
     modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
-        title = if (editing) "编辑 Prompt" else "新建 Prompt",
+        title = if (editing) "编辑提示词" else "新建提示词",
         description = "重复使用的指令保存在本地，可在聊天中应用。",
         icon = Icons.Filled.AutoAwesome,
         modifier = modifier,
@@ -436,20 +436,20 @@ private fun PromptPresetForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp),
-            label = { Text(text = "System prompt") },
+            label = { Text(text = "系统指令") },
         )
         OutlinedTextField(
             value = defaultModel,
             onValueChange = onDefaultModelChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认 Model") },
+            label = { Text(text = "默认模型") },
             singleLine = true,
         )
         OutlinedTextField(
             value = defaultTools,
             onValueChange = onDefaultToolsChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认 Tools") },
+            label = { Text(text = "默认工具") },
             singleLine = true,
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -495,19 +495,19 @@ private fun PromptFormSummary(
         }
         item {
             StatusPill(
-                text = if (systemPrompt.isBlank()) "需要 System" else "System 就绪",
+                text = if (systemPrompt.isBlank()) "需要系统指令" else "系统指令就绪",
                 tone = if (systemPrompt.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
         item {
             StatusPill(
-                text = defaultModel.ifBlank { "无 Model" },
+                text = defaultModel.ifBlank { "无默认模型" },
                 tone = StatusTone.Neutral,
             )
         }
         item {
             StatusPill(
-                text = "${parseToolNames(defaultTools).size} 个 Tools",
+                text = "${parseToolNames(defaultTools).size} 个工具",
                 tone = if (defaultTools.isBlank()) StatusTone.Neutral else StatusTone.Accent,
             )
         }
@@ -546,7 +546,7 @@ private fun PromptPresetRow(
         trailing = {
             WorkbenchIconButton(
                 icon = Icons.Filled.Delete,
-                label = "删除 Prompt ${preset.name}",
+                label = "删除提示词 ${preset.name}",
                 onClick = onDelete,
                 tint = MaterialTheme.colorScheme.error,
             )
