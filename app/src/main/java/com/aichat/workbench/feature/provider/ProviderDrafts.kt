@@ -37,12 +37,12 @@ internal fun providerKeyStatus(
 
 internal fun String.providerUrlStatus(allowHttp: Boolean): ProviderUrlStatus =
     when {
-        isBlank() -> ProviderUrlStatus("需要 URL", StatusTone.Warning)
+        isBlank() -> ProviderUrlStatus("需要接口地址", StatusTone.Warning)
         isValidProviderBaseUrl(allowHttp) && trim().startsWith("http://") ->
             ProviderUrlStatus("已允许 HTTP", StatusTone.Warning)
-        isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("URL 有效", StatusTone.Success)
+        isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("接口地址有效", StatusTone.Success)
         trim().startsWith("http://") && !allowHttp -> ProviderUrlStatus("HTTP 已阻止", StatusTone.Critical)
-        else -> ProviderUrlStatus("URL 无效", StatusTone.Critical)
+        else -> ProviderUrlStatus("接口地址无效", StatusTone.Critical)
     }
 
 internal fun String.isValidProviderBaseUrl(allowHttp: Boolean): Boolean {
@@ -59,13 +59,13 @@ internal fun String.headerStatus(): HeaderStatus {
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .toList()
-    if (headerLines.isEmpty()) return HeaderStatus("无 Headers", StatusTone.Neutral)
+    if (headerLines.isEmpty()) return HeaderStatus("无请求头", StatusTone.Neutral)
 
     val invalidCount = headerLines.count { !it.isValidHeaderLine() }
     return if (invalidCount == 0) {
-        HeaderStatus("${headerLines.size} 个 Headers", StatusTone.Accent)
+        HeaderStatus("${headerLines.size} 个请求头", StatusTone.Accent)
     } else {
-        HeaderStatus("$invalidCount 个无效 Headers", StatusTone.Critical)
+        HeaderStatus("$invalidCount 个无效请求头", StatusTone.Critical)
     }
 }
 

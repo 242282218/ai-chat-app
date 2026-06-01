@@ -31,11 +31,11 @@ class ProviderDraftsTest {
     @Test
     fun classifiesProviderUrls() {
         assertEquals(
-            ProviderUrlStatus(label = "需要 URL", tone = StatusTone.Warning),
+            ProviderUrlStatus(label = "需要接口地址", tone = StatusTone.Warning),
             "".providerUrlStatus(allowHttp = false),
         )
         assertEquals(
-            ProviderUrlStatus(label = "URL 有效", tone = StatusTone.Success),
+            ProviderUrlStatus(label = "接口地址有效", tone = StatusTone.Success),
             "https://api.example.com/v1".providerUrlStatus(allowHttp = false),
         )
         assertEquals(
@@ -47,7 +47,7 @@ class ProviderDraftsTest {
             "http://localhost:11434/v1".providerUrlStatus(allowHttp = true),
         )
         assertEquals(
-            ProviderUrlStatus(label = "URL 无效", tone = StatusTone.Critical),
+            ProviderUrlStatus(label = "接口地址无效", tone = StatusTone.Critical),
             "localhost:11434/v1".providerUrlStatus(allowHttp = true),
         )
     }
@@ -75,18 +75,18 @@ class ProviderDraftsTest {
     @Test
     fun validatesHeaderLines() {
         assertEquals(
-            HeaderStatus(label = "无 Headers", tone = StatusTone.Neutral),
+            HeaderStatus(label = "无请求头", tone = StatusTone.Neutral),
             "".headerStatus(),
         )
         assertEquals(
-            HeaderStatus(label = "2 个 Headers", tone = StatusTone.Accent),
+            HeaderStatus(label = "2 个请求头", tone = StatusTone.Accent),
             """
             X-Team: mobile
             X-Trace: enabled
             """.trimIndent().headerStatus(),
         )
         assertEquals(
-            HeaderStatus(label = "2 个无效 Headers", tone = StatusTone.Critical),
+            HeaderStatus(label = "2 个无效请求头", tone = StatusTone.Critical),
             """
             Missing separator
             Empty:

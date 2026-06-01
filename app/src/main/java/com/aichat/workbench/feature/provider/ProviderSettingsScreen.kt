@@ -224,12 +224,12 @@ fun ProviderSettingsScreen(
             ExtendedFloatingActionButton(
                 onClick = { openNewProviderEditor() },
                 icon = { Icon(imageVector = Icons.Filled.Add, contentDescription = null) },
-                text = { Text(text = "添加 Provider") },
+                text = { Text(text = "添加模型连接") },
             )
         },
         topBar = {
             TopAppBar(
-                title = { Text(text = "Providers") },
+                title = { Text(text = "模型连接") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -263,7 +263,7 @@ fun ProviderSettingsScreen(
             if (providers.isEmpty()) {
                 item {
                     InlineNotice(
-                        text = "添加 Provider 后才能使用聊天、图片和 Model 路由。",
+                        text = "添加模型连接后才能使用聊天、图片和模型路由。",
                         icon = Icons.Filled.Tune,
                         tone = StatusTone.Warning,
                     ) {
@@ -337,7 +337,7 @@ fun ProviderSettingsScreen(
                         onTest = {
                             val provider = currentProvider()
                             if (provider.baseUrl.startsWith("http://") && !allowHttp) {
-                                message = "测试此 URL 前请先启用 Allow HTTP。"
+                                message = "测试此 URL 前请先允许 HTTP。"
                                 return@ProviderForm
                             }
                             scope.launch {
@@ -366,7 +366,7 @@ fun ProviderSettingsScreen(
 
     pendingDeleteProvider?.let { provider ->
         WorkbenchConfirmDialog(
-            title = "删除 Provider？",
+            title = "删除模型连接？",
             message = "这会从本机删除「${provider.name}」及已保存的 API Key 引用。",
             confirmLabel = "删除",
             onConfirm = {
@@ -384,7 +384,7 @@ fun ProviderSettingsScreen(
 
     pendingLoadProvider?.let { provider ->
         WorkbenchConfirmDialog(
-            title = "丢弃 Provider 草稿？",
+            title = "丢弃模型连接草稿？",
             message = "丢弃当前表单并载入「${provider.name}」。",
             confirmLabel = "载入",
             onConfirm = {
@@ -399,8 +399,8 @@ fun ProviderSettingsScreen(
 
     if (pendingResetForm) {
         WorkbenchConfirmDialog(
-            title = "清空 Provider 草稿？",
-            message = "丢弃当前 Provider 表单并回到新建草稿。",
+            title = "清空模型连接草稿？",
+            message = "丢弃当前模型连接表单并回到新建草稿。",
             confirmLabel = "清空",
             onConfirm = {
                 pendingResetForm = false
@@ -428,7 +428,7 @@ private fun ProviderHealthHeader(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         QuietSectionHeader(
-            title = "Provider",
+            title = "模型连接",
             description = if (providers.isEmpty()) {
                 "还没有模型连接。"
             } else {
@@ -444,7 +444,7 @@ private fun ProviderHealthHeader(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(
-                    text = "${providers.size} 个 Provider",
+                    text = "${providers.size} 个连接",
                     tone = if (providers.isEmpty()) StatusTone.Warning else StatusTone.Neutral,
                 )
             }
@@ -467,17 +467,17 @@ private fun ProviderHealthHeader(
             }
             if (customHeaderCount > 0) {
                 item {
-                    StatusPill(text = "$customHeaderCount 个自定义 Headers", tone = StatusTone.Warning)
+                    StatusPill(text = "$customHeaderCount 个自定义请求头", tone = StatusTone.Warning)
                 }
             }
         }
         MetadataRow(
             label = "请求路径",
-            value = "请求会从本机直接发送到配置的 endpoint；API Key 不进入备份。",
+            value = "请求会从本机直接发送到配置的接口地址；API Key 不进入备份。",
         )
         if (httpCount > 0 || customHeaderCount > 0) {
             InlineNotice(
-                text = "HTTP endpoint 或自定义 headers 可能改变请求安全边界。",
+                text = "HTTP 接口或自定义请求头可能改变请求安全边界。",
                 icon = Icons.Filled.Lock,
                 tone = StatusTone.Warning,
             ) {
@@ -518,8 +518,8 @@ private fun ProviderForm(
     var showApiKey by rememberSaveable { mutableStateOf(false) }
 
     WorkbenchPanel(
-        title = if (editing) "编辑 Provider" else "新建 Provider",
-        description = "使用自己的 API Key，请求直接发送到配置的 endpoint。",
+        title = if (editing) "编辑模型连接" else "新建模型连接",
+        description = "使用自己的 API Key，请求直接发送到配置的接口地址。",
         icon = Icons.Filled.Tune,
         modifier = modifier,
         trailing = {
@@ -550,7 +550,7 @@ private fun ProviderForm(
         }
 
         MetadataRow(
-            label = "Provider 类型",
+            label = "服务类型",
             value = type.providerTypeLabel(),
         )
         OutlinedTextField(
@@ -564,7 +564,7 @@ private fun ProviderForm(
             value = baseUrl,
             onValueChange = onBaseUrlChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Base URL") },
+            label = { Text(text = "接口地址") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
         )
@@ -572,7 +572,7 @@ private fun ProviderForm(
             value = model,
             onValueChange = onModelChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认 Model") },
+            label = { Text(text = "默认模型") },
             singleLine = true,
         )
         OutlinedTextField(
@@ -601,7 +601,7 @@ private fun ProviderForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(112.dp),
-            label = { Text(text = "Headers") },
+            label = { Text(text = "请求头") },
             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         )
 
@@ -636,7 +636,7 @@ private fun ProviderForm(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Checkbox(checked = allowHttp, onCheckedChange = null)
-            Text(text = "Allow HTTP")
+            Text(text = "允许 HTTP")
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -693,7 +693,7 @@ private fun ProviderFormSummary(
         }
         item {
             StatusPill(
-                text = model.ifBlank { "无默认 Model" },
+                text = model.ifBlank { "无默认模型" },
                 tone = if (model.isBlank()) StatusTone.Neutral else StatusTone.Success,
             )
         }
@@ -764,13 +764,13 @@ private fun ProviderRow(
 ) {
     QuietListRow(
         title = provider.name,
-        description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "无默认 Model"}",
+        description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "无默认模型"}",
         icon = Icons.Filled.CheckCircle,
         onClick = onClick,
         trailing = {
             WorkbenchIconButton(
                 icon = Icons.Filled.Delete,
-                label = "删除 Provider ${provider.name}",
+                label = "删除模型连接 ${provider.name}",
                 onClick = onDelete,
                 tint = MaterialTheme.colorScheme.error,
             )
