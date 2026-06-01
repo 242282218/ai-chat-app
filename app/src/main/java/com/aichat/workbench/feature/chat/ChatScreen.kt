@@ -369,29 +369,14 @@ private fun ToolCallConfirmationPanel(
 
 @Composable
 private fun ChatErrorPanel(message: String) {
-    Surface(
+    InlineNotice(
+        text = "生成失败：$message",
+        icon = Icons.Filled.Info,
+        tone = StatusTone.Critical,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(imageVector = Icons.Filled.Info, contentDescription = null)
-            Text(
-                text = "生成失败：$message",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    )
 }
 
 @Composable
@@ -1038,11 +1023,13 @@ private fun MessageBubble(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                MessageHeader(
-                    message = message,
-                    expanded = expanded,
-                    onToggleExpanded = { expanded = !expanded },
-                )
+                if (message.shouldShowHeader()) {
+                    MessageHeader(
+                        message = message,
+                        expanded = expanded,
+                        onToggleExpanded = { expanded = !expanded },
+                    )
+                }
                 message.parentMessageId?.let {
                     Text(
                         text = "关联到 ${it.value.take(8)}",
@@ -1138,16 +1125,7 @@ private fun MessageHeader(
     onToggleExpanded: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        StatusPill(
-            text = message.role.displayLabel(),
-            tone = message.roleTone(),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        StatusPill(
-            text = message.status.displayLabel(),
-            modifier = Modifier.weight(1f, fill = false),
-            tone = message.statusTone(),
-        )
+        MessageHeaderPills(message = message)
         Spacer(modifier = Modifier.weight(1f))
         if (message.role == MessageRole.Tool) {
             WorkbenchIconButton(
@@ -1156,6 +1134,23 @@ private fun MessageHeader(
                 onClick = onToggleExpanded,
             )
         }
+    }
+}
+
+@Composable
+private fun MessageHeaderPills(message: Message) {
+    if (message.role == MessageRole.Tool || message.role == MessageRole.System) {
+        StatusPill(
+            text = message.role.displayLabel(),
+            tone = message.roleTone(),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+    }
+    if (message.status != MessageStatus.Completed) {
+        StatusPill(
+            text = message.status.displayLabel(),
+            tone = message.statusTone(),
+        )
     }
 }
 
@@ -1272,7 +1267,6 @@ private fun InputBar(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             InputStatusRow(
-                input = input,
                 isGenerating = isGenerating,
                 isEditing = isEditing,
                 canSend = canSend,
@@ -1345,32 +1339,29 @@ private fun ImageDraftRow(
 
 @Composable
 private fun InputStatusRow(
-    input: String,
     isGenerating: Boolean,
     isEditing: Boolean,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val status = inputStatus(input, isGenerating, isEditing, canSend)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = status.label,
-                style = MaterialTheme.typography.bodySmall,
-                color = status.tone.contentColor(),
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            when {
-                isEditing -> {
-                    TextButton(onClick = onCancelEdit) {
-                        Text(text = "取消")
-                    }
+    val status = inputStatus(isGenerating, isEditing, canSend) ?: return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = status.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = status.tone.contentColor(),
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        when {
+            isEditing -> {
+                TextButton(onClick = onCancelEdit) {
+                    Text(text = "取消")
                 }
-                !canSend && !isGenerating -> {
-                    TextButton(onClick = onOpenProviders) {
-                        Text(text = "配置 Provider")
-                    }
+            }
+            !canSend && !isGenerating -> {
+                TextButton(onClick = onOpenProviders) {
+                    Text(text = "配置 Provider")
                 }
             }
         }
@@ -1383,11 +1374,10 @@ private data class InputStatus(
 )
 
 private fun inputStatus(
-    input: String,
     isGenerating: Boolean,
     isEditing: Boolean,
     canSend: Boolean,
-): InputStatus =
+): InputStatus? =
     when {
         isGenerating -> InputStatus(
             label = "生成中",
@@ -1401,15 +1391,13 @@ private fun inputStatus(
             label = "需要 Provider",
             tone = StatusTone.Critical,
         )
-        input.isBlank() -> InputStatus(
-            label = "",
-            tone = StatusTone.Neutral,
-        )
-        else -> InputStatus(
-            label = "就绪",
-            tone = StatusTone.Success,
-        )
+        else -> null
     }
+
+private fun Message.shouldShowHeader(): Boolean =
+    role == MessageRole.Tool ||
+        role == MessageRole.System ||
+        status != MessageStatus.Completed
 
 @Composable
 private fun StatusTone.contentColor() =
