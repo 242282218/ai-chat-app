@@ -399,7 +399,7 @@ private fun ChatControlSheet(
         item {
             QuietSectionHeader(
                 title = "控制",
-                description = "会话、模型、Prompt、参数和危险操作。",
+                description = "会话、模型、提示词、参数和危险操作。",
             )
         }
         item {
@@ -648,14 +648,14 @@ private fun ChatSettingsPanel(
     modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
-        title = "Model 控制",
-        description = state.modelDraft.ifBlank { "未覆盖 Model" },
+        title = "模型控制",
+        description = state.modelDraft.ifBlank { "使用默认模型" },
         icon = Icons.Filled.Tune,
         modifier = modifier,
         trailing = {
             WorkbenchIconButton(
                 icon = if (state.settingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (state.settingsExpanded) "收起 Model 控制" else "展开 Model 控制",
+                label = if (state.settingsExpanded) "收起模型控制" else "展开模型控制",
                 onClick = viewModel::toggleSettingsExpanded,
             )
         },
@@ -670,7 +670,7 @@ private fun ChatSettingsPanel(
                     value = state.modelDraft,
                     onValueChange = viewModel::updateModelDraft,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(text = "Model") },
+                    label = { Text(text = "模型") },
                     singleLine = true,
                 )
                 OutlinedTextField(
@@ -679,14 +679,14 @@ private fun ChatSettingsPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(104.dp),
-                    label = { Text(text = "System prompt") },
+                    label = { Text(text = "系统指令") },
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = state.temperatureDraft,
                         onValueChange = viewModel::updateTemperatureDraft,
                         modifier = Modifier.weight(1f),
-                        label = { Text(text = "Temp") },
+                        label = { Text(text = "温度") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
@@ -694,7 +694,7 @@ private fun ChatSettingsPanel(
                         value = state.topPDraft,
                         onValueChange = viewModel::updateTopPDraft,
                         modifier = Modifier.weight(1f),
-                        label = { Text(text = "Top P") },
+                        label = { Text(text = "采样阈值") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
@@ -703,7 +703,7 @@ private fun ChatSettingsPanel(
                     value = state.maxTokensDraft,
                     onValueChange = viewModel::updateMaxTokensDraft,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(text = "Max tokens") },
+                    label = { Text(text = "最大输出") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
@@ -804,14 +804,14 @@ private fun PromptPresetStrip(
     if (state.promptPresets.isEmpty()) return
 
     WorkbenchPanel(
-        title = "Prompt 库",
+        title = "提示词库",
         description = "${state.promptPresets.size} 个已保存快捷项",
         icon = Icons.Filled.Edit,
         modifier = modifier,
         trailing = {
             WorkbenchIconButton(
                 icon = if (state.promptsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (state.promptsExpanded) "收起 Prompt 库" else "展开 Prompt 库",
+                label = if (state.promptsExpanded) "收起提示词库" else "展开提示词库",
                 onClick = viewModel::togglePromptsExpanded,
             )
         },
@@ -929,7 +929,7 @@ private fun ChatContextBar(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (hasEnabledProvider) model.ifBlank { "使用 Provider 默认 Model" } else "配置后即可开始聊天",
+                    text = if (hasEnabledProvider) model.ifBlank { "使用服务商默认模型" } else "配置后即可开始聊天",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

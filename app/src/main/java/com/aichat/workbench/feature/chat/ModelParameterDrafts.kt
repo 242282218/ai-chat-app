@@ -50,19 +50,19 @@ internal fun modelParameterDraftStatus(
 
     return when (kind) {
         ModelParameterDraftKind.Temperature -> decimalStatus(
-            label = "Temp",
+            label = "温度",
             value = trimmed,
             validRange = 0.0..2.0,
-            rangeLabel = "Temp 0-2",
+            rangeLabel = "温度 0-2",
         )
         ModelParameterDraftKind.TopP -> decimalStatus(
-            label = "Top P",
+            label = "采样阈值",
             value = trimmed,
             validRange = 0.0..1.0,
-            rangeLabel = "Top P 0-1",
+            rangeLabel = "采样阈值 0-1",
         )
         ModelParameterDraftKind.MaxTokens -> intStatus(
-            label = "Max",
+            label = "最大输出",
             value = trimmed,
         )
     }
@@ -70,9 +70,9 @@ internal fun modelParameterDraftStatus(
 
 private val ModelParameterDraftKind.emptyLabel: String
     get() = when (this) {
-        ModelParameterDraftKind.Temperature -> "Temp -"
-        ModelParameterDraftKind.TopP -> "Top P -"
-        ModelParameterDraftKind.MaxTokens -> "Max -"
+        ModelParameterDraftKind.Temperature -> "温度 -"
+        ModelParameterDraftKind.TopP -> "采样阈值 -"
+        ModelParameterDraftKind.MaxTokens -> "最大输出 -"
     }
 
 private fun decimalStatus(

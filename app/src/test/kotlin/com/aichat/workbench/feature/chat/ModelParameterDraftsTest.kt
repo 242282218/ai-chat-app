@@ -51,15 +51,15 @@ class ModelParameterDraftsTest {
     @Test
     fun reportsActionableSummaryLabels() {
         assertEquals(
-            ModelParameterDraftStatus(label = "Temp 0-2", isValid = false),
+            ModelParameterDraftStatus(label = "温度 0-2", isValid = false),
             modelParameterDraftStatus("3", ModelParameterDraftKind.Temperature),
         )
         assertEquals(
-            ModelParameterDraftStatus(label = "Top P 需为数字", isValid = false),
+            ModelParameterDraftStatus(label = "采样阈值 需为数字", isValid = false),
             modelParameterDraftStatus("many", ModelParameterDraftKind.TopP),
         )
         assertEquals(
-            ModelParameterDraftStatus(label = "Max > 0", isValid = false),
+            ModelParameterDraftStatus(label = "最大输出 > 0", isValid = false),
             modelParameterDraftStatus("-1", ModelParameterDraftKind.MaxTokens),
         )
         assertFalse(ChatUiState(draft = DraftState(temperature = "3")).hasValidModelParameterDrafts())
