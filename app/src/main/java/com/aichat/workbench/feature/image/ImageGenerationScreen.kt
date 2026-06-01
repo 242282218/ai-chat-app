@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,15 +26,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,7 +49,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -63,6 +68,7 @@ import com.aichat.workbench.ui.component.SectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.io.File
 import org.koin.androidx.compose.koinViewModel
@@ -78,6 +84,7 @@ fun ImageGenerationScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var confirmClearHistory by remember { mutableStateOf(false) }
+    var controlsExpanded by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -85,20 +92,19 @@ fun ImageGenerationScreen(
             TopAppBar(
                 title = { Text(text = "图片") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                        )
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
                 },
                 actions = {
-                    IconButton(
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.ClearAll,
+                        label = "清空历史",
                         onClick = { confirmClearHistory = true },
                         enabled = state.generations.isNotEmpty() && !state.isGenerating,
-                    ) {
-                        Icon(imageVector = Icons.Filled.ClearAll, contentDescription = "清空历史")
-                    }
+                    )
                 },
             )
         },
@@ -114,23 +120,26 @@ fun ImageGenerationScreen(
                 ImageGenerationForm(
                     state = state,
                     onOpenProviders = onOpenProviders,
+                    controlsExpanded = controlsExpanded,
+                    onToggleControls = { controlsExpanded = !controlsExpanded },
                     viewModel = viewModel,
                 )
             }
             item {
                 SectionHeader(
-                    title = "历史",
-                    description = "生成图片按本地缩略图文件展示。",
+                    title = "Gallery",
+                    description = "最近结果优先展示；可复用 Prompt、重新生成、保存或分享。",
                 )
             }
             if (state.generations.isEmpty()) {
                 item {
                     WorkbenchPanel(
                         title = "暂无图片历史",
-                        description = "完成后的生成记录会在这里显示，并提供复用、保存和分享操作。",
+                        description = "先写 Prompt 并生成图片。失败后会保留输入，便于修改后重试。",
                         icon = Icons.Filled.Image,
                     ) {
                         StatusPill(text = "本地缩略图", tone = StatusTone.Success)
+                        StatusPill(text = "等待 Prompt", tone = StatusTone.Neutral)
                     }
                 }
             } else {
@@ -165,11 +174,13 @@ fun ImageGenerationScreen(
 private fun ImageGenerationForm(
     state: ImageGenerationUiState,
     onOpenProviders: () -> Unit,
+    controlsExpanded: Boolean,
+    onToggleControls: () -> Unit,
     viewModel: ImageGenerationViewModel,
 ) {
     WorkbenchPanel(
-        title = "图片生成",
-        description = "通过已配置的 Provider 直接创建图片请求。",
+        title = "Image Composer",
+        description = "Prompt 是主路径；Provider、Model、尺寸、质量和数量放在紧凑控制区。",
         icon = Icons.Filled.Image,
         trailing = {
             StatusPill(
@@ -235,14 +246,19 @@ private fun ImageGenerationForm(
                 .height(128.dp),
             label = { Text(text = "Prompt") },
         )
-        OutlinedTextField(
-            value = state.model,
-            onValueChange = viewModel::updateModel,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Model") },
-            singleLine = true,
+        CompactGenerationControlsSummary(
+            state = state,
+            expanded = controlsExpanded,
+            onToggle = onToggleControls,
         )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (controlsExpanded) {
+            OutlinedTextField(
+                value = state.model,
+                onValueChange = viewModel::updateModel,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "Model") },
+                singleLine = true,
+            )
             OutlinedTextField(
                 value = state.size,
                 onValueChange = viewModel::updateSize,
@@ -273,14 +289,24 @@ private fun ImageGenerationForm(
                 tone = StatusTone.Warning,
             )
         }
+        ImageGenerationReadiness(state)
         Button(
-            onClick = viewModel::generate,
-            enabled = state.canGenerateImages(),
+            onClick = {
+                if (state.isGenerating) {
+                    viewModel.stopGeneration()
+                } else {
+                    viewModel.generate()
+                }
+            },
+            enabled = state.isGenerating || state.canGenerateImages(),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Icon(imageVector = Icons.Filled.Image, contentDescription = null)
+            Icon(
+                imageVector = if (state.isGenerating) Icons.Filled.Stop else Icons.Filled.Image,
+                contentDescription = null,
+            )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = if (state.isGenerating) "生成中" else "生成")
+            Text(text = if (state.isGenerating) "停止生成" else "生成图片")
         }
         state.error?.let {
             ImageFormFeedback(
@@ -288,6 +314,114 @@ private fun ImageGenerationForm(
                 message = it,
                 tone = StatusTone.Critical,
             )
+        }
+    }
+}
+
+@Composable
+private fun ImageGenerationReadiness(state: ImageGenerationUiState) {
+    val readiness = imageGenerationReadiness(state)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        StatusPill(text = readiness.label, tone = readiness.tone)
+        Text(
+            text = readiness.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private data class ImageReadiness(
+    val label: String,
+    val tone: StatusTone,
+    val description: String,
+)
+
+private fun imageGenerationReadiness(state: ImageGenerationUiState): ImageReadiness {
+    val imageCount = state.imageCountOrNull()
+    return when {
+        state.isGenerating -> ImageReadiness(
+            label = "生成中",
+            tone = StatusTone.Accent,
+            description = "Provider 正在生成图片，可停止；已创建的记录会标记为已取消。",
+        )
+        state.selectedProvider == null -> ImageReadiness(
+            label = "需要 Provider",
+            tone = StatusTone.Warning,
+            description = "先配置支持图片生成的 Provider，再发起请求。",
+        )
+        state.prompt.isBlank() -> ImageReadiness(
+            label = "需要 Prompt",
+            tone = StatusTone.Warning,
+            description = "描述主体、风格和约束后再生成；失败后输入会保留。",
+        )
+        state.model.isBlank() -> ImageReadiness(
+            label = "需要 Model",
+            tone = StatusTone.Warning,
+            description = "展开 Compact Controls，填写或选择图片生成模型。",
+        )
+        imageCount == null || imageCount !in 1..4 -> ImageReadiness(
+            label = "数量无效",
+            tone = StatusTone.Critical,
+            description = "展开 Compact Controls，将数量设为 1 到 4。",
+        )
+        state.selectedModelUnsupported -> ImageReadiness(
+            label = "Model 不支持",
+            tone = StatusTone.Critical,
+            description = "当前 Model 未声明支持图片生成，请切换模型或 Provider。",
+        )
+        else -> ImageReadiness(
+            label = "就绪",
+            tone = StatusTone.Success,
+            description = "生成后会写入本地 Gallery，可复用 Prompt、保存或分享。",
+        )
+    }
+}
+
+@Composable
+private fun CompactGenerationControlsSummary(
+    state: ImageGenerationUiState,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Compact Controls",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${state.model.ifBlank { "未设置 Model" }} · ${state.size.ifBlank { "默认尺寸" }} · ${state.quality.ifBlank { "默认质量" }} · ${state.count.ifBlank { "?" }} 张",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            WorkbenchIconButton(
+                icon = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                label = if (expanded) "收起图片参数" else "展开图片参数",
+                onClick = onToggle,
+            )
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = state.size.ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
+            }
+            item {
+                StatusPill(text = state.quality.ifBlank { "默认质量" }, tone = StatusTone.Neutral)
+            }
+            item {
+                StatusPill(text = state.imageCountLabel(), tone = state.imageCountTone())
+            }
+            item {
+                StatusPill(text = state.imageModelLabel(), tone = state.imageModelTone())
+            }
         }
     }
 }
@@ -309,14 +443,8 @@ private fun ImageFormSummary(state: ImageGenerationUiState) {
         }
         item {
             StatusPill(
-                text = state.imageCountLabel(),
-                tone = state.imageCountTone(),
-            )
-        }
-        item {
-            StatusPill(
-                text = state.imageModelLabel(),
-                tone = state.imageModelTone(),
+                text = if (state.isGenerating) "Provider 正在生成图片" else "等待生成",
+                tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Neutral,
             )
         }
     }
@@ -360,49 +488,62 @@ private fun ImageGenerationRow(
         generation.thumbnailPath?.let { path ->
             LocalThumbnail(path = path)
         }
-        MetadataRow(label = "Prompt", value = generation.prompt.preview(96))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = generation.model.orEmpty().ifBlank { "无 Model" }, tone = StatusTone.Neutral)
+            }
+            item {
+                StatusPill(text = generation.size.orEmpty().ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
+            }
+            item {
+                StatusPill(text = generation.quality.orEmpty().ifBlank { "默认质量" }, tone = StatusTone.Neutral)
+            }
+        }
+        MetadataRow(label = "Prompt", value = generation.prompt.preview(140))
         generation.errorSummary?.let {
             Text(
-                text = it,
+                text = "$it\nPrompt 已保留，可复用后修改并重试。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = onReusePrompt,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = "复用 Prompt")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                OutlinedButton(onClick = onReusePrompt) {
+                    Text(text = "复用 Prompt")
+                }
             }
-            OutlinedButton(
-                onClick = onRegenerate,
-                enabled = generation.status == ImageGenerationStatus.Completed,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "重新生成")
+            item {
+                OutlinedButton(
+                    onClick = onRegenerate,
+                    enabled = generation.status == ImageGenerationStatus.Completed,
+                ) {
+                    Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "重新生成")
+                }
             }
-            OutlinedButton(
-                onClick = onShare,
-                enabled = generation.status == ImageGenerationStatus.Completed &&
-                    generation.originalPath != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(imageVector = Icons.Filled.Share, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "分享")
+            item {
+                OutlinedButton(
+                    onClick = onShare,
+                    enabled = generation.status == ImageGenerationStatus.Completed &&
+                        generation.originalPath != null,
+                ) {
+                    Icon(imageVector = Icons.Filled.Share, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "分享")
+                }
             }
-            OutlinedButton(
-                onClick = onSave,
-                enabled = generation.status == ImageGenerationStatus.Completed &&
-                    generation.originalPath != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "保存")
+            item {
+                OutlinedButton(
+                    onClick = onSave,
+                    enabled = generation.status == ImageGenerationStatus.Completed &&
+                        generation.originalPath != null,
+                ) {
+                    Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "保存")
+                }
             }
         }
     }
@@ -419,6 +560,7 @@ private fun ImageGeneration.statusTone(): StatusTone =
     when (status) {
         ImageGenerationStatus.Completed -> StatusTone.Success
         ImageGenerationStatus.Failed -> StatusTone.Critical
+        ImageGenerationStatus.Cancelled -> StatusTone.Warning
         ImageGenerationStatus.Pending -> StatusTone.Accent
     }
 
@@ -427,6 +569,7 @@ private fun ImageGenerationStatus.displayLabel(): String =
         ImageGenerationStatus.Pending -> "等待中"
         ImageGenerationStatus.Completed -> "完成"
         ImageGenerationStatus.Failed -> "失败"
+        ImageGenerationStatus.Cancelled -> "已取消"
     }
 
 private fun ImageGenerationUiState.canGenerateImages(): Boolean {

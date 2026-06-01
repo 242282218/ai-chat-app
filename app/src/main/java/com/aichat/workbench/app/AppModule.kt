@@ -137,6 +137,7 @@ val appModule: Module = module {
     viewModel {
         HomeViewModel(
             conversationRepositoryProvider = { get() },
+            providerRepository = get(),
         )
     }
     viewModel {

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
@@ -48,8 +51,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -58,6 +61,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -87,10 +91,12 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.ui.component.IconTile
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 import java.util.Base64
@@ -103,6 +109,8 @@ fun ChatScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
     initialConversationId: ConversationId? = null,
+    initialDraft: String = "",
+    initialTemporary: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
 ) {
@@ -110,6 +118,8 @@ fun ChatScreen(
     var confirmArchiveConversation by rememberSaveable { mutableStateOf(false) }
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
+    var showControls by rememberSaveable { mutableStateOf(false) }
+    val controlSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -138,55 +148,41 @@ fun ChatScreen(
         onDispose { viewModel.deleteTemporaryConversationOnExit() }
     }
 
+    LaunchedEffect(initialDraft, initialTemporary) {
+        viewModel.applyInitialDraft(initialDraft, initialTemporary)
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = { Text(text = "聊天") },
                 navigationIcon = {
-                    IconButton(
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
                         onClick = {
                             viewModel.deleteTemporaryConversationOnExit()
                             onBack()
                         },
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                        )
-                    }
+                    )
                 },
                 actions = {
-                    IconButton(onClick = viewModel::createConversation) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "新建对话",
-                        )
-                    }
-                    IconButton(onClick = viewModel::createTemporaryConversation) {
-                        Icon(
-                            imageVector = Icons.Filled.Timer,
-                            contentDescription = "新建临时对话",
-                        )
-                    }
-                    IconButton(
-                        onClick = { confirmArchiveConversation = true },
-                        enabled = selectedConversation != null,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Archive,
-                            contentDescription = "归档对话",
-                        )
-                    }
-                    IconButton(
-                        onClick = { confirmDeleteConversation = true },
-                        enabled = selectedConversation != null,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "删除对话",
-                        )
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Add,
+                        label = "新建对话",
+                        onClick = viewModel::createConversation,
+                    )
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Timer,
+                        label = "新建临时对话",
+                        onClick = viewModel::createTemporaryConversation,
+                    )
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.MoreVert,
+                        label = "打开控制区",
+                        onClick = { showControls = true },
+                    )
                 },
             )
         },
@@ -196,19 +192,14 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            ConversationStrip(
+            ConversationContextBar(
                 state = state,
-                viewModel = viewModel,
-                onRequestClearContext = { confirmClearContext = true },
+                onOpenControls = { showControls = true },
             )
-            ProviderStrip(state, viewModel)
-            if (state.providers.none { it.enabled }) {
-                NoProviderPanel(onOpenProviders = onOpenProviders)
-            }
-            ChatSettingsPanel(state, viewModel)
-            PromptPresetStrip(state, viewModel)
             MessageList(
                 messages = state.messages,
+                hasEnabledProvider = state.providers.any { it.enabled },
+                onOpenProviders = onOpenProviders,
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
                 modifier = Modifier.weight(1f),
@@ -236,6 +227,32 @@ fun ChatScreen(
                 onSend = viewModel::sendMessage,
                 onStop = viewModel::stopGeneration,
                 onCancelEdit = viewModel::cancelEdit,
+            )
+        }
+    }
+
+    if (showControls) {
+        ModalBottomSheet(
+            onDismissRequest = { showControls = false },
+            sheetState = controlSheetState,
+        ) {
+            ChatControlSheet(
+                state = state,
+                viewModel = viewModel,
+                onOpenProviders = onOpenProviders,
+                onRequestClearContext = {
+                    showControls = false
+                    confirmClearContext = true
+                },
+                onRequestArchiveConversation = {
+                    showControls = false
+                    confirmArchiveConversation = true
+                },
+                onRequestDeleteConversation = {
+                    showControls = false
+                    confirmDeleteConversation = true
+                },
+                modifier = Modifier.navigationBarsPadding(),
             )
         }
     }
@@ -342,16 +359,216 @@ private fun ChatErrorPanel(message: String) {
 }
 
 @Composable
+private fun ConversationContextBar(
+    state: ChatUiState,
+    onOpenControls: () -> Unit,
+) {
+    val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
+    val selectedProvider = state.selectedProviderId
+        ?.let { id -> state.providers.firstOrNull { it.id.value == id } }
+        ?: state.providers.firstOrNull { it.enabled }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconTile(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                tone = if (state.providers.any { it.enabled }) StatusTone.Accent else StatusTone.Warning,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = selectedConversation?.title ?: "新对话",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item {
+                        StatusPill(text = "${state.messages.size} 条", tone = StatusTone.Neutral)
+                    }
+                    item {
+                        StatusPill(
+                            text = selectedProvider?.let { "${it.name} / ${state.modelDraft.ifBlank { it.defaultModel ?: "Model" }}" }
+                                ?: "需要 Provider",
+                            tone = if (selectedProvider != null) StatusTone.Success else StatusTone.Warning,
+                        )
+                    }
+                    if (selectedConversation?.isTemporary == true || state.temporaryDraft) {
+                        item { StatusPill(text = "临时", tone = StatusTone.Warning) }
+                    }
+                    if (selectedConversation?.isSensitive == true || state.sensitiveDraft) {
+                        item { StatusPill(text = "敏感", tone = StatusTone.Critical) }
+                    }
+                    if (state.isGenerating) {
+                        item { StatusPill(text = "生成中", tone = StatusTone.Accent) }
+                    }
+                }
+            }
+            OutlinedButton(onClick = onOpenControls) {
+                Icon(imageVector = Icons.Filled.Tune, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "控制")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatControlSheet(
+    state: ChatUiState,
+    viewModel: ChatViewModel,
+    onOpenProviders: () -> Unit,
+    onRequestClearContext: () -> Unit,
+    onRequestArchiveConversation: () -> Unit,
+    onRequestDeleteConversation: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            SectionHeaderLike(
+                title = "控制区",
+                description = "会话、模型、Prompt 和危险操作都在这里维护。",
+            )
+        }
+        item {
+            ConversationStrip(
+                state = state,
+                viewModel = viewModel,
+                modifier = Modifier,
+            )
+        }
+        item {
+            WorkbenchPanel(
+                title = "Provider",
+                description = if (state.providers.any { it.enabled }) "选择当前对话使用的模型连接" else "还不能发送消息",
+                icon = Icons.Filled.Tune,
+                trailing = {
+                    if (state.providers.none { it.enabled }) {
+                        StatusPill(text = "需要配置", tone = StatusTone.Warning)
+                    }
+                },
+            ) {
+                if (state.providers.none { it.enabled }) {
+                    Text(
+                        text = "添加 OpenAI 或兼容 Provider 后，请求会从本机直接发送到你的 endpoint。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = onOpenProviders,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(text = "配置 Provider")
+                    }
+                } else {
+                    ProviderStrip(state = state, viewModel = viewModel, modifier = Modifier)
+                }
+            }
+        }
+        item {
+            ChatSettingsPanel(state = state, viewModel = viewModel, modifier = Modifier)
+        }
+        item {
+            PromptPresetStrip(state = state, viewModel = viewModel, modifier = Modifier)
+        }
+        item {
+            WorkbenchPanel(
+                title = "Danger Zone",
+                description = "这些操作会改变或删除当前会话内容。",
+                icon = Icons.Filled.Delete,
+            ) {
+                OutlinedButton(
+                    onClick = onRequestClearContext,
+                    enabled = state.messages.isNotEmpty() && !state.isGenerating,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ClearAll,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "清空上下文")
+                }
+                OutlinedButton(
+                    onClick = onRequestArchiveConversation,
+                    enabled = selectedConversation != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(imageVector = Icons.Filled.Archive, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "归档对话")
+                }
+                OutlinedButton(
+                    onClick = onRequestDeleteConversation,
+                    enabled = selectedConversation != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "删除对话")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeaderLike(
+    title: String,
+    description: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun ConversationStrip(
     state: ChatUiState,
     viewModel: ChatViewModel,
-    onRequestClearContext: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
         title = "会话",
         description = state.titleDraft.ifBlank { "未命名" },
         icon = Icons.Filled.Tune,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = modifier,
         trailing = {
             if (state.isGenerating) {
                 StatusPill(text = "生成中", tone = StatusTone.Accent)
@@ -407,19 +624,6 @@ private fun ConversationStrip(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "保存标题")
             }
-            OutlinedButton(
-                onClick = onRequestClearContext,
-                enabled = state.messages.isNotEmpty() && !state.isGenerating,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.ClearAll,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "清空上下文")
-            }
         }
     }
 }
@@ -447,11 +651,12 @@ private fun ConversationChip(
 private fun ProviderStrip(
     state: ChatUiState,
     viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
@@ -478,50 +683,22 @@ private fun ProviderStrip(
 }
 
 @Composable
-private fun NoProviderPanel(onOpenProviders: () -> Unit) {
-    WorkbenchPanel(
-        title = "需要 Provider",
-        description = "发送前请添加 OpenAI 或兼容 Provider。",
-        icon = Icons.Filled.Info,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        trailing = {
-            StatusPill(text = "需要配置", tone = StatusTone.Warning)
-        },
-    ) {
-        MetadataRow(
-            label = "路由",
-            value = "设备直连",
-        )
-        Button(
-            onClick = onOpenProviders,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(text = "配置 Provider")
-        }
-    }
-}
-
-@Composable
 private fun ChatSettingsPanel(
     state: ChatUiState,
     viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
         title = "Model 控制",
         description = state.modelDraft.ifBlank { "未覆盖 Model" },
         icon = Icons.Filled.Tune,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = modifier,
         trailing = {
-            IconButton(onClick = viewModel::toggleSettingsExpanded) {
-                Icon(
-                    imageVector = if (state.settingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (state.settingsExpanded) {
-                        "收起 Model 控制"
-                    } else {
-                        "展开 Model 控制"
-                    },
-                )
-            }
+            WorkbenchIconButton(
+                icon = if (state.settingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                label = if (state.settingsExpanded) "收起 Model 控制" else "展开 Model 控制",
+                onClick = viewModel::toggleSettingsExpanded,
+            )
         },
     ) {
         ChatSettingsSummary(state)
@@ -663,6 +840,7 @@ private fun ChatSettingsSummary(state: ChatUiState) {
 private fun PromptPresetStrip(
     state: ChatUiState,
     viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
 ) {
     if (state.promptPresets.isEmpty()) return
 
@@ -670,18 +848,13 @@ private fun PromptPresetStrip(
         title = "Prompt 库",
         description = "${state.promptPresets.size} 个已保存快捷项",
         icon = Icons.Filled.Edit,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = modifier,
         trailing = {
-            IconButton(onClick = viewModel::togglePromptsExpanded) {
-                Icon(
-                    imageVector = if (state.promptsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (state.promptsExpanded) {
-                        "收起 Prompt 库"
-                    } else {
-                        "展开 Prompt 库"
-                    },
-                )
-            }
+            WorkbenchIconButton(
+                icon = if (state.promptsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                label = if (state.promptsExpanded) "收起 Prompt 库" else "展开 Prompt 库",
+                onClick = viewModel::togglePromptsExpanded,
+            )
         },
     ) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -715,6 +888,8 @@ private fun PromptPresetStrip(
 @Composable
 private fun MessageList(
     messages: List<Message>,
+    hasEnabledProvider: Boolean,
+    onOpenProviders: () -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     modifier: Modifier = Modifier,
@@ -726,7 +901,10 @@ private fun MessageList(
     ) {
         if (messages.isEmpty()) {
             item {
-                EmptyConversationPanel()
+                EmptyConversationPanel(
+                    hasEnabledProvider = hasEnabledProvider,
+                    onOpenProviders = onOpenProviders,
+                )
             }
         } else {
             items(messages, key = { it.id.value }) { message ->
@@ -759,10 +937,17 @@ private fun CompressedMessagesCard(message: Message) {
 }
 
 @Composable
-private fun EmptyConversationPanel() {
+private fun EmptyConversationPanel(
+    hasEnabledProvider: Boolean,
+    onOpenProviders: () -> Unit,
+) {
     WorkbenchPanel(
-        title = "当前会话为空",
-        description = "可先选择 Prompt，或在下方粘贴上下文。",
+        title = if (hasEnabledProvider) "当前会话为空" else "还不能发送消息",
+        description = if (hasEnabledProvider) {
+            "在下方输入问题，或到控制区选择 Prompt。"
+        } else {
+            "添加 OpenAI 或兼容 Provider 后，请求会从本机直接发送到你的 endpoint。"
+        },
         icon = Icons.Filled.AutoAwesome,
     ) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -770,10 +955,21 @@ private fun EmptyConversationPanel() {
                 StatusPill(text = "0 条消息", tone = StatusTone.Neutral)
             }
             item {
-                StatusPill(text = "就绪", tone = StatusTone.Success)
+                StatusPill(
+                    text = if (hasEnabledProvider) "就绪" else "需要 Provider",
+                    tone = if (hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
+                )
             }
             item {
                 StatusPill(text = "本地", tone = StatusTone.Accent)
+            }
+        }
+        if (!hasEnabledProvider) {
+            Button(
+                onClick = onOpenProviders,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = "配置 Provider")
             }
         }
     }
@@ -922,16 +1118,11 @@ private fun MessageHeader(
         )
         Spacer(modifier = Modifier.weight(1f))
         if (message.role == MessageRole.Tool) {
-            IconButton(onClick = onToggleExpanded) {
-                Icon(
-                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) {
-                        "收起 Tool 详情"
-                    } else {
-                        "展开 Tool 详情"
-                    },
-                )
-            }
+            WorkbenchIconButton(
+                icon = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                label = if (expanded) "收起 Tool 详情" else "展开 Tool 详情",
+                onClick = onToggleExpanded,
+            )
         }
     }
 }
@@ -1111,16 +1302,13 @@ private fun ImageDraftRow(
                     image = images[index],
                     modifier = Modifier.size(72.dp),
                 )
-                IconButton(
+                WorkbenchIconButton(
+                    icon = Icons.Filled.Close,
+                    label = "移除图片",
                     onClick = { onRemoveImage(index) },
                     modifier = Modifier.align(Alignment.TopEnd),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "移除图片",
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
+                    tint = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -1136,40 +1324,73 @@ private fun InputStatusRow(
     onCancelEdit: () -> Unit,
 ) {
     val status = inputStatus(input, isGenerating, isEditing, canSend)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        StatusPill(text = status.first, tone = status.second)
-        if (input.isNotBlank()) {
-            Spacer(modifier = Modifier.width(8.dp))
-            StatusPill(text = "${input.trim().length} 字符", tone = StatusTone.Neutral)
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        when {
-            isEditing -> {
-                TextButton(onClick = onCancelEdit) {
-                    Text(text = "取消")
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusPill(text = status.label, tone = status.tone)
+            if (input.isNotBlank()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                StatusPill(text = "${input.trim().length} 字符", tone = StatusTone.Neutral)
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            when {
+                isEditing -> {
+                    TextButton(onClick = onCancelEdit) {
+                        Text(text = "取消")
+                    }
+                }
+                !canSend && !isGenerating -> {
+                    TextButton(onClick = onOpenProviders) {
+                        Text(text = "配置 Provider")
+                    }
                 }
             }
-            !canSend && !isGenerating -> {
-                TextButton(onClick = onOpenProviders) {
-                    Text(text = "配置 Provider")
-                }
-            }
         }
+        Text(
+            text = status.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
+
+private data class InputStatus(
+    val label: String,
+    val tone: StatusTone,
+    val description: String,
+)
 
 private fun inputStatus(
     input: String,
     isGenerating: Boolean,
     isEditing: Boolean,
     canSend: Boolean,
-): Pair<String, StatusTone> =
+): InputStatus =
     when {
-        isGenerating -> "生成中" to StatusTone.Accent
-        isEditing -> "编辑中" to StatusTone.Warning
-        !canSend -> "需要 Provider" to StatusTone.Critical
-        input.isBlank() -> "请输入消息" to StatusTone.Neutral
-        else -> "就绪" to StatusTone.Success
+        isGenerating -> InputStatus(
+            label = "生成中",
+            tone = StatusTone.Accent,
+            description = "正在等待 Provider 响应或接收流式内容，可随时停止。",
+        )
+        isEditing -> InputStatus(
+            label = "编辑中",
+            tone = StatusTone.Warning,
+            description = "发送后会用当前内容重写这条用户消息并重新生成回答。",
+        )
+        !canSend -> InputStatus(
+            label = "需要 Provider",
+            tone = StatusTone.Critical,
+            description = "添加 OpenAI 或兼容 Provider 后，请求会从本机发送到你的 endpoint。",
+        )
+        input.isBlank() -> InputStatus(
+            label = "请输入消息",
+            tone = StatusTone.Neutral,
+            description = "输入问题、粘贴材料，或从控制区选择 Prompt 后再发送。",
+        )
+        else -> InputStatus(
+            label = "就绪",
+            tone = StatusTone.Success,
+            description = "发送后会创建或继续当前会话，生成期间可以停止。",
+        )
     }
 
 private fun MessageRole.displayLabel(): String =

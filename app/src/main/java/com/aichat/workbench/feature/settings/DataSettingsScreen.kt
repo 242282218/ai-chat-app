@@ -19,6 +19,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Save
@@ -26,7 +28,6 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,10 +48,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.aichat.workbench.data.backup.BackupImportSummary
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.nio.charset.StandardCharsets
 import org.koin.androidx.compose.koinViewModel
@@ -65,6 +69,8 @@ fun DataSettingsScreen(
     val context = LocalContext.current
     var pendingClear by remember { mutableStateOf<ClearAction?>(null) }
     var pendingImportJson by remember { mutableStateOf<String?>(null) }
+    var showExportJson by rememberSaveable { mutableStateOf(false) }
+    var showImportJson by rememberSaveable { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
@@ -94,12 +100,11 @@ fun DataSettingsScreen(
             TopAppBar(
                 title = { Text(text = "设置") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                        )
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
                 },
             )
         },
@@ -112,8 +117,23 @@ fun DataSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
+                PrivacySummaryHeader()
+            }
+            state.status?.let { status ->
+                item {
+                    OperationStatusPanel(status = status, isBusy = state.isBusy)
+                }
+            }
+            state.importSummary?.let { summary ->
+                item {
+                    ImportSummaryPanel(summary)
+                }
+            }
+            item {
                 ExportPanel(
                     state = state,
+                    showRawJson = showExportJson,
+                    onToggleRawJson = { showExportJson = !showExportJson },
                     onIncludeChatsChange = viewModel::updateIncludeChats,
                     onCreateExport = viewModel::createExport,
                     onSaveExport = {
@@ -124,6 +144,8 @@ fun DataSettingsScreen(
             item {
                 ImportPanel(
                     state = state,
+                    showRawJson = showImportJson,
+                    onToggleRawJson = { showImportJson = !showImportJson },
                     onImportJsonChange = viewModel::updateImportJson,
                     onImportCurrentJson = { pendingImportJson = state.importJson },
                     onOpenImport = {
@@ -136,25 +158,6 @@ fun DataSettingsScreen(
                     state = state,
                     onClear = { pendingClear = it },
                 )
-            }
-            state.status?.let { status ->
-                item {
-                    OperationStatusPanel(status = status, isBusy = state.isBusy)
-                }
-            }
-            state.importSummary?.let { summary ->
-                item {
-                    WorkbenchPanel(
-                        title = "导入摘要",
-                        description = "导入记录已合并到本地存储。",
-                        icon = Icons.Filled.FileUpload,
-                    ) {
-                        MetadataRow(label = "Providers", value = summary.providers.toString())
-                        MetadataRow(label = "Prompts", value = summary.prompts.toString())
-                        MetadataRow(label = "会话", value = summary.conversations.toString())
-                        MetadataRow(label = "消息", value = summary.messages.toString())
-                    }
-                }
             }
         }
     }
@@ -188,8 +191,58 @@ fun DataSettingsScreen(
 }
 
 @Composable
+private fun PrivacySummaryHeader() {
+    WorkbenchPanel(
+        title = "Privacy Summary",
+        description = "先确认数据边界，再做导入、导出或清空。",
+        icon = Icons.Filled.Security,
+        trailing = {
+            StatusPill(text = "本地优先", tone = StatusTone.Success)
+        },
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = "聊天保存在本机", tone = StatusTone.Success)
+            }
+            item {
+                StatusPill(text = "API Key 不进备份", tone = StatusTone.Success)
+            }
+            item {
+                StatusPill(text = "Gateway 可选", tone = StatusTone.Neutral)
+            }
+        }
+        MetadataRow(
+            label = "Provider 请求",
+            value = "聊天、图片和工具请求会直接发送到你配置的 endpoint 或 Gateway。",
+        )
+        MetadataRow(
+            label = "备份范围",
+            value = "导出 JSON 可包含配置和聊天内容，但不会恢复 Provider API Key。",
+        )
+    }
+}
+
+@Composable
+private fun ImportSummaryPanel(summary: BackupImportSummary) {
+    WorkbenchPanel(
+        title = "导入摘要",
+        description = "导入记录已合并到本地存储。",
+        icon = Icons.Filled.FileUpload,
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { StatusPill(text = "${summary.providers} Providers", tone = StatusTone.Neutral) }
+            item { StatusPill(text = "${summary.prompts} Prompts", tone = StatusTone.Neutral) }
+            item { StatusPill(text = "${summary.conversations} 会话", tone = StatusTone.Neutral) }
+            item { StatusPill(text = "${summary.messages} 消息", tone = StatusTone.Neutral) }
+        }
+    }
+}
+
+@Composable
 private fun ExportPanel(
     state: DataSettingsUiState,
+    showRawJson: Boolean,
+    onToggleRawJson: () -> Unit,
     onIncludeChatsChange: (Boolean) -> Unit,
     onCreateExport: () -> Unit,
     onSaveExport: () -> Unit,
@@ -247,22 +300,32 @@ private fun ExportPanel(
             json = state.exportJson,
             emptyText = "尚未生成导出内容",
         )
-        OutlinedTextField(
-            value = state.exportJson,
-            onValueChange = {},
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "导出 JSON") },
-            minLines = 4,
-            maxLines = 8,
-            readOnly = true,
-            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        RawJsonToggle(
+            expanded = showRawJson,
+            onToggle = onToggleRawJson,
+            enabled = state.exportJson.isNotBlank(),
+            label = "查看原始导出 JSON",
         )
+        if (showRawJson) {
+            OutlinedTextField(
+                value = state.exportJson,
+                onValueChange = {},
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "导出 JSON") },
+                minLines = 4,
+                maxLines = 8,
+                readOnly = true,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+        }
     }
 }
 
 @Composable
 private fun ImportPanel(
     state: DataSettingsUiState,
+    showRawJson: Boolean,
+    onToggleRawJson: () -> Unit,
     onImportJsonChange: (String) -> Unit,
     onImportCurrentJson: () -> Unit,
     onOpenImport: () -> Unit,
@@ -300,15 +363,44 @@ private fun ImportPanel(
             json = state.importJson,
             emptyText = "尚未载入导入内容",
         )
-        OutlinedTextField(
-            value = state.importJson,
-            onValueChange = onImportJsonChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "导入 JSON") },
-            minLines = 4,
-            maxLines = 8,
-            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        RawJsonToggle(
+            expanded = showRawJson,
+            onToggle = onToggleRawJson,
+            enabled = true,
+            label = if (state.importJson.isBlank()) "粘贴原始导入 JSON" else "查看/编辑原始导入 JSON",
         )
+        if (showRawJson) {
+            OutlinedTextField(
+                value = state.importJson,
+                onValueChange = onImportJsonChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "导入 JSON") },
+                minLines = 4,
+                maxLines = 8,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RawJsonToggle(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    enabled: Boolean,
+    label: String,
+) {
+    OutlinedButton(
+        onClick = onToggle,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(
+            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text = label)
     }
 }
 
@@ -388,8 +480,8 @@ private fun ClearPanel(
     onClear: (ClearAction) -> Unit,
 ) {
     WorkbenchPanel(
-        title = "清空数据",
-        description = "破坏性操作会先分组并确认。",
+        title = "Danger Zone",
+        description = "清空类操作集中在这里。每项都会先说明影响范围并二次确认。",
         icon = Icons.Filled.Delete,
         trailing = {
             StatusPill(text = "破坏性", tone = StatusTone.Critical)

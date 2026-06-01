@@ -13,8 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
@@ -22,8 +24,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -48,7 +53,6 @@ import com.aichat.workbench.ui.component.IconTile
 import com.aichat.workbench.ui.component.SectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
-import com.aichat.workbench.ui.component.WorkbenchHero
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import org.koin.androidx.compose.koinViewModel
 
@@ -57,6 +61,7 @@ import org.koin.androidx.compose.koinViewModel
 fun HomeScreen(
     destinations: List<AppDestination>,
     onDestinationClick: (AppDestination) -> Unit,
+    onStartChat: (String, Boolean) -> Unit,
     onConversationClick: (ConversationId) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = koinViewModel(),
@@ -68,7 +73,7 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(text = "AI 聊天")
+                    Text(text = "AI Chat Workbench")
                 },
             )
         },
@@ -81,20 +86,36 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                WorkbenchHero(
-                    eyebrow = "本地优先工作台",
-                    title = "AI 聊天",
-                    description = "原生工作台，管理 Model 路由、Prompt、图片、搜索和 Sandbox 工具。",
-                    icon = Icons.Filled.AutoAwesome,
-                ) {
-                    StatusPill(text = "本地", tone = StatusTone.Success)
-                    StatusPill(text = "BYOK", tone = StatusTone.Neutral)
-                    StatusPill(text = "Tools", tone = StatusTone.Accent)
-                }
+                TaskComposerHero(
+                    state = state,
+                    onDraftChange = viewModel::updateTaskDraft,
+                    onStart = { onStartChat(viewModel.consumeTaskDraft(), false) },
+                    onStartTemporary = { onStartChat(viewModel.consumeTaskDraft(), true) },
+                    onOpenProviders = { onDestinationClick(AppDestination.Providers) },
+                )
             }
 
             item {
-                TrustStrip()
+                QuickActionGrid(
+                    onNewChat = { onStartChat("", false) },
+                    onTemporaryChat = { onStartChat("", true) },
+                    onImages = { onDestinationClick(AppDestination.Images) },
+                    onSearch = { onDestinationClick(AppDestination.Chat) },
+                )
+            }
+
+            item {
+                SectionHeader(
+                    title = "继续",
+                    description = "最近的对话和本地消息搜索。",
+                )
+            }
+
+            item {
+                ContinueSection(
+                    state = state,
+                    onConversationClick = onConversationClick,
+                )
             }
 
             item {
@@ -106,16 +127,279 @@ fun HomeScreen(
             }
 
             item {
-                SectionHeader(
-                    title = "工作台",
-                    description = "从具体任务开始，需要时再调整 Provider 和 Tools。",
+                SystemStatusStrip(
+                    state = state,
+                    onDestinationClick = onDestinationClick,
                 )
             }
 
-            items(destinations, key = { it.route }) { destination ->
-                DestinationRow(
+            item {
+                SectionHeader(
+                    title = "管理",
+                    description = "Provider、Prompt、Tools 和隐私设置放在低频维护区。",
+                )
+            }
+
+            items(destinations.filterNot { it == AppDestination.Chat || it == AppDestination.Images }, key = { it.route }) {
+                destination ->
+                ManagementRow(
                     destination = destination,
                     onClick = { onDestinationClick(destination) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskComposerHero(
+    state: HomeUiState,
+    onDraftChange: (String) -> Unit,
+    onStart: () -> Unit,
+    onStartTemporary: () -> Unit,
+    onOpenProviders: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusPill(text = "本地优先", tone = StatusTone.Success)
+                StatusPill(text = "BYOK", tone = StatusTone.Neutral)
+                if (!state.hasEnabledProvider) {
+                    StatusPill(text = "需要 Provider", tone = StatusTone.Warning)
+                }
+            }
+            Text(
+                text = "今天想让 AI 帮你做什么？",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = if (state.hasEnabledProvider) {
+                    "输入问题、粘贴材料，或描述要完成的任务。"
+                } else {
+                    "先添加 OpenAI 或兼容 Provider。请求会从本机发送到你配置的 endpoint。"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.taskDraft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "任务输入") },
+                placeholder = { Text(text = "例如：总结这段会议记录，列出下一步行动") },
+                minLines = 3,
+                maxLines = 6,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = if (state.hasEnabledProvider) onStart else onOpenProviders,
+                    enabled = true,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = if (state.hasEnabledProvider) {
+                            Icons.AutoMirrored.Filled.Send
+                        } else {
+                            Icons.Filled.Tune
+                        },
+                        contentDescription = null,
+                    )
+                    Text(
+                        text = if (state.hasEnabledProvider) "开始聊天" else "配置 Provider 后开始",
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onStartTemporary,
+                    enabled = state.hasEnabledProvider,
+                ) {
+                    Icon(imageVector = Icons.Filled.Bolt, contentDescription = null)
+                    Text(text = "临时", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            if (state.taskDraft.isBlank()) {
+                Text(
+                    text = "输入内容后可带着草稿进入 Chat；也可以直接新建空对话。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickActionGrid(
+    onNewChat: () -> Unit,
+    onTemporaryChat: () -> Unit,
+    onImages: () -> Unit,
+    onSearch: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            QuickActionCard(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                title = "新聊天",
+                description = "打开空白对话",
+                tone = StatusTone.Accent,
+                onClick = onNewChat,
+                modifier = Modifier.weight(1f),
+            )
+            QuickActionCard(
+                icon = Icons.Filled.Bolt,
+                title = "临时聊天",
+                description = "退出后清理",
+                tone = StatusTone.Warning,
+                onClick = onTemporaryChat,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            QuickActionCard(
+                icon = Icons.Filled.Image,
+                title = "图片生成",
+                description = "创作图片",
+                tone = StatusTone.Neutral,
+                onClick = onImages,
+                modifier = Modifier.weight(1f),
+            )
+            QuickActionCard(
+                icon = Icons.Filled.Search,
+                title = "搜索历史",
+                description = "查找消息",
+                tone = StatusTone.Success,
+                onClick = onSearch,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionCard(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    tone: StatusTone,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconTile(icon = icon, tone = tone)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueSection(
+    state: HomeUiState,
+    onConversationClick: (ConversationId) -> Unit,
+) {
+    if (state.recentConversations.isEmpty()) {
+        WorkbenchPanel(
+            title = "还没有可以继续的任务",
+            description = "先输入一个问题，或创建临时聊天。",
+            icon = Icons.Filled.AutoAwesome,
+        ) {
+            StatusPill(text = "等待输入", tone = StatusTone.Neutral)
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.recentConversations.forEach { conversation ->
+            RecentConversationRow(
+                title = conversation.title,
+                description = listOfNotNull(
+                    conversation.defaultModel,
+                    if (conversation.isTemporary) "临时" else null,
+                    if (conversation.isSensitive) "敏感" else null,
+                ).ifEmpty { listOf("最近更新") }.joinToString(" · "),
+                onClick = { onConversationClick(conversation.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecentConversationRow(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconTile(icon = Icons.AutoMirrored.Filled.Chat, tone = StatusTone.Accent)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -142,7 +426,7 @@ private fun ConversationSearchPanel(
         )
         if (state.searchQuery.isNotBlank()) {
             if (state.searchResults.isEmpty()) {
-                StatusPill(text = "无结果", tone = StatusTone.Neutral)
+                StatusPill(text = "无结果，可换关键词", tone = StatusTone.Neutral)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     state.searchResults.take(6).forEach { result ->
@@ -222,35 +506,53 @@ private fun highlightedSnippet(text: String, query: String): AnnotatedString {
 }
 
 @Composable
-private fun TrustStrip(modifier: Modifier = Modifier) {
+private fun SystemStatusStrip(
+    state: HomeUiState,
+    onDestinationClick: (AppDestination) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TrustMetric(
-            icon = Icons.Filled.Lock,
-            label = "本地数据",
-            value = "默认私有",
+        StatusSummaryCard(
+            icon = Icons.Filled.Tune,
+            label = "Provider",
+            value = if (state.hasEnabledProvider) "${state.enabledProviderCount} 个可用" else "需要配置",
+            tone = if (state.hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
+            onClick = { onDestinationClick(AppDestination.Providers) },
             modifier = Modifier.weight(1f),
         )
-        TrustMetric(
+        StatusSummaryCard(
             icon = Icons.Filled.Shield,
-            label = "Gateway",
-            value = "可选 Tools",
+            label = "Tools",
+            value = "可选 Gateway",
+            tone = StatusTone.Neutral,
+            onClick = { onDestinationClick(AppDestination.Tools) },
+            modifier = Modifier.weight(1f),
+        )
+        StatusSummaryCard(
+            icon = Icons.Filled.Lock,
+            label = "隐私",
+            value = "本地保存",
+            tone = StatusTone.Success,
+            onClick = { onDestinationClick(AppDestination.Settings) },
             modifier = Modifier.weight(1f),
         )
     }
 }
 
 @Composable
-private fun TrustMetric(
+private fun StatusSummaryCard(
     icon: ImageVector,
     label: String,
     value: String,
+    tone: StatusTone,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.clickable(onClick = onClick),
         color = MaterialTheme.colorScheme.surface,
         shape = MaterialTheme.shapes.medium,
         tonalElevation = 1.dp,
@@ -260,7 +562,7 @@ private fun TrustMetric(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            IconTile(icon = icon, tone = StatusTone.Success)
+            IconTile(icon = icon, tone = tone)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
@@ -280,7 +582,7 @@ private fun TrustMetric(
 }
 
 @Composable
-private fun DestinationRow(
+private fun ManagementRow(
     destination: AppDestination,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

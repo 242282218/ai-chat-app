@@ -56,6 +56,16 @@ class ChatViewModel(
     fun updateMaxTokensDraft(value: String) = updateDraft { it.copy(maxTokens = value) }
     fun updateTemporaryDraft(value: Boolean) = updateDraft { it.copy(temporary = value) }
     fun updateSensitiveDraft(value: Boolean) = updateDraft { it.copy(sensitive = value) }
+    fun applyInitialDraft(input: String, temporary: Boolean) {
+        val draftInput = input.trim()
+        if (draftInput.isBlank() && !temporary) return
+        updateDraft {
+            it.copy(
+                input = draftInput.ifBlank { it.input },
+                temporary = temporary || it.temporary,
+            )
+        }
+    }
     fun addImageDraft(image: MessagePart.Image) = updateState { it.copy(imageDrafts = it.imageDrafts + image, error = null) }
     fun removeImageDraft(index: Int) = updateState {
         it.copy(imageDrafts = it.imageDrafts.filterIndexed { itemIndex, _ -> itemIndex != index })

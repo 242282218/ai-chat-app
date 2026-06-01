@@ -17,9 +17,11 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -56,6 +58,35 @@ class GenerateImageUseCaseTest {
         assertEquals("original/${result.single().id.value}.png", result.single().originalPath)
         assertEquals(byteArrayOf(1, 2, 3).toList(), storage.savedBytes.single().toList())
         assertEquals(result.single(), repository.saved.value.single())
+    }
+
+    @Test
+    fun generateImage_savesCancelledHistoryWhenProviderIsCancelled() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val useCase = GenerateImageUseCase(
+            repository = repository,
+            imageProvider = CancellingImageProvider(),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+
+        assertFailsWith<CancellationException> {
+            useCase(
+                GenerateImageRequest(
+                    conversationId = null,
+                    provider = providerConfig(),
+                    apiKey = "test-key",
+                    model = "gpt-image-1",
+                    prompt = "A small cabin",
+                    size = "1024x1024",
+                    quality = "auto",
+                    count = 1,
+                ),
+            )
+        }
+
+        assertEquals(ImageGenerationStatus.Cancelled, repository.saved.value.single().status)
+        assertEquals("已停止，Prompt 和参数已保留。", repository.saved.value.single().errorSummary)
     }
 
     private fun providerConfig(): ProviderConfig =
@@ -117,5 +148,13 @@ class GenerateImageUseCaseTest {
         }
 
         override suspend fun deleteAllImages() = Unit
+    }
+
+    private class CancellingImageProvider : ImageGenerationProvider {
+        override suspend fun generate(
+            request: ImageGenerationProviderRequest,
+        ): ImageGenerationProviderResponse {
+            throw CancellationException("cancelled")
+        }
     }
 }

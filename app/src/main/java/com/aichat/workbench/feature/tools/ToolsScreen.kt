@@ -31,17 +31,21 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,6 +69,7 @@ import com.aichat.workbench.ui.component.SectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import org.koin.androidx.compose.koinViewModel
 
@@ -76,6 +81,7 @@ fun ToolsScreen(
     viewModel: ToolsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    var selectedWorkbenchTab by rememberSaveable { mutableIntStateOf(0) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -83,12 +89,11 @@ fun ToolsScreen(
             TopAppBar(
                 title = { Text(text = "Tools") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                        )
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
                 },
             )
         },
@@ -101,44 +106,23 @@ fun ToolsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
+                GatewayStatusHeader(state = state)
+            }
+            item {
                 GatewaySettingsPanel(state, viewModel)
             }
             item {
-                SearchPanel(state, viewModel)
-            }
-            state.searchError?.let { error ->
-                item {
-                    SearchErrorRow(error)
-                }
-            }
-            if (state.searchResults.isNotEmpty()) {
-                item {
-                    SectionHeader(
-                        title = searchResultHeader(state),
-                        description = "保留原始链接，便于回答可追溯。",
-                    )
-                }
-                items(state.searchResults, key = { it.url }) { result ->
-                    SearchResultRow(result)
-                }
-            }
-            item {
-                SandboxPanel(state, viewModel)
-            }
-            state.sandboxError?.let { error ->
-                item {
-                    SandboxErrorRow(error)
-                }
-            }
-            state.sandboxResult?.let { result ->
-                item {
-                    SandboxResultRow(result)
-                }
+                ToolTestWorkbench(
+                    selectedTab = selectedWorkbenchTab,
+                    onTabSelected = { selectedWorkbenchTab = it },
+                    state = state,
+                    viewModel = viewModel,
+                )
             }
             item {
                 SectionHeader(
-                    title = "可用 Tools",
-                    description = "联网或执行类操作运行前都会明确确认权限。",
+                    title = "Tool Catalog",
+                    description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
                 )
             }
             items(state.tools, key = { "${it.source}:${it.name}" }) { tool ->
@@ -160,19 +144,143 @@ fun ToolsScreen(
 }
 
 @Composable
-private fun SandboxPanel(
+private fun GatewayStatusHeader(state: ToolsUiState) {
+    val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
+    WorkbenchPanel(
+        title = "Gateway Status",
+        description = if (state.gatewayEnabled) {
+            "Gateway 已启用；Search 和 Sandbox 取决于 Manifest 中的工具能力。"
+        } else {
+            "Gateway 是可选能力。关闭时聊天仍可用，但不会执行联网搜索或代码沙箱。"
+        },
+        icon = Icons.Filled.CloudSync,
+        trailing = {
+            StatusPill(
+                text = if (state.gatewayEnabled) "已启用" else "未启用",
+                tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Neutral,
+            )
+        },
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = gatewayUrlStatus.label, tone = gatewayUrlStatus.tone())
+            }
+            item {
+                StatusPill(
+                    text = if (state.remoteTools.isEmpty()) "Manifest 未加载" else "${state.remoteTools.size} 个 Gateway Tools",
+                    tone = if (state.remoteTools.isEmpty()) StatusTone.Warning else StatusTone.Success,
+                )
+            }
+            item {
+                StatusPill(
+                    text = if (state.hasSearchTool()) "Search 可用" else "Search 不可用",
+                    tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Neutral,
+                )
+            }
+            item {
+                StatusPill(
+                    text = if (state.hasSandboxTool()) "Sandbox 可用" else "Sandbox 不可用",
+                    tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Neutral,
+                )
+            }
+            if (state.isLoading) {
+                item {
+                    StatusPill(text = "处理中", tone = StatusTone.Accent)
+                }
+            }
+        }
+        MetadataRow(
+            label = "Base URL",
+            value = state.gatewayBaseUrlDraft.ifBlank { "未配置" },
+        )
+        state.status?.let { message ->
+            ToolStatusFeedback(message)
+        }
+    }
+}
+
+@Composable
+private fun ToolTestWorkbench(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
     state: ToolsUiState,
     viewModel: ToolsViewModel,
 ) {
-    WorkbenchPanel(
-        title = "Code Sandbox",
-        description = "通过配置的 Gateway 运行短 Python 代码片段。",
-        icon = Icons.Filled.Code,
-        trailing = {
-            val (label, tone) = sandboxPanelStatus(state)
-            StatusPill(text = label, tone = tone)
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        SectionHeader(
+            title = "Tool Test Workbench",
+            description = "Search 和 Sandbox 是调试区，不抢占工具目录主轴。",
+        )
+        TabRow(selectedTabIndex = selectedTab) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { onTabSelected(0) },
+                text = { Text(text = "Search") },
+                icon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) },
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { onTabSelected(1) },
+                text = { Text(text = "Sandbox") },
+                icon = { Icon(imageVector = Icons.Filled.Code, contentDescription = null) },
+            )
+        }
+        when (selectedTab) {
+            0 -> SearchWorkbenchContent(state, viewModel)
+            else -> SandboxWorkbenchContent(state, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun SearchWorkbenchContent(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SearchPanel(state, viewModel, modifier = Modifier.fillMaxWidth(), framed = false)
+        state.searchError?.let { error ->
+            SearchErrorRow(error, modifier = Modifier.fillMaxWidth())
+        }
+        if (state.searchResults.isNotEmpty()) {
+            SectionHeader(
+                title = searchResultHeader(state),
+                description = "保留 title / url / snippet，便于回答可追溯。",
+            )
+            state.searchResults.forEach { result ->
+                SearchResultRow(result)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SandboxWorkbenchContent(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SandboxPanel(state, viewModel, modifier = Modifier.fillMaxWidth(), framed = false)
+        state.sandboxError?.let { error ->
+            SandboxErrorRow(error, modifier = Modifier.fillMaxWidth())
+        }
+        state.sandboxResult?.let { result ->
+            SandboxResultRow(result, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun SandboxPanel(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
+    modifier: Modifier = Modifier,
+    framed: Boolean = true,
+) {
+    val content: @Composable () -> Unit = {
         SandboxPanelSummary(state)
         OutlinedTextField(
             value = state.sandboxCode,
@@ -190,6 +298,33 @@ private fun SandboxPanel(
             Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = "运行")
+        }
+    }
+    if (framed) {
+        WorkbenchPanel(
+            title = "Code Sandbox",
+            description = "通过配置的 Gateway 运行短 Python 代码片段。",
+            icon = Icons.Filled.Code,
+            modifier = modifier,
+            trailing = {
+                val (label, tone) = sandboxPanelStatus(state)
+                StatusPill(text = label, tone = tone)
+            },
+        ) {
+            content()
+        }
+    } else {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SectionHeader(
+                title = "Code Sandbox",
+                description = "通过配置的 Gateway 运行短 Python 代码片段。",
+            )
+            val (label, tone) = sandboxPanelStatus(state)
+            StatusPill(text = label, tone = tone)
+            content()
         }
     }
 }
@@ -223,21 +358,29 @@ private fun SandboxPanelSummary(state: ToolsUiState) {
 }
 
 @Composable
-private fun SandboxErrorRow(error: ToolError) {
+private fun SandboxErrorRow(
+    error: ToolError,
+    modifier: Modifier = Modifier,
+) {
     WorkbenchPanel(
         title = error.code,
         description = error.message,
         icon = Icons.Filled.Security,
+        modifier = modifier,
     ) {
         StatusPill(text = "Sandbox 错误", tone = StatusTone.Critical)
     }
 }
 
 @Composable
-private fun SandboxResultRow(result: SandboxRunResponse) {
+private fun SandboxResultRow(
+    result: SandboxRunResponse,
+    modifier: Modifier = Modifier,
+) {
     WorkbenchPanel(
         title = "Sandbox 结果",
         icon = Icons.Filled.Code,
+        modifier = modifier,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SandboxResultSummary(result)
@@ -295,16 +438,10 @@ private fun OutputText(
 private fun SearchPanel(
     state: ToolsUiState,
     viewModel: ToolsViewModel,
+    modifier: Modifier = Modifier,
+    framed: Boolean = true,
 ) {
-    WorkbenchPanel(
-        title = "Web Search",
-        description = "先获取结构化来源，再交给 Model 汇总。",
-        icon = Icons.Filled.Search,
-        trailing = {
-            val (label, tone) = searchPanelStatus(state)
-            StatusPill(text = label, tone = tone)
-        },
-    ) {
+    val content: @Composable () -> Unit = {
         SearchPanelSummary(state)
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -326,6 +463,33 @@ private fun SearchPanel(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "搜索")
             }
+        }
+    }
+    if (framed) {
+        WorkbenchPanel(
+            title = "Web Search",
+            description = "先获取结构化来源，再交给 Model 汇总。",
+            icon = Icons.Filled.Search,
+            modifier = modifier,
+            trailing = {
+                val (label, tone) = searchPanelStatus(state)
+                StatusPill(text = label, tone = tone)
+            },
+        ) {
+            content()
+        }
+    } else {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SectionHeader(
+                title = "Web Search",
+                description = "先获取结构化来源，再交给 Model 汇总。",
+            )
+            val (label, tone) = searchPanelStatus(state)
+            StatusPill(text = label, tone = tone)
+            content()
         }
     }
 }
@@ -359,11 +523,15 @@ private fun SearchPanelSummary(state: ToolsUiState) {
 }
 
 @Composable
-private fun SearchErrorRow(error: ToolError) {
+private fun SearchErrorRow(
+    error: ToolError,
+    modifier: Modifier = Modifier,
+) {
     WorkbenchPanel(
         title = error.code,
         description = error.message,
         icon = Icons.Filled.Public,
+        modifier = modifier,
     ) {
         StatusPill(text = "Search 错误", tone = StatusTone.Critical)
     }
@@ -376,12 +544,11 @@ private fun SearchResultRow(result: SearchResult) {
         title = result.title,
         icon = Icons.Filled.Public,
         trailing = {
-            IconButton(onClick = { openUrl(context, result.url) }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "打开来源：${result.title}",
-                )
-            }
+            WorkbenchIconButton(
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                label = "打开来源：${result.title}",
+                onClick = { openUrl(context, result.url) },
+            )
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -568,12 +735,11 @@ private fun ToolRow(
         description = tool.description,
         icon = tool.permissionIcon(),
         trailing = {
-            IconButton(onClick = onConfirm) {
-                Icon(
-                    imageVector = tool.permissionIcon(),
-                    contentDescription = tool.permissionActionDescription(),
-                )
-            }
+            WorkbenchIconButton(
+                icon = tool.permissionIcon(),
+                label = tool.permissionActionDescription(),
+                onClick = onConfirm,
+            )
         },
     ) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

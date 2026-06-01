@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 
 @Composable
 fun MarkdownMessageContent(
@@ -261,12 +261,11 @@ private fun CopyHeader(label: String, value: String) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        IconButton(onClick = { clipboardManager.setText(AnnotatedString(value)) }) {
-            Icon(
-                imageVector = Icons.Filled.ContentCopy,
-                contentDescription = copyContentDescription(label),
-            )
-        }
+        WorkbenchIconButton(
+            icon = Icons.Filled.ContentCopy,
+            label = copyContentDescription(label),
+            onClick = { clipboardManager.setText(AnnotatedString(value)) },
+        )
     }
 }
 

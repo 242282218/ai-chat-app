@@ -22,4 +22,5 @@ enum class ImageGenerationStatus {
     Pending,
     Completed,
     Failed,
+    Cancelled,
 }

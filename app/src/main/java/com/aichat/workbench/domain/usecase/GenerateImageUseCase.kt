@@ -58,6 +58,12 @@ class GenerateImageUseCase(
                 ).also { repository.saveImageGeneration(it) }
             }
         } catch (error: CancellationException) {
+            repository.saveImageGeneration(
+                pending.copy(
+                    status = ImageGenerationStatus.Cancelled,
+                    errorSummary = "已停止，Prompt 和参数已保留。",
+                ),
+            )
             throw error
         } catch (error: Throwable) {
             val failed = pending.copy(

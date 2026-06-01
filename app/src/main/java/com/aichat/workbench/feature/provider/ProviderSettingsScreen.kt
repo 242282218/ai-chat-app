@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
@@ -30,14 +32,15 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -70,6 +73,7 @@ import com.aichat.workbench.ui.component.SectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -100,8 +104,10 @@ fun ProviderSettingsScreen(
     var storedApiKeyRef by rememberSaveable { mutableStateOf<String?>(null) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingResetForm by rememberSaveable { mutableStateOf(false) }
+    var showProviderEditor by rememberSaveable { mutableStateOf(false) }
     var pendingLoadProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var pendingDeleteProvider by remember { mutableStateOf<ProviderConfig?>(null) }
+    val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selectableDescriptors = remember {
         ProviderRegistry.builtInDescriptors().filter { descriptor ->
             descriptor.type in setOf(
@@ -162,11 +168,17 @@ fun ProviderSettingsScreen(
         message = null
     }
 
+    fun openNewProviderEditor() {
+        resetForm()
+        showProviderEditor = true
+    }
+
     fun requestResetForm() {
         if (hasProviderDraft) {
             pendingResetForm = true
         } else {
             resetForm()
+            showProviderEditor = true
         }
     }
 
@@ -175,6 +187,7 @@ fun ProviderSettingsScreen(
             pendingLoadProvider = provider
         } else {
             loadProvider(provider)
+            showProviderEditor = true
         }
     }
 
@@ -208,17 +221,18 @@ fun ProviderSettingsScreen(
             TopAppBar(
                 title = { Text(text = "Provider 设置") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                        )
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
                 },
                 actions = {
-                    IconButton(onClick = { requestResetForm() }) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = "新建 Provider")
-                    }
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Add,
+                        label = "新建 Provider",
+                        onClick = { openNewProviderEditor() },
+                    )
                 },
             )
         },
@@ -231,73 +245,15 @@ fun ProviderSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             item {
-                ProviderForm(
-                    editing = editingId != null,
-                    name = name,
-                    onNameChange = { name = it },
-                    type = type,
-                    providerTypes = selectableDescriptors.map { it.type },
-                    onTypeChange = ::applyProviderType,
-                    baseUrl = baseUrl,
-                    onBaseUrlChange = { baseUrl = it },
-                    model = model,
-                    onModelChange = { model = it },
-                    apiKey = apiKey,
-                    hasStoredKey = storedApiKeyRef != null,
-                    onApiKeyChange = { apiKey = it },
-                    headers = headers,
-                    onHeadersChange = { headers = it },
-                    enabled = enabled,
-                    onEnabledChange = { enabled = it },
-                    allowHttp = allowHttp,
-                    onAllowHttpChange = { allowHttp = it },
-                    message = message,
-                    canSave = canSubmitProvider,
-                    canTest = canSubmitProvider,
-                    onSave = {
-                        val provider = currentProvider()
-
-                        scope.launch {
-                            runCatching {
-                                saveProvider(provider, apiKey.trim(), allowHttp)
-                            }.onSuccess {
-                                resetForm()
-                                message = "已保存"
-                            }.onFailure { error ->
-                                message = error.message ?: "保存失败"
-                            }
-                        }
-                    },
-                    onTest = {
-                        val provider = currentProvider()
-                        if (provider.baseUrl.startsWith("http://") && !allowHttp) {
-                            message = "测试此 URL 前请先启用 Allow HTTP。"
-                            return@ProviderForm
-                        }
-                        scope.launch {
-                            message = "测试中..."
-                            val storedKey = if (apiKey.isBlank()) {
-                                repository.getApiKey(provider.id)
-                            } else {
-                                null
-                            }
-                            val result = connectionTester.test(
-                                provider = provider,
-                                apiKey = apiKey.trim().ifBlank { storedKey.orEmpty() },
-                            )
-                            message = if (result.ok) {
-                                "${result.message} (${result.statusCode})"
-                            } else {
-                                result.message
-                            }
-                        }
-                    },
+                ProviderHealthHeader(
+                    providers = providers,
+                    onAddProvider = { openNewProviderEditor() },
                 )
             }
 
             item {
                 SectionHeader(
-                    title = "已配置",
+                    title = "Provider 列表",
                     description = "本地保存；API Key 仅以加密引用保留。",
                 )
             }
@@ -310,6 +266,14 @@ fun ProviderSettingsScreen(
                         icon = Icons.Filled.Tune,
                     ) {
                         StatusPill(text = "需要配置", tone = StatusTone.Warning)
+                        Button(
+                            onClick = { openNewProviderEditor() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "添加 Provider")
+                        }
                     }
                 }
             } else {
@@ -318,6 +282,86 @@ fun ProviderSettingsScreen(
                         provider = provider,
                         onClick = { requestLoadProvider(provider) },
                         onDelete = { pendingDeleteProvider = provider },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showProviderEditor) {
+        ModalBottomSheet(
+            onDismissRequest = { showProviderEditor = false },
+            sheetState = editorSheetState,
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    ProviderForm(
+                        editing = editingId != null,
+                        name = name,
+                        onNameChange = { name = it },
+                        type = type,
+                        providerTypes = selectableDescriptors.map { it.type },
+                        onTypeChange = ::applyProviderType,
+                        baseUrl = baseUrl,
+                        onBaseUrlChange = { baseUrl = it },
+                        model = model,
+                        onModelChange = { model = it },
+                        apiKey = apiKey,
+                        hasStoredKey = storedApiKeyRef != null,
+                        onApiKeyChange = { apiKey = it },
+                        headers = headers,
+                        onHeadersChange = { headers = it },
+                        enabled = enabled,
+                        onEnabledChange = { enabled = it },
+                        allowHttp = allowHttp,
+                        onAllowHttpChange = { allowHttp = it },
+                        message = message,
+                        canSave = canSubmitProvider,
+                        canTest = canSubmitProvider,
+                        onSave = {
+                            val provider = currentProvider()
+
+                            scope.launch {
+                                runCatching {
+                                saveProvider(provider, apiKey.trim(), allowHttp)
+                            }.onSuccess {
+                                resetForm()
+                                showProviderEditor = false
+                            }.onFailure { error ->
+                                message = error.message ?: "保存失败"
+                            }
+                            }
+                        },
+                        onTest = {
+                            val provider = currentProvider()
+                            if (provider.baseUrl.startsWith("http://") && !allowHttp) {
+                                message = "测试此 URL 前请先启用 Allow HTTP。"
+                                return@ProviderForm
+                            }
+                            scope.launch {
+                                message = "测试中..."
+                                val storedKey = if (apiKey.isBlank()) {
+                                    repository.getApiKey(provider.id)
+                                } else {
+                                    null
+                                }
+                                val result = connectionTester.test(
+                                    provider = provider,
+                                    apiKey = apiKey.trim().ifBlank { storedKey.orEmpty() },
+                                )
+                                message = if (result.ok) {
+                                    "${result.message} (${result.statusCode})"
+                                } else {
+                                    result.message
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -350,6 +394,7 @@ fun ProviderSettingsScreen(
             onConfirm = {
                 pendingLoadProvider = null
                 loadProvider(provider)
+                showProviderEditor = true
             },
             onDismiss = { pendingLoadProvider = null },
             tone = StatusTone.Warning,
@@ -364,10 +409,112 @@ fun ProviderSettingsScreen(
             onConfirm = {
                 pendingResetForm = false
                 resetForm()
+                showProviderEditor = true
             },
             onDismiss = { pendingResetForm = false },
             tone = StatusTone.Warning,
         )
+    }
+}
+
+@Composable
+private fun ProviderHealthHeader(
+    providers: List<ProviderConfig>,
+    onAddProvider: () -> Unit,
+) {
+    val enabledCount = providers.count { it.enabled }
+    val defaultProvider = providers.firstOrNull { it.enabled } ?: providers.firstOrNull()
+    val encryptedKeyCount = providers.count { it.apiKeyRef != null }
+    val httpCount = providers.count { it.baseUrl.startsWith("http://") }
+    val customHeaderCount = providers.count { it.headers.isNotEmpty() }
+
+    WorkbenchPanel(
+        title = "Provider Health",
+        description = if (providers.isEmpty()) {
+            "还没有模型连接。先添加 Provider，聊天和图片生成才可用。"
+        } else {
+            "先看连接健康，再进入单个 Provider 维护。"
+        },
+        icon = Icons.Filled.Tune,
+        trailing = {
+            StatusPill(
+                text = if (enabledCount > 0) "$enabledCount 可用" else "需要配置",
+                tone = if (enabledCount > 0) StatusTone.Success else StatusTone.Warning,
+            )
+        },
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(
+                    text = "${providers.size} 个 Provider",
+                    tone = if (providers.isEmpty()) StatusTone.Warning else StatusTone.Neutral,
+                )
+            }
+            item {
+                StatusPill(
+                    text = if (defaultProvider == null) "无默认路由" else defaultProvider.name,
+                    tone = if (defaultProvider == null) StatusTone.Warning else StatusTone.Success,
+                )
+            }
+            item {
+                StatusPill(
+                    text = "$encryptedKeyCount 个密钥引用",
+                    tone = if (encryptedKeyCount > 0) StatusTone.Success else StatusTone.Neutral,
+                )
+            }
+            if (httpCount > 0) {
+                item {
+                    StatusPill(text = "$httpCount 个 HTTP 风险", tone = StatusTone.Warning)
+                }
+            }
+            if (customHeaderCount > 0) {
+                item {
+                    StatusPill(text = "$customHeaderCount 个自定义 Headers", tone = StatusTone.Warning)
+                }
+            }
+        }
+        MetadataRow(
+            label = "请求路径",
+            value = "请求会从本机直接发送到配置的 endpoint；API Key 不进入备份。",
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = onAddProvider,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "添加 Provider")
+            }
+            StatusPill(
+                text = "本地加密",
+                tone = StatusTone.Success,
+            )
+        }
+        if (httpCount > 0 || customHeaderCount > 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+                Text(
+                    text = "HTTP endpoint 或自定义 headers 可能改变请求安全边界。",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                StatusPill(text = "检查配置后再启用", tone = StatusTone.Warning)
+            }
+        }
     }
 }
 
@@ -472,12 +619,11 @@ private fun ProviderForm(
                 PasswordVisualTransformation()
             },
             trailingIcon = {
-                IconButton(onClick = { showApiKey = !showApiKey }) {
-                    Icon(
-                        imageVector = if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (showApiKey) "隐藏 API Key" else "显示 API Key",
-                    )
-                }
+                WorkbenchIconButton(
+                    icon = if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    label = if (showApiKey) "隐藏 API Key" else "显示 API Key",
+                    onClick = { showApiKey = !showApiKey },
+                )
             },
         )
         OutlinedTextField(
@@ -653,13 +799,12 @@ private fun ProviderRow(
         icon = Icons.Filled.CheckCircle,
         modifier = Modifier.clickable(onClick = onClick),
         trailing = {
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "删除 Provider ${provider.name}",
-                    tint = MaterialTheme.colorScheme.error,
-                )
-            }
+            WorkbenchIconButton(
+                icon = Icons.Filled.Delete,
+                label = "删除 Provider ${provider.name}",
+                onClick = onDelete,
+                tint = MaterialTheme.colorScheme.error,
+            )
         },
     ) {
         ProviderRowSummary(provider)

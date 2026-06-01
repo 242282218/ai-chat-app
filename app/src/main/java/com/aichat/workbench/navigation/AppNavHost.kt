@@ -29,6 +29,7 @@ fun AppNavHost() {
             HomeScreen(
                 destinations = AppDestination.topLevel,
                 onDestinationClick = { destination -> navController.navigateSingleTop(destination) },
+                onStartChat = { draft, temporary -> navController.navigateToNewChat(draft, temporary) },
                 onConversationClick = { conversationId -> navController.navigateToConversation(conversationId) },
             )
         }
@@ -45,9 +46,24 @@ fun AppNavHost() {
                 onOpenProviders = { navController.navigateSingleTop(AppDestination.Providers) },
             )
         }
-        composable(AppDestination.Chat.route) {
+        composable(
+            route = CHAT_NEW_ROUTE,
+            arguments = listOf(
+                navArgument(CHAT_DRAFT_ARG) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(CHAT_TEMPORARY_ARG) {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+            ),
+        ) { backStackEntry ->
             ChatScreen(
                 initialConversationId = null,
+                initialDraft = backStackEntry.arguments?.getString(CHAT_DRAFT_ARG).orEmpty(),
+                initialTemporary = backStackEntry.arguments?.getBoolean(CHAT_TEMPORARY_ARG) == true,
                 onBack = { navController.popBackStack() },
                 onOpenProviders = { navController.navigateSingleTop(AppDestination.Providers) },
             )
@@ -103,5 +119,15 @@ private fun NavController.navigateToConversation(conversationId: ConversationId)
     }
 }
 
+private fun NavController.navigateToNewChat(draft: String, temporary: Boolean) {
+    val encodedDraft = Uri.encode(draft)
+    navigate("${AppDestination.Chat.route}?$CHAT_DRAFT_ARG=$encodedDraft&$CHAT_TEMPORARY_ARG=$temporary") {
+        launchSingleTop = true
+    }
+}
+
 private const val CHAT_CONVERSATION_ID_ARG = "conversationId"
+private const val CHAT_DRAFT_ARG = "draft"
+private const val CHAT_TEMPORARY_ARG = "temporary"
 private const val CHAT_CONVERSATION_ROUTE = "chat/{$CHAT_CONVERSATION_ID_ARG}"
+private const val CHAT_NEW_ROUTE = "chat?$CHAT_DRAFT_ARG={$CHAT_DRAFT_ARG}&$CHAT_TEMPORARY_ARG={$CHAT_TEMPORARY_ARG}"

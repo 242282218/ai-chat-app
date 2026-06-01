@@ -3,8 +3,11 @@ package com.aichat.workbench.feature.home
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.MessageSearchResult
+import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -29,25 +32,26 @@ class HomeViewModelTest {
     val mainDispatcherRule = HomeMainDispatcherRule()
 
     @Test
-    fun doesNotCreateConversationRepositoryUntilSearchQueryIsNonBlank() = runTest(mainDispatcherRule.testDispatcher) {
+    fun doesNotCreateSearchRepositoryUntilSearchQueryIsNonBlank() = runTest(mainDispatcherRule.testDispatcher) {
         var repositoryCreations = 0
         val viewModel = HomeViewModel(
             conversationRepositoryProvider = {
                 repositoryCreations += 1
                 SearchOnlyConversationRepository()
             },
+            providerRepository = EmptyProviderConfigRepository(),
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.state.collect {}
         }
         advanceUntilIdle()
 
-        assertEquals(0, repositoryCreations)
+        assertEquals(1, repositoryCreations)
 
         viewModel.updateSearchQuery("needle")
         advanceUntilIdle()
 
-        assertEquals(1, repositoryCreations)
+        assertEquals(2, repositoryCreations)
         assertEquals("needle", viewModel.state.value.searchQuery)
     }
 }
@@ -88,4 +92,16 @@ private class SearchOnlyConversationRepository : ConversationRepository {
 
     override fun searchMessages(query: String, limit: Int): Flow<List<MessageSearchResult>> =
         flowOf(emptyList())
+}
+
+private class EmptyProviderConfigRepository : ProviderConfigRepository {
+    override fun observeProviders(): Flow<List<ProviderConfig>> = flowOf(emptyList())
+
+    override suspend fun getProvider(id: ProviderId): ProviderConfig? = null
+
+    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) = Unit
+
+    override suspend fun getApiKey(providerId: ProviderId): String? = null
+
+    override suspend fun deleteProvider(id: ProviderId) = Unit
 }

@@ -12,6 +12,8 @@ import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +51,7 @@ class ImageGenerationViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(ImageGenerationUiState())
     val state: StateFlow<ImageGenerationUiState> = _state.asStateFlow()
+    private var generationJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -113,7 +116,7 @@ class ImageGenerationViewModel(
 
     fun generate() {
         if (_state.value.isGenerating) return
-        viewModelScope.launch {
+        generationJob = viewModelScope.launch {
             val current = _state.value
             val provider = current.selectedProvider
             val imageCount = current.count.trim().toIntOrNull()
@@ -146,9 +149,24 @@ class ImageGenerationViewModel(
                     ),
                 )
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "图片生成失败。") }
+                if (error is CancellationException) {
+                    _state.update { it.copy(error = "已停止，Prompt 和参数已保留，可修改后重新生成。") }
+                } else {
+                    _state.update { it.copy(error = error.message ?: "图片生成失败。") }
+                }
             }
             _state.update { it.copy(isGenerating = false) }
+        }
+    }
+
+    fun stopGeneration() {
+        generationJob?.cancel()
+        generationJob = null
+        _state.update {
+            it.copy(
+                isGenerating = false,
+                error = "已停止，Prompt 和参数已保留，可修改后重新生成。",
+            )
         }
     }
 
