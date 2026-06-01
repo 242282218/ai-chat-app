@@ -775,6 +775,12 @@ private fun ChatSettingsSummary(state: ChatUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
+                text = if (state.systemPromptDraft.isBlank()) "无系统指令" else "系统指令已启用",
+                tone = if (state.systemPromptDraft.isBlank()) StatusTone.Neutral else StatusTone.Accent,
+            )
+        }
+        item {
+            StatusPill(
                 text = temperatureStatus.label,
                 tone = temperatureStatus.tone(),
             )
