@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,6 +56,7 @@ import com.aichat.workbench.domain.repository.MessageSearchResult
 import com.aichat.workbench.navigation.AppDestination
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import org.koin.androidx.compose.koinViewModel
@@ -186,6 +188,9 @@ private fun ConversationHomeContent(
         item {
             HomeTitle(state = state)
         }
+        item {
+            HomeStatusStrip(state = state)
+        }
         if (!state.hasEnabledProvider) {
             item {
                 InlineNotice(
@@ -247,6 +252,28 @@ private fun HomeTitle(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun HomeStatusStrip(
+    state: HomeUiState,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusPill(
+            text = state.conversationCountLabel(),
+            tone = if (state.recentConversations.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
+        )
+        StatusPill(
+            text = state.providerCountLabel(),
+            tone = if (state.hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
+        )
+        StatusPill(text = "本地优先", tone = StatusTone.Success)
     }
 }
 
@@ -544,26 +571,31 @@ private fun CreationActionRow(
 }
 
 private fun homeSubtitle(state: HomeUiState): String {
-    val conversationLabel = when (state.recentConversations.size) {
-        0 -> "暂无最近会话"
-        1 -> "1 个最近会话"
-        else -> "${state.recentConversations.size} 个最近会话"
-    }
-    val providerLabel = when (state.enabledProviderCount) {
-        0 -> "模型连接未配置"
-        1 -> "1 个模型连接可用"
-        else -> "${state.enabledProviderCount} 个模型连接可用"
-    }
-    return "$conversationLabel · $providerLabel"
+    return "${state.conversationCountLabel()} · ${state.providerCountLabel()}"
 }
 
-private fun conversationDescription(conversation: Conversation): String =
-    when {
-        !conversation.defaultModel.isNullOrBlank() -> "使用 ${conversation.defaultModel}"
-        conversation.isTemporary -> "临时会话"
-        conversation.isSensitive -> "敏感会话"
-        else -> "最近更新"
+private fun HomeUiState.conversationCountLabel(): String =
+    when (recentConversations.size) {
+        0 -> "暂无最近会话"
+        1 -> "1 个最近会话"
+        else -> "${recentConversations.size} 个最近会话"
     }
+
+private fun HomeUiState.providerCountLabel(): String =
+    when (enabledProviderCount) {
+        0 -> "模型连接未配置"
+        1 -> "1 个模型连接可用"
+        else -> "${enabledProviderCount} 个模型连接可用"
+    }
+
+private fun conversationDescription(conversation: Conversation): String {
+    val details = buildList {
+        add(conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型")
+        if (conversation.isTemporary) add("临时")
+        if (conversation.isSensitive) add("敏感")
+    }
+    return details.joinToString(" · ")
+}
 
 @Composable
 private fun highlightedSnippet(text: String, query: String): AnnotatedString {
