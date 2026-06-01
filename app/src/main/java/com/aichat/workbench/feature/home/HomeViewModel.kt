@@ -42,7 +42,7 @@ class HomeViewModel(
             taskDraft,
             conversationRepositoryProvider()
                 .observeConversations(includeArchived = false)
-                .map { conversations -> conversations.take(3) },
+                .map { conversations -> conversations.take(30) },
             providerRepository.observeProviders(),
             searchResults(),
         ) { draft, conversations, providers, search ->
