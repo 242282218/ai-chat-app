@@ -27,7 +27,7 @@ fun AppNavHost() {
     ) {
         composable(AppDestination.Home.route) {
             HomeScreen(
-                destinations = AppDestination.topLevel,
+                destinations = AppDestination.management,
                 onDestinationClick = { destination -> navController.navigateSingleTop(destination) },
                 onStartChat = { draft, temporary -> navController.navigateToNewChat(draft, temporary) },
                 onConversationClick = { conversationId -> navController.navigateToConversation(conversationId) },
@@ -69,7 +69,7 @@ fun AppNavHost() {
             )
         }
 
-        AppDestination.topLevel.filterNot { it == AppDestination.Chat }.forEach { destination ->
+        AppDestination.management.forEach { destination ->
             composable(destination.route) {
                 when (destination) {
                     AppDestination.Providers -> {

@@ -150,7 +150,7 @@ fun HomeScreen(
             sheetState = managementSheetState,
         ) {
             ManagementSheet(
-                destinations = destinations.filterNot { it == AppDestination.Chat },
+                destinations = destinations,
                 onDestinationClick = { destination ->
                     showManagementSheet = false
                     onDestinationClick(destination)
@@ -215,7 +215,7 @@ private fun ConversationHomeContent(
         if (destinations.any { it == AppDestination.Providers }) {
             item {
                 Text(
-                    text = "Provider、Prompt、Tools 和数据设置已移到右上角设置入口。",
+                    text = "模型连接、提示词、工具和数据设置已移到右上角设置入口。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
