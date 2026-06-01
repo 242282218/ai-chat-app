@@ -48,7 +48,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.data.backup.BackupImportSummary
+import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
+import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
@@ -98,7 +101,7 @@ fun DataSettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "设置") },
+                title = { Text(text = "Data Controls") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -192,14 +195,17 @@ fun DataSettingsScreen(
 
 @Composable
 private fun PrivacySummaryHeader() {
-    WorkbenchPanel(
-        title = "Privacy Summary",
-        description = "先确认数据边界，再做导入、导出或清空。",
-        icon = Icons.Filled.Security,
-        trailing = {
-            StatusPill(text = "本地优先", tone = StatusTone.Success)
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        QuietSectionHeader(
+            title = "Privacy Summary",
+            description = "先确认数据边界，再做导入、导出或清空。",
+            trailing = {
+                StatusPill(text = "本地优先", tone = StatusTone.Success)
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(text = "聊天保存在本机", tone = StatusTone.Success)
@@ -224,17 +230,12 @@ private fun PrivacySummaryHeader() {
 
 @Composable
 private fun ImportSummaryPanel(summary: BackupImportSummary) {
-    WorkbenchPanel(
-        title = "导入摘要",
-        description = "导入记录已合并到本地存储。",
+    InlineNotice(
+        text = "导入记录已合并到本地存储。",
         icon = Icons.Filled.FileUpload,
+        tone = StatusTone.Success,
     ) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { StatusPill(text = "${summary.providers} Providers", tone = StatusTone.Neutral) }
-            item { StatusPill(text = "${summary.prompts} Prompts", tone = StatusTone.Neutral) }
-            item { StatusPill(text = "${summary.conversations} 会话", tone = StatusTone.Neutral) }
-            item { StatusPill(text = "${summary.messages} 消息", tone = StatusTone.Neutral) }
-        }
+        StatusPill(text = summary.importedObjectsLabel(), tone = StatusTone.Success)
     }
 }
 
@@ -409,10 +410,10 @@ private fun OperationStatusPanel(
     status: String,
     isBusy: Boolean,
 ) {
-    WorkbenchPanel(
-        title = "状态",
-        description = status,
+    InlineNotice(
+        text = status,
         icon = Icons.Filled.Security,
+        tone = operationStatusTone(status, isBusy),
     ) {
         StatusPill(
             text = operationStatusLabel(status, isBusy),
@@ -479,33 +480,34 @@ private fun ClearPanel(
     state: DataSettingsUiState,
     onClear: (ClearAction) -> Unit,
 ) {
-    WorkbenchPanel(
-        title = "Danger Zone",
-        description = "清空类操作集中在这里。每项都会先说明影响范围并二次确认。",
-        icon = Icons.Filled.Delete,
-        trailing = {
-            StatusPill(text = "破坏性", tone = StatusTone.Critical)
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ClearAction.entries.forEach { action ->
-                OutlinedButton(
-                    onClick = { onClear(action) },
-                    enabled = !state.isBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = action.buttonText)
-                }
-            }
+        QuietSectionHeader(
+            title = "Danger Zone",
+            description = "每项都会先说明影响范围并二次确认。",
+            trailing = {
+                StatusPill(text = "破坏性", tone = StatusTone.Critical)
+            },
+        )
+        ClearAction.entries.forEach { action ->
+            QuietListRow(
+                title = action.buttonText,
+                description = action.message,
+                icon = Icons.Filled.Delete,
+                onClick = { onClear(action) },
+                enabled = !state.isBusy,
+                trailing = {
+                    StatusPill(text = "确认", tone = StatusTone.Critical)
+                },
+            )
         }
     }
 }
+
+private fun BackupImportSummary.importedObjectsLabel(): String =
+    "${providers + prompts + conversations + messages} 项"
 
 private enum class ClearAction(
     val buttonText: String,
