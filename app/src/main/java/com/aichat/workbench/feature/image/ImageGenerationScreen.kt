@@ -8,14 +8,17 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,13 +66,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationStatus
-import com.aichat.workbench.ui.component.MetadataRow
-import com.aichat.workbench.ui.component.SectionHeader
+import com.aichat.workbench.ui.component.InlineNotice
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
-import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
@@ -126,20 +129,19 @@ fun ImageGenerationScreen(
                 )
             }
             item {
-                SectionHeader(
+                QuietSectionHeader(
                     title = "Gallery",
                     description = "最近结果优先展示；可复用 Prompt、重新生成、保存或分享。",
                 )
             }
             if (state.generations.isEmpty()) {
                 item {
-                    WorkbenchPanel(
-                        title = "暂无图片历史",
-                        description = "先写 Prompt 并生成图片。失败后会保留输入，便于修改后重试。",
+                    InlineNotice(
+                        text = "先写 Prompt 并生成图片。失败后会保留输入，便于修改后重试。",
                         icon = Icons.Filled.Image,
+                        tone = StatusTone.Neutral,
                     ) {
                         StatusPill(text = "本地缩略图", tone = StatusTone.Success)
-                        StatusPill(text = "等待 Prompt", tone = StatusTone.Neutral)
                     }
                 }
             } else {
@@ -178,39 +180,28 @@ private fun ImageGenerationForm(
     onToggleControls: () -> Unit,
     viewModel: ImageGenerationViewModel,
 ) {
-    WorkbenchPanel(
-        title = "Image Composer",
-        description = "Prompt 是主路径；Provider、Model、尺寸、质量和数量放在紧凑控制区。",
-        icon = Icons.Filled.Image,
-        trailing = {
-            StatusPill(
-                text = if (state.isGenerating) "生成中" else "就绪",
-                tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Success,
-            )
-        },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        QuietSectionHeader(
+            title = "Image Composer",
+            description = "Prompt 是主路径，参数按需展开。",
+            trailing = {
+                StatusPill(
+                    text = if (state.isGenerating) "生成中" else "就绪",
+                    tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Success,
+                )
+            },
+        )
         if (state.providers.none { it.enabled }) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            InlineNotice(
+                text = "生成图片前请先配置支持图片生成的 Provider。",
+                icon = Icons.Filled.Image,
+                tone = StatusTone.Warning,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "没有启用的 Provider",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "生成图片前请先配置 Provider。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Button(
-                    onClick = onOpenProviders,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(text = "配置 Provider")
+                TextButton(onClick = onOpenProviders) {
+                    Text(text = "配置")
                 }
             }
         } else {
@@ -236,7 +227,6 @@ private fun ImageGenerationForm(
                 }
             }
         }
-        ImageFormSummary(state)
 
         OutlinedTextField(
             value = state.prompt,
@@ -244,8 +234,9 @@ private fun ImageGenerationForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(128.dp),
-            label = { Text(text = "Prompt") },
+            placeholder = { Text(text = "描述主体、风格、构图和约束") },
         )
+        ImageGenerationReadiness(state)
         CompactGenerationControlsSummary(
             state = state,
             expanded = controlsExpanded,
@@ -283,13 +274,12 @@ private fun ImageGenerationForm(
             )
         }
         if (state.selectedModelUnsupported) {
-            ImageFormFeedback(
-                label = "Model 支持",
-                message = "所选 Model 未声明支持图片生成。",
+            InlineNotice(
+                text = "所选 Model 未声明支持图片生成。",
+                icon = Icons.Filled.Image,
                 tone = StatusTone.Warning,
             )
         }
-        ImageGenerationReadiness(state)
         Button(
             onClick = {
                 if (state.isGenerating) {
@@ -309,9 +299,9 @@ private fun ImageGenerationForm(
             Text(text = if (state.isGenerating) "停止生成" else "生成图片")
         }
         state.error?.let {
-            ImageFormFeedback(
-                label = "生成错误",
-                message = it,
+            InlineNotice(
+                text = it,
+                icon = Icons.Filled.Image,
                 tone = StatusTone.Critical,
             )
         }
@@ -321,12 +311,22 @@ private fun ImageGenerationForm(
 @Composable
 private fun ImageGenerationReadiness(state: ImageGenerationUiState) {
     val readiness = imageGenerationReadiness(state)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatusPill(text = readiness.label, tone = readiness.tone)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusPill(
+            text = readiness.label,
+            tone = readiness.tone,
+        )
         Text(
             text = readiness.description,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -384,7 +384,10 @@ private fun CompactGenerationControlsSummary(
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(
                 modifier = Modifier.weight(1f),
@@ -427,46 +430,6 @@ private fun CompactGenerationControlsSummary(
 }
 
 @Composable
-private fun ImageFormSummary(state: ImageGenerationUiState) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(
-                text = if (state.selectedProvider != null) "Provider 就绪" else "需要 Provider",
-                tone = if (state.selectedProvider != null) StatusTone.Success else StatusTone.Warning,
-            )
-        }
-        item {
-            StatusPill(
-                text = if (state.prompt.isBlank()) "需要 Prompt" else "Prompt 就绪",
-                tone = if (state.prompt.isBlank()) StatusTone.Warning else StatusTone.Success,
-            )
-        }
-        item {
-            StatusPill(
-                text = if (state.isGenerating) "Provider 正在生成图片" else "等待生成",
-                tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Neutral,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ImageFormFeedback(
-    label: String,
-    message: String,
-    tone: StatusTone,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatusPill(text = label, tone = tone)
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun ImageGenerationRow(
     generation: ImageGeneration,
     onReusePrompt: () -> Unit,
@@ -474,87 +437,129 @@ private fun ImageGenerationRow(
     onSave: () -> Unit,
     onShare: () -> Unit,
 ) {
-    WorkbenchPanel(
-        title = generation.prompt.preview(72),
-        description = imageGenerationMetadata(generation),
-        icon = Icons.Filled.Image,
-        trailing = {
-            StatusPill(
-                text = generation.status.displayLabel(),
-                tone = generation.statusTone(),
-            )
-        },
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 1.dp,
     ) {
-        generation.thumbnailPath?.let { path ->
-            LocalThumbnail(path = path)
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(text = generation.model.orEmpty().ifBlank { "无 Model" }, tone = StatusTone.Neutral)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box {
+                generation.thumbnailPath?.let { path ->
+                    LocalThumbnail(path = path)
+                } ?: MissingThumbnail()
+                StatusPill(
+                    text = generation.status.displayLabel(),
+                    tone = generation.statusTone(),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp),
+                )
             }
-            item {
-                StatusPill(text = generation.size.orEmpty().ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
-            }
-            item {
-                StatusPill(text = generation.quality.orEmpty().ifBlank { "默认质量" }, tone = StatusTone.Neutral)
-            }
-        }
-        MetadataRow(label = "Prompt", value = generation.prompt.preview(140))
-        generation.errorSummary?.let {
-            Text(
-                text = "$it\nPrompt 已保留，可复用后修改并重试。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                OutlinedButton(onClick = onReusePrompt) {
-                    Text(text = "复用 Prompt")
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = generation.prompt.preview(120),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        StatusPill(text = generation.model.orEmpty().ifBlank { "无 Model" }, tone = StatusTone.Neutral)
+                    }
+                    item {
+                        StatusPill(text = generation.size.orEmpty().ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
+                    }
+                    item {
+                        StatusPill(text = generation.quality.orEmpty().ifBlank { "默认质量" }, tone = StatusTone.Neutral)
+                    }
+                }
+                generation.errorSummary?.let {
+                    Text(
+                        text = "$it\nPrompt 已保留，可复用后修改并重试。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
-            item {
-                OutlinedButton(
-                    onClick = onRegenerate,
-                    enabled = generation.status == ImageGenerationStatus.Completed,
-                ) {
-                    Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "重新生成")
+            LazyRow(
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    OutlinedButton(onClick = onReusePrompt) {
+                        Text(text = "复用 Prompt")
+                    }
                 }
-            }
-            item {
-                OutlinedButton(
-                    onClick = onShare,
-                    enabled = generation.status == ImageGenerationStatus.Completed &&
-                        generation.originalPath != null,
-                ) {
-                    Icon(imageVector = Icons.Filled.Share, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "分享")
+                item {
+                    OutlinedButton(
+                        onClick = onRegenerate,
+                        enabled = generation.status == ImageGenerationStatus.Completed,
+                    ) {
+                        Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "重新生成")
+                    }
                 }
-            }
-            item {
-                OutlinedButton(
-                    onClick = onSave,
-                    enabled = generation.status == ImageGenerationStatus.Completed &&
-                        generation.originalPath != null,
-                ) {
-                    Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "保存")
+                item {
+                    OutlinedButton(
+                        onClick = onShare,
+                        enabled = generation.status == ImageGenerationStatus.Completed &&
+                            generation.originalPath != null,
+                    ) {
+                        Icon(imageVector = Icons.Filled.Share, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "分享")
+                    }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = onSave,
+                        enabled = generation.status == ImageGenerationStatus.Completed &&
+                            generation.originalPath != null,
+                    ) {
+                        Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "保存")
+                    }
                 }
             }
         }
     }
 }
 
-private fun imageGenerationMetadata(generation: ImageGeneration): String =
-    listOfNotNull(
-        generation.model,
-        generation.size,
-        generation.quality,
-    ).joinToString(" / ").ifBlank { "无 Model 元数据" }
+@Composable
+private fun MissingThumbnail() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Image,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "预览不可用",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 private fun ImageGeneration.statusTone(): StatusTone =
     when (status) {
