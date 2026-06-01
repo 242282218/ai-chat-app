@@ -189,7 +189,7 @@ private fun ConversationHomeContent(
         if (!state.hasEnabledProvider) {
             item {
                 InlineNotice(
-                    text = "需要配置 Provider 才能发送消息",
+                    text = "需要配置模型连接才能发送消息",
                     icon = Icons.Filled.Tune,
                     tone = StatusTone.Warning,
                     action = {
@@ -479,8 +479,8 @@ private fun CreateConversationSheet(
         )
         CreationActionRow(
             icon = Icons.AutoMirrored.Filled.ViewList,
-            title = "从 Prompt 开始",
-            description = "打开本地 Prompt 预设",
+            title = "从提示词开始",
+            description = "打开本地提示词预设",
             onClick = onPrompts,
         )
     }
@@ -550,9 +550,9 @@ private fun homeSubtitle(state: HomeUiState): String {
         else -> "${state.recentConversations.size} 个最近会话"
     }
     val providerLabel = when (state.enabledProviderCount) {
-        0 -> "Provider 未配置"
-        1 -> "1 个 Provider 可用"
-        else -> "${state.enabledProviderCount} 个 Provider 可用"
+        0 -> "模型连接未配置"
+        1 -> "1 个模型连接可用"
+        else -> "${state.enabledProviderCount} 个模型连接可用"
     }
     return "$conversationLabel · $providerLabel"
 }
