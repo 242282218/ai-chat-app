@@ -120,7 +120,7 @@ fun DataSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                PrivacySummaryHeader()
+                PrivacySummaryHeader(state = state)
             }
             state.status?.let { status ->
                 item {
@@ -194,7 +194,7 @@ fun DataSettingsScreen(
 }
 
 @Composable
-private fun PrivacySummaryHeader() {
+private fun PrivacySummaryHeader(state: DataSettingsUiState) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -207,6 +207,12 @@ private fun PrivacySummaryHeader() {
             },
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(
+                    text = if (state.includeChats) "备份含聊天" else "仅备份配置",
+                    tone = if (state.includeChats) StatusTone.Warning else StatusTone.Success,
+                )
+            }
             item {
                 StatusPill(text = "聊天保存在本机", tone = StatusTone.Success)
             }
