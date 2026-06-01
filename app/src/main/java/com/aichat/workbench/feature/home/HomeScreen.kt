@@ -1,6 +1,5 @@
 package com.aichat.workbench.feature.home
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -50,12 +48,15 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.repository.MessageSearchResult
 import com.aichat.workbench.navigation.AppDestination
+import com.aichat.workbench.ui.component.InlineNotice
+import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -183,16 +184,20 @@ private fun ConversationHomeContent(
             )
         }
         item {
-            Text(
-                text = "会话",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+            HomeTitle(state = state)
         }
         if (!state.hasEnabledProvider) {
             item {
-                InlineProviderNotice(onOpenProviders = onOpenProviders)
+                InlineNotice(
+                    text = "需要配置 Provider 才能发送消息",
+                    icon = Icons.Filled.Tune,
+                    tone = StatusTone.Warning,
+                    action = {
+                        TextButton(onClick = onOpenProviders) {
+                            Text(text = "配置")
+                        }
+                    },
+                )
             }
         }
         if (state.recentConversations.isEmpty()) {
@@ -221,6 +226,31 @@ private fun ConversationHomeContent(
 }
 
 @Composable
+private fun HomeTitle(
+    state: HomeUiState,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "会话",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = homeSubtitle(state),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun HomeActionRow(
     onSearch: () -> Unit,
     onSettings: () -> Unit,
@@ -244,81 +274,18 @@ private fun HomeActionRow(
 }
 
 @Composable
-private fun InlineProviderNotice(
-    onOpenProviders: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.46f),
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.22f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Tune,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = "需要配置 Provider 才能发送消息",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            TextButton(onClick = onOpenProviders) {
-                Text(text = "配置")
-            }
-        }
-    }
-}
-
-@Composable
 private fun ConversationListRow(
     conversation: Conversation,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.Chat,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp),
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(
-                text = conversation.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = conversationDescription(conversation),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    QuietListRow(
+        title = conversation.title,
+        description = conversationDescription(conversation),
+        icon = Icons.AutoMirrored.Filled.Chat,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -567,39 +534,27 @@ private fun CreationActionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp),
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+    QuietListRow(
+        title = title,
+        description = description,
+        icon = icon,
+        onClick = onClick,
+        modifier = modifier.padding(horizontal = 8.dp),
+    )
+}
+
+private fun homeSubtitle(state: HomeUiState): String {
+    val conversationLabel = when (state.recentConversations.size) {
+        0 -> "暂无最近会话"
+        1 -> "1 个最近会话"
+        else -> "${state.recentConversations.size} 个最近会话"
     }
+    val providerLabel = when (state.enabledProviderCount) {
+        0 -> "Provider 未配置"
+        1 -> "1 个 Provider 可用"
+        else -> "${state.enabledProviderCount} 个 Provider 可用"
+    }
+    return "$conversationLabel · $providerLabel"
 }
 
 private fun conversationDescription(conversation: Conversation): String =
