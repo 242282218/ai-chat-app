@@ -99,7 +99,7 @@ class ConversationManager(
             ?: conversationProvider
             ?: selectedProvider
             ?: current.providers.firstOrNull { it.enabled }
-            ?: error("Provider 未配置。")
+            ?: error("模型连接未配置。")
     }
 
     fun modelFor(

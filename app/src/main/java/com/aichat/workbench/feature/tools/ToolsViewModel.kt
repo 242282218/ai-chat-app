@@ -168,7 +168,7 @@ class ToolsViewModel(
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
-            _state.update { it.copy(status = "Gateway URL 无效。") }
+            _state.update { it.copy(status = "工具网关地址无效。") }
             return
         }
         val searchTool = current.remoteTools.firstOrNull { it.name == "web_search" }
@@ -204,7 +204,7 @@ class ToolsViewModel(
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
-            _state.update { it.copy(status = "Gateway URL 无效。") }
+            _state.update { it.copy(status = "工具网关地址无效。") }
             return
         }
         val sandboxTool = current.remoteTools.firstOrNull { it.name == "code_sandbox" }

@@ -178,7 +178,7 @@ class GenerationController(
                 val toolCalls = assistant.toolCalls
                 if (toolCalls.isEmpty()) return
                 if (depth >= MAX_TOOL_DEPTH) {
-                    onStateChanged { it.copy(error = "Tool calling 超过最大递归深度。") }
+                    onStateChanged { it.copy(error = "工具调用超过最大递归深度。") }
                     return
                 }
                 for (toolCall in toolCalls) {

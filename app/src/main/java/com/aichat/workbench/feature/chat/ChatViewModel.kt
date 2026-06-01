@@ -97,7 +97,7 @@ class ChatViewModel(
         viewModelScope.launch {
             runCatching { conversationManager.saveSelectedSettings(current) }
                 .onSuccess { updateState { it.copy(error = null) } }
-                .onFailure { error -> updateState { it.copy(error = error.message ?: "Model 参数无效。") } }
+                .onFailure { error -> updateState { it.copy(error = error.message ?: "模型参数无效。") } }
         }
     }
     fun applyPromptPreset(id: PromptPresetId) {

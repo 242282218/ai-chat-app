@@ -339,7 +339,7 @@ private fun ToolCallConfirmationPanel(
             )
         },
     ) {
-        MetadataRow(label = "Tool", value = pendingToolCall.toolCall.name)
+        MetadataRow(label = "工具", value = pendingToolCall.toolCall.name)
         MetadataRow(
             label = "参数",
             value = if (arguments.length > 360) "${arguments.take(360)}..." else arguments,
@@ -412,7 +412,7 @@ private fun ChatControlSheet(
         item {
             if (state.providers.none { it.enabled }) {
                 InlineNotice(
-                    text = "添加 Provider 后才能发送消息，请求会从本机直接发送到你的 endpoint。",
+                    text = "添加模型连接后才能发送消息，请求会从本机直接发送到你的接口地址。",
                     icon = Icons.Filled.Tune,
                     tone = StatusTone.Warning,
                 ) {
@@ -426,7 +426,7 @@ private fun ChatControlSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     QuietSectionHeader(
-                        title = "Provider",
+                        title = "模型连接",
                         description = "选择当前对话使用的模型连接。",
                     )
                     ProviderStrip(state = state, viewModel = viewModel, modifier = Modifier)
@@ -923,7 +923,7 @@ private fun ChatContextBar(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = selectedProvider?.name ?: "未配置 Provider",
+                    text = selectedProvider?.name ?: "未配置模型连接",
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -989,7 +989,7 @@ private fun EmptyConversationPanel(
             text = if (hasEnabledProvider) {
                 "输入问题、粘贴材料，或添加图片。"
             } else {
-                "先配置 Provider，请求会从本机发送到你的 endpoint。"
+                "先配置模型连接，请求会从本机发送到你的接口地址。"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -998,7 +998,7 @@ private fun EmptyConversationPanel(
             Button(
                 onClick = onOpenProviders,
             ) {
-                Text(text = "配置 Provider")
+                Text(text = "配置模型连接")
             }
         }
     }
@@ -1071,7 +1071,7 @@ private fun MessageBubble(
                     }
                 } else {
                     Text(
-                        text = "Tool 详情已折叠",
+                        text = "工具详情已折叠",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1142,7 +1142,7 @@ private fun MessageHeader(
         if (message.role == MessageRole.Tool) {
             WorkbenchIconButton(
                 icon = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (expanded) "收起 Tool 详情" else "展开 Tool 详情",
+                label = if (expanded) "收起工具详情" else "展开工具详情",
                 onClick = onToggleExpanded,
             )
         }
@@ -1373,7 +1373,7 @@ private fun InputStatusRow(
             }
             !canSend && !isGenerating -> {
                 TextButton(onClick = onOpenProviders) {
-                    Text(text = "配置 Provider")
+                    Text(text = "配置模型连接")
                 }
             }
         }
@@ -1400,7 +1400,7 @@ private fun inputStatus(
             tone = StatusTone.Warning,
         )
         !canSend -> InputStatus(
-            label = "需要 Provider",
+            label = "需要模型连接",
             tone = StatusTone.Critical,
         )
         else -> null
@@ -1429,7 +1429,7 @@ private fun chatSubtitle(
     val model = state.modelDraft.ifBlank { selectedProvider?.defaultModel.orEmpty() }
     val providerText = selectedProvider?.let {
         if (model.isBlank()) it.name else "${it.name} / $model"
-    } ?: "需要 Provider"
+    } ?: "需要模型连接"
     val stateText = when {
         state.isGenerating -> "生成中"
         selectedConversation?.isTemporary == true || state.temporaryDraft -> "临时会话"

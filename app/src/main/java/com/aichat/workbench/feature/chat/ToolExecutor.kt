@@ -45,14 +45,14 @@ class ToolExecutor(
 
     suspend fun execute(conversationId: ConversationId, toolCall: ToolCall): ToolExecution {
         val descriptor = descriptorFor(toolCall.name)
-            ?: return saveFailure(conversationId, toolCall, ToolPermissionLevel.HighRisk, "unknown_tool", "未知 Tool。")
+            ?: return saveFailure(conversationId, toolCall, ToolPermissionLevel.HighRisk, "unknown_tool", "未知工具。")
         val startedAt = clock.instant()
         return runCatching {
             when (toolCall.name) {
                 "time" -> ToolOutput.Json(timeOutputJson())
                 "web_search" -> ToolOutput.Json(executeSearch(toolCall.arguments).toJson())
                 "code_sandbox" -> ToolOutput.Json(executeSandbox(toolCall.arguments).toJson())
-                else -> error("Tool 尚未实现：${toolCall.name}")
+                else -> error("工具尚未实现：${toolCall.name}")
             }
         }.fold(
             onSuccess = { output ->
@@ -76,7 +76,7 @@ class ToolExecutor(
                     toolCall = toolCall,
                     permissionLevel = descriptor.permissionLevel,
                     code = error.toToolErrorCode(),
-                    message = error.message ?: "Tool 执行失败。",
+                    message = error.message ?: "工具执行失败。",
                     startedAt = startedAt,
                 )
             },
@@ -89,7 +89,7 @@ class ToolExecutor(
             toolCall = toolCall,
             permissionLevel = descriptorFor(toolCall.name)?.permissionLevel ?: ToolPermissionLevel.HighRisk,
             code = "tool_denied",
-            message = "用户拒绝执行 Tool。",
+            message = "用户拒绝执行工具。",
         )
 
     private fun localTools(): List<ToolDescriptor> =
@@ -104,14 +104,14 @@ class ToolExecutor(
     private suspend fun executeSearch(arguments: String): SearchResponse {
         val settings = requireGatewaySettings()
         val args = toolJson.decodeFromString<SearchArguments>(arguments)
-        require(args.query.isNotBlank()) { "web_search.query 不能为空。" }
+        require(args.query.isNotBlank()) { "搜索关键词不能为空。" }
         return gatewayClient.search(settings.baseUrl, args.query, settings.apiToken)
     }
 
     private suspend fun executeSandbox(arguments: String): SandboxRunResponse {
         val settings = requireGatewaySettings()
         val args = toolJson.decodeFromString<SandboxArguments>(arguments)
-        require(args.code.isNotBlank()) { "code_sandbox.code 不能为空。" }
+        require(args.code.isNotBlank()) { "沙箱代码不能为空。" }
         return gatewayClient.runSandbox(
             baseUrl = settings.baseUrl,
             language = args.language.ifBlank { "python" },
@@ -123,8 +123,8 @@ class ToolExecutor(
 
     private fun requireGatewaySettings(): GatewaySettings {
         val settings = gatewaySettingsProvider()
-        require(settings.enabled) { "Gateway 未启用。" }
-        require(settings.baseUrl.isValidGatewayUrl()) { "Gateway URL 无效。" }
+        require(settings.enabled) { "工具网关未启用。" }
+        require(settings.baseUrl.isValidGatewayUrl()) { "工具网关地址无效。" }
         return settings
     }
 
