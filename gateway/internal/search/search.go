@@ -43,8 +43,8 @@ func (adapter MockAdapter) Search(ctx context.Context, query string) (Response, 
 		FetchedAt: now,
 		Results: []Result{
 			{
-				Title:       "Mock result for " + query,
-				Summary:     "Mock search adapter result. Configure a real adapter before relying on this source.",
+				Title:       "Mock 搜索结果：" + query,
+				Summary:     "Mock search adapter 结果。正式依赖前请配置真实 adapter。",
 				URL:         "https://example.com/search?q=" + escaped,
 				Source:      "Mock Search",
 				PublishedAt: &now,

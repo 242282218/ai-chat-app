@@ -2,9 +2,11 @@ package com.aichat.workbench.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
+import com.aichat.workbench.data.local.entity.MessageSearchEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -50,4 +52,16 @@ interface ConversationDao {
 
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteMessages(conversationId: String)
+
+    @Transaction
+    @Query(
+        """
+        SELECT m.* FROM messages m
+        JOIN messages_fts fts ON fts.rowid = m.rowid
+        WHERE messages_fts MATCH :query
+        ORDER BY m.created_at DESC
+        LIMIT :limit
+        """,
+    )
+    fun searchMessages(query: String, limit: Int): Flow<List<MessageSearchEntity>>
 }

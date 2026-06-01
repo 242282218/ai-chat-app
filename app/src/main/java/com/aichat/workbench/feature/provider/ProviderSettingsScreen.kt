@@ -54,13 +54,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.domain.model.ModelConfig
+import com.aichat.workbench.domain.model.ModelCapability
+import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
+import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.api.ProviderConnectionTester
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.SectionHeader
 import com.aichat.workbench.ui.component.StatusPill
@@ -69,6 +73,7 @@ import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.util.UUID
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,7 +81,8 @@ fun ProviderSettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val repository = remember { AppGraph.providerConfigRepository }
+    val repository = koinInject<ProviderConfigRepository>()
+    val connectionTester = koinInject<ProviderConnectionTester>()
     val saveProvider = remember(repository) { SaveProviderConfigUseCase(repository) }
     val deleteProvider = remember(repository) { DeleteProviderConfigUseCase(repository) }
     val providers by repository.observeProviders().collectAsState(initial = emptyList())
@@ -96,6 +102,16 @@ fun ProviderSettingsScreen(
     var pendingResetForm by rememberSaveable { mutableStateOf(false) }
     var pendingLoadProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var pendingDeleteProvider by remember { mutableStateOf<ProviderConfig?>(null) }
+    val selectableDescriptors = remember {
+        ProviderRegistry.builtInDescriptors().filter { descriptor ->
+            descriptor.type in setOf(
+                ProviderType.OpenAI,
+                ProviderType.OpenAICompatible,
+                ProviderType.OpenRouter,
+                ProviderType.Ollama,
+            )
+        }
+    }
 
     val hasProviderDraft = editingId != null ||
         name != "OpenAI" ||
@@ -120,6 +136,16 @@ fun ProviderSettingsScreen(
         allowHttp = provider.baseUrl.startsWith("http://")
         storedApiKeyRef = provider.apiKeyRef
         message = null
+    }
+
+    fun applyProviderType(nextType: ProviderType) {
+        type = nextType
+        val descriptor = ProviderRegistry.builtInDescriptor(nextType)
+        if (editingId == null) {
+            name = descriptor?.displayName ?: nextType.providerTypeLabel()
+            descriptor?.defaultBaseUrl?.let { baseUrl = it }
+            allowHttp = descriptor?.defaultBaseUrl?.startsWith("http://") == true
+        }
     }
 
     fun resetForm() {
@@ -165,7 +191,7 @@ fun ProviderSettingsScreen(
             models = if (trimmedModel.isBlank()) {
                 emptyList()
             } else {
-                listOf(ModelConfig(trimmedModel, trimmedModel, capability = null))
+                listOf(ModelConfig(trimmedModel, trimmedModel, capability = type.defaultCapability(trimmedModel)))
             },
             defaultModel = trimmedModel.ifBlank { null },
             enabled = enabled,
@@ -180,18 +206,18 @@ fun ProviderSettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Providers") },
+                title = { Text(text = "Provider 设置") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "返回",
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { requestResetForm() }) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = "New provider")
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = "新建 Provider")
                     }
                 },
             )
@@ -210,12 +236,8 @@ fun ProviderSettingsScreen(
                     name = name,
                     onNameChange = { name = it },
                     type = type,
-                    onTypeChange = {
-                        type = it
-                        if (it == ProviderType.OpenAI && editingId == null) {
-                            baseUrl = "https://api.openai.com/v1"
-                        }
-                    },
+                    providerTypes = selectableDescriptors.map { it.type },
+                    onTypeChange = ::applyProviderType,
                     baseUrl = baseUrl,
                     onBaseUrlChange = { baseUrl = it },
                     model = model,
@@ -240,26 +262,26 @@ fun ProviderSettingsScreen(
                                 saveProvider(provider, apiKey.trim(), allowHttp)
                             }.onSuccess {
                                 resetForm()
-                                message = "Saved"
+                                message = "已保存"
                             }.onFailure { error ->
-                                message = error.message ?: "Save failed"
+                                message = error.message ?: "保存失败"
                             }
                         }
                     },
                     onTest = {
                         val provider = currentProvider()
                         if (provider.baseUrl.startsWith("http://") && !allowHttp) {
-                            message = "Enable Allow HTTP before testing this URL."
+                            message = "测试此 URL 前请先启用 Allow HTTP。"
                             return@ProviderForm
                         }
                         scope.launch {
-                            message = "Testing..."
+                            message = "测试中..."
                             val storedKey = if (apiKey.isBlank()) {
                                 repository.getApiKey(provider.id)
                             } else {
                                 null
                             }
-                            val result = AppGraph.providerConnectionTester.test(
+                            val result = connectionTester.test(
                                 provider = provider,
                                 apiKey = apiKey.trim().ifBlank { storedKey.orEmpty() },
                             )
@@ -275,19 +297,19 @@ fun ProviderSettingsScreen(
 
             item {
                 SectionHeader(
-                    title = "Configured",
-                    description = "Stored locally; API keys stay behind encrypted references.",
+                    title = "已配置",
+                    description = "本地保存；API Key 仅以加密引用保留。",
                 )
             }
 
             if (providers.isEmpty()) {
                 item {
                     WorkbenchPanel(
-                        title = "No providers",
-                        description = "Add a provider to unlock chat, images, and model routing.",
+                        title = "暂无 Provider",
+                        description = "添加 Provider 后才能使用聊天、图片和 Model 路由。",
                         icon = Icons.Filled.Tune,
                     ) {
-                        StatusPill(text = "Setup needed", tone = StatusTone.Warning)
+                        StatusPill(text = "需要配置", tone = StatusTone.Warning)
                     }
                 }
             } else {
@@ -304,9 +326,9 @@ fun ProviderSettingsScreen(
 
     pendingDeleteProvider?.let { provider ->
         WorkbenchConfirmDialog(
-            title = "Delete provider?",
-            message = "This removes \"${provider.name}\" plus its stored key reference from this device.",
-            confirmLabel = "Delete",
+            title = "删除 Provider？",
+            message = "这会从本机删除「${provider.name}」及已保存的 API Key 引用。",
+            confirmLabel = "删除",
             onConfirm = {
                 pendingDeleteProvider = null
                 scope.launch {
@@ -322,9 +344,9 @@ fun ProviderSettingsScreen(
 
     pendingLoadProvider?.let { provider ->
         WorkbenchConfirmDialog(
-            title = "Discard provider draft?",
-            message = "Discard the current form values and load \"${provider.name}\".",
-            confirmLabel = "Load",
+            title = "丢弃 Provider 草稿？",
+            message = "丢弃当前表单并载入「${provider.name}」。",
+            confirmLabel = "载入",
             onConfirm = {
                 pendingLoadProvider = null
                 loadProvider(provider)
@@ -336,9 +358,9 @@ fun ProviderSettingsScreen(
 
     if (pendingResetForm) {
         WorkbenchConfirmDialog(
-            title = "Clear provider draft?",
-            message = "Discard the current provider form values and return to a new provider draft.",
-            confirmLabel = "Clear",
+            title = "清空 Provider 草稿？",
+            message = "丢弃当前 Provider 表单并回到新建草稿。",
+            confirmLabel = "清空",
             onConfirm = {
                 pendingResetForm = false
                 resetForm()
@@ -355,6 +377,7 @@ private fun ProviderForm(
     name: String,
     onNameChange: (String) -> Unit,
     type: ProviderType,
+    providerTypes: List<ProviderType>,
     onTypeChange: (ProviderType) -> Unit,
     baseUrl: String,
     onBaseUrlChange: (String) -> Unit,
@@ -379,19 +402,20 @@ private fun ProviderForm(
     var showApiKey by rememberSaveable { mutableStateOf(false) }
 
     WorkbenchPanel(
-        title = if (editing) "Edit provider" else "New provider",
-        description = "Bring your own key; requests go directly to the configured endpoint.",
+        title = if (editing) "编辑 Provider" else "新建 Provider",
+        description = "使用自己的 API Key，请求直接发送到配置的 endpoint。",
         icon = Icons.Filled.Tune,
         modifier = modifier,
         trailing = {
             StatusPill(
-                text = if (enabled) "Enabled" else "Disabled",
+                text = if (enabled) "已启用" else "已禁用",
                 tone = if (enabled) StatusTone.Success else StatusTone.Neutral,
             )
         },
     ) {
         ProviderFormSummary(
             name = name,
+            type = type,
             baseUrl = baseUrl,
             model = model,
             apiKey = apiKey,
@@ -399,28 +423,25 @@ private fun ProviderForm(
             headers = headers,
             allowHttp = allowHttp,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = type == ProviderType.OpenAI,
-                onClick = { onTypeChange(ProviderType.OpenAI) },
-                label = { Text(text = "OpenAI") },
-            )
-            FilterChip(
-                selected = type == ProviderType.OpenAICompatible,
-                onClick = { onTypeChange(ProviderType.OpenAICompatible) },
-                label = { Text(text = "Compatible") },
-            )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(providerTypes, key = { it.value }) { providerType ->
+                FilterChip(
+                    selected = type == providerType,
+                    onClick = { onTypeChange(providerType) },
+                    label = { Text(text = providerType.providerTypeLabel()) },
+                )
+            }
         }
 
         MetadataRow(
-            label = "Provider type",
+            label = "Provider 类型",
             value = type.providerTypeLabel(),
         )
         OutlinedTextField(
             value = name,
             onValueChange = onNameChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Name") },
+            label = { Text(text = "名称") },
             singleLine = true,
         )
         OutlinedTextField(
@@ -435,14 +456,14 @@ private fun ProviderForm(
             value = model,
             onValueChange = onModelChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Default model") },
+            label = { Text(text = "默认 Model") },
             singleLine = true,
         )
         OutlinedTextField(
             value = apiKey,
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "API key") },
+            label = { Text(text = "API Key") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
             visualTransformation = if (showApiKey) {
@@ -454,7 +475,7 @@ private fun ProviderForm(
                 IconButton(onClick = { showApiKey = !showApiKey }) {
                     Icon(
                         imageVector = if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (showApiKey) "Hide API key" else "Show API key",
+                        contentDescription = if (showApiKey) "隐藏 API Key" else "显示 API Key",
                     )
                 }
             },
@@ -481,7 +502,7 @@ private fun ProviderForm(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Enabled",
+                text = "已启用",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
             )
@@ -511,7 +532,7 @@ private fun ProviderForm(
             ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Save")
+                Text(text = "保存")
             }
             OutlinedButton(
                 onClick = onTest,
@@ -520,7 +541,7 @@ private fun ProviderForm(
             ) {
                 Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Test")
+                Text(text = "测试")
             }
         }
 
@@ -533,6 +554,7 @@ private fun ProviderForm(
 @Composable
 private fun ProviderFormSummary(
     name: String,
+    type: ProviderType,
     baseUrl: String,
     model: String,
     apiKey: String,
@@ -542,11 +564,12 @@ private fun ProviderFormSummary(
 ) {
     val urlStatus = baseUrl.providerUrlStatus(allowHttp)
     val headerStatus = headers.headerStatus()
-    val keyStatus = providerKeyStatus(apiKey, hasStoredKey)
+    val requiresApiKey = ProviderRegistry.builtInDescriptor(type)?.requiresApiKey ?: true
+    val keyStatus = providerKeyStatus(apiKey, hasStoredKey, requiresApiKey)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (name.isBlank()) "Name required" else "Named",
+                text = if (name.isBlank()) "需要名称" else "已命名",
                 tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
@@ -555,7 +578,7 @@ private fun ProviderFormSummary(
         }
         item {
             StatusPill(
-                text = model.ifBlank { "No default model" },
+                text = model.ifBlank { "无默认 Model" },
                 tone = if (model.isBlank()) StatusTone.Neutral else StatusTone.Success,
             )
         }
@@ -591,22 +614,27 @@ private fun ProviderFormFeedback(message: String) {
 
 private fun providerMessageLabel(message: String): String =
     when {
-        message == "Saved" -> "Saved"
-        message == "Testing..." -> "Testing"
-        providerMessageTone(message) == StatusTone.Critical -> "Attention"
-        else -> "Connection"
+        message == "已保存" -> "已保存"
+        message == "测试中..." -> "测试中"
+        providerMessageTone(message) == StatusTone.Critical -> "需要处理"
+        else -> "连接"
     }
 
 private fun providerMessageTone(message: String): StatusTone {
     val normalized = message.lowercase()
     return when {
-        message == "Saved" -> StatusTone.Success
-        message == "Testing..." -> StatusTone.Accent
+        message == "已保存" -> StatusTone.Success
+        message == "测试中..." -> StatusTone.Accent
         normalized.contains("failed") ||
             normalized.contains("invalid") ||
             normalized.contains("missing") ||
             normalized.contains("returned") ||
             normalized.contains("enable allow http") ||
+            normalized.contains("失败") ||
+            normalized.contains("无效") ||
+            normalized.contains("缺失") ||
+            normalized.contains("返回") ||
+            normalized.contains("启用 allow http") ||
             normalized.contains("must") ->
             StatusTone.Critical
         else -> StatusTone.Success
@@ -621,14 +649,14 @@ private fun ProviderRow(
 ) {
     WorkbenchPanel(
         title = provider.name,
-        description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "No default model"}",
+        description = "${provider.type.providerTypeLabel()} / ${provider.defaultModel ?: "无默认 Model"}",
         icon = Icons.Filled.CheckCircle,
         modifier = Modifier.clickable(onClick = onClick),
         trailing = {
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete provider ${provider.name}",
+                    contentDescription = "删除 Provider ${provider.name}",
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
@@ -644,14 +672,20 @@ private fun ProviderRowSummary(provider: ProviderConfig) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (provider.enabled) "Enabled" else "Disabled",
+                text = if (provider.enabled) "已启用" else "已禁用",
                 tone = if (provider.enabled) StatusTone.Success else StatusTone.Neutral,
             )
         }
         item {
+            val requiresApiKey = ProviderRegistry.builtInDescriptor(provider.type)?.requiresApiKey ?: true
+            val keyStatus = providerKeyStatus(
+                apiKey = "",
+                hasStoredKey = provider.apiKeyRef != null,
+                requiresApiKey = requiresApiKey,
+            )
             StatusPill(
-                text = if (provider.apiKeyRef == null) "No key" else "Key stored",
-                tone = if (provider.apiKeyRef == null) StatusTone.Warning else StatusTone.Success,
+                text = keyStatus.label,
+                tone = keyStatus.tone,
             )
         }
         item {
@@ -659,13 +693,13 @@ private fun ProviderRowSummary(provider: ProviderConfig) {
         }
         item {
             StatusPill(
-                text = if (provider.models.isEmpty()) "No models" else "${provider.models.size} models",
+                text = if (provider.models.isEmpty()) "无 Models" else "${provider.models.size} 个 Models",
                 tone = if (provider.models.isEmpty()) StatusTone.Warning else StatusTone.Success,
             )
         }
         if (provider.supportsImageGeneration()) {
             item {
-                StatusPill(text = "Images", tone = StatusTone.Accent)
+                StatusPill(text = "图片", tone = StatusTone.Accent)
             }
         }
         if (provider.supportsToolCalling()) {
@@ -677,7 +711,24 @@ private fun ProviderRowSummary(provider: ProviderConfig) {
 }
 
 private fun ProviderConfig.supportsImageGeneration(): Boolean =
-    models.any { it.capability?.imageGeneration == true }
+    models.any { it.capability?.imageGeneration == true } ||
+        ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true
 
 private fun ProviderConfig.supportsToolCalling(): Boolean =
-    models.any { it.capability?.toolCalling == true }
+    models.any { it.capability?.toolCalling == true } ||
+        ProviderRegistry.builtInDescriptor(type)?.capabilities?.toolCalling == true
+
+private fun ProviderType.defaultCapability(model: String): ModelCapability? {
+    val descriptor = ProviderRegistry.builtInDescriptor(this) ?: return null
+    return ModelCapability(
+        model = model,
+        text = descriptor.capabilities.text,
+        vision = descriptor.capabilities.vision,
+        imageGeneration = descriptor.capabilities.imageGeneration,
+        toolCalling = descriptor.capabilities.toolCalling,
+        structuredOutput = descriptor.capabilities.structuredOutput,
+        longContext = descriptor.capabilities.longContext,
+        maxContextTokens = null,
+        source = ModelCapabilitySource.BuiltInDefault,
+    )
+}

@@ -46,20 +46,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.nio.charset.StandardCharsets
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DataSettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: DataSettingsViewModel = viewModel(factory = DataSettingsViewModel.Factory),
+    viewModel: DataSettingsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -70,7 +70,7 @@ fun DataSettingsScreen(
     ) { uri ->
         if (uri != null) {
             val saved = writeText(context, uri, state.exportJson)
-            viewModel.updateStatus(if (saved) "Export saved" else "Export save failed.")
+            viewModel.updateStatus(if (saved) "导出已保存" else "导出保存失败。")
         }
     }
     val importLauncher = rememberLauncherForActivityResult(
@@ -79,7 +79,7 @@ fun DataSettingsScreen(
         if (uri != null) {
             val importJson = readText(context, uri)
             if (importJson == null) {
-                viewModel.updateStatus("Import file read failed.")
+                viewModel.updateStatus("读取导入文件失败。")
             } else {
                 val json = importJson
                 viewModel.updateImportJson(json)
@@ -92,12 +92,12 @@ fun DataSettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Settings") },
+                title = { Text(text = "设置") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "返回",
                         )
                     }
                 },
@@ -145,14 +145,14 @@ fun DataSettingsScreen(
             state.importSummary?.let { summary ->
                 item {
                     WorkbenchPanel(
-                        title = "Import summary",
-                        description = "Imported records were merged into local storage.",
+                        title = "导入摘要",
+                        description = "导入记录已合并到本地存储。",
                         icon = Icons.Filled.FileUpload,
                     ) {
                         MetadataRow(label = "Providers", value = summary.providers.toString())
                         MetadataRow(label = "Prompts", value = summary.prompts.toString())
-                        MetadataRow(label = "Conversations", value = summary.conversations.toString())
-                        MetadataRow(label = "Messages", value = summary.messages.toString())
+                        MetadataRow(label = "会话", value = summary.conversations.toString())
+                        MetadataRow(label = "消息", value = summary.messages.toString())
                     }
                 }
             }
@@ -163,7 +163,7 @@ fun DataSettingsScreen(
         WorkbenchConfirmDialog(
             title = action.title,
             message = action.message,
-            confirmLabel = "Clear",
+            confirmLabel = "清空",
             onConfirm = {
                 pendingClear = null
                 action.run(viewModel)
@@ -174,9 +174,9 @@ fun DataSettingsScreen(
 
     pendingImportJson?.let { json ->
         WorkbenchConfirmDialog(
-            title = "Import backup?",
-            message = "Merge ${json.length} characters of JSON into local storage. Provider API keys are not restored.",
-            confirmLabel = "Import",
+            title = "导入备份？",
+            message = "将 ${json.length} 个字符的 JSON 合并到本地存储。Provider API Key 不会恢复。",
+            confirmLabel = "导入",
             onConfirm = {
                 pendingImportJson = null
                 viewModel.importJson(json)
@@ -195,12 +195,12 @@ private fun ExportPanel(
     onSaveExport: () -> Unit,
 ) {
     WorkbenchPanel(
-        title = "Export",
-        description = "Create a local JSON backup without API keys.",
+        title = "导出",
+        description = "创建不含 API Key 的本地 JSON 备份。",
         icon = Icons.Filled.FileDownload,
         trailing = {
             StatusPill(
-                text = if (state.includeChats) "Chats" else "Config",
+                text = if (state.includeChats) "聊天" else "配置",
                 tone = if (state.includeChats) StatusTone.Warning else StatusTone.Success,
             )
         },
@@ -217,7 +217,7 @@ private fun ExportPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Include chats",
+                text = "包含聊天",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
             )
@@ -231,7 +231,7 @@ private fun ExportPanel(
             ) {
                 Icon(imageVector = Icons.Filled.FileDownload, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Export")
+                Text(text = "导出")
             }
             OutlinedButton(
                 onClick = onSaveExport,
@@ -240,18 +240,18 @@ private fun ExportPanel(
             ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Save")
+                Text(text = "保存")
             }
         }
         BackupJsonSummary(
             json = state.exportJson,
-            emptyText = "No export generated",
+            emptyText = "尚未生成导出内容",
         )
         OutlinedTextField(
             value = state.exportJson,
             onValueChange = {},
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Export JSON") },
+            label = { Text(text = "导出 JSON") },
             minLines = 4,
             maxLines = 8,
             readOnly = true,
@@ -268,12 +268,12 @@ private fun ImportPanel(
     onOpenImport: () -> Unit,
 ) {
     WorkbenchPanel(
-        title = "Import",
-        description = "Load JSON data into local storage; provider keys are not restored.",
+        title = "导入",
+        description = "将 JSON 数据导入本地存储；Provider API Key 不会恢复。",
         icon = Icons.Filled.FileUpload,
         trailing = {
             StatusPill(
-                text = if (state.importJson.isBlank()) "Waiting" else "Ready",
+                text = if (state.importJson.isBlank()) "等待中" else "就绪",
                 tone = if (state.importJson.isBlank()) StatusTone.Neutral else StatusTone.Accent,
             )
         },
@@ -286,25 +286,25 @@ private fun ImportPanel(
             ) {
                 Icon(imageVector = Icons.Filled.FileUpload, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Open")
+                Text(text = "打开")
             }
             OutlinedButton(
                 onClick = onImportCurrentJson,
                 enabled = state.importJson.isNotBlank() && !state.isBusy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Import")
+                Text(text = "导入")
             }
         }
         BackupJsonSummary(
             json = state.importJson,
-            emptyText = "No import loaded",
+            emptyText = "尚未载入导入内容",
         )
         OutlinedTextField(
             value = state.importJson,
             onValueChange = onImportJsonChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Import JSON") },
+            label = { Text(text = "导入 JSON") },
             minLines = 4,
             maxLines = 8,
             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -318,7 +318,7 @@ private fun OperationStatusPanel(
     isBusy: Boolean,
 ) {
     WorkbenchPanel(
-        title = "Status",
+        title = "状态",
         description = status,
         icon = Icons.Filled.Security,
     ) {
@@ -337,14 +337,14 @@ private fun BackupJsonSummary(
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (json.isBlank()) emptyText else "${json.length} chars",
+                text = if (json.isBlank()) emptyText else "${json.length} 字符",
                 tone = if (json.isBlank()) StatusTone.Neutral else StatusTone.Accent,
             )
         }
         if (json.isNotBlank()) {
             item {
                 StatusPill(
-                    text = "${json.lineSequence().count()} lines",
+                    text = "${json.lineSequence().count()} 行",
                     tone = StatusTone.Neutral,
                 )
             }
@@ -357,9 +357,9 @@ private fun operationStatusLabel(
     isBusy: Boolean,
 ): String =
     when {
-        isBusy -> "Working"
-        status.isErrorStatus() -> "Error"
-        else -> "Done"
+        isBusy -> "处理中"
+        status.isErrorStatus() -> "错误"
+        else -> "完成"
     }
 
 private fun operationStatusTone(
@@ -376,7 +376,10 @@ private fun String.isErrorStatus(): Boolean {
     val normalized = lowercase()
     return normalized.contains("failed") ||
         normalized.contains("error") ||
-        normalized.contains("must not")
+        normalized.contains("must not") ||
+        normalized.contains("失败") ||
+        normalized.contains("错误") ||
+        normalized.contains("不能为空")
 }
 
 @Composable
@@ -385,11 +388,11 @@ private fun ClearPanel(
     onClear: (ClearAction) -> Unit,
 ) {
     WorkbenchPanel(
-        title = "Clear data",
-        description = "Destructive actions are grouped and confirmed before deletion.",
+        title = "清空数据",
+        description = "破坏性操作会先分组并确认。",
         icon = Icons.Filled.Delete,
         trailing = {
-            StatusPill(text = "Destructive", tone = StatusTone.Critical)
+            StatusPill(text = "破坏性", tone = StatusTone.Critical)
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -419,27 +422,27 @@ private enum class ClearAction(
     val run: (DataSettingsViewModel) -> Unit,
 ) {
     Chats(
-        buttonText = "Clear chats",
-        title = "Clear chats",
-        message = "Delete all conversations, messages, and tool results.",
+        buttonText = "清空聊天",
+        title = "清空聊天",
+        message = "删除所有会话、消息和 Tool 结果。",
         run = { it.clearChatHistory() },
     ),
     Providers(
-        buttonText = "Clear providers",
-        title = "Clear providers",
-        message = "Delete provider configs, API key references, stored API keys, and model preferences for those providers.",
+        buttonText = "清空 Providers",
+        title = "清空 Providers",
+        message = "删除 Provider 配置、API Key 引用、已保存 API Key，以及这些 Provider 的 Model 偏好。",
         run = { it.clearProvidersAndApiKeys() },
     ),
     PromptsModelsImages(
-        buttonText = "Clear prompts/images",
-        title = "Clear prompts and images",
-        message = "Delete prompt presets, model preferences, image history, and stored image files.",
+        buttonText = "清空 Prompt/图片",
+        title = "清空 Prompt 和图片",
+        message = "删除 Prompt 预设、Model 偏好、图片历史和已保存图片文件。",
         run = { it.clearPromptsModelsAndImages() },
     ),
     All(
-        buttonText = "Clear all data",
-        title = "Clear all data",
-        message = "Delete all local app data managed by AI Chat.",
+        buttonText = "清空全部数据",
+        title = "清空全部数据",
+        message = "删除 AI 聊天管理的全部本地数据。",
         run = { it.clearAllData() },
     ),
 }

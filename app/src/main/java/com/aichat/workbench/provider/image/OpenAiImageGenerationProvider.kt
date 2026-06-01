@@ -1,15 +1,20 @@
 package com.aichat.workbench.provider.image
 
 import com.aichat.workbench.provider.api.ProviderError
+import com.aichat.workbench.provider.api.ProviderErrorEnvelope
 import com.aichat.workbench.provider.api.ProviderHttpException
+import com.aichat.workbench.provider.api.providerJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import org.json.JSONObject
 
 class OpenAiImageGenerationProvider(
     private val client: OkHttpClient = OkHttpClient(),
@@ -23,19 +28,20 @@ class OpenAiImageGenerationProvider(
                 it.requireSuccessful()
                 parseResponse(it.bodyText())
             }
-        }
+    }
 
     private fun ImageGenerationProviderRequest.toHttpRequest(): Request {
-        val json = JSONObject()
-            .put("model", model)
-            .put("prompt", prompt)
-            .put("n", count)
-        size?.takeIf { it.isNotBlank() }?.let { json.put("size", it) }
-        quality?.takeIf { it.isNotBlank() }?.let { json.put("quality", it) }
+        val body = OpenAiImageRequest(
+            model = model,
+            prompt = prompt,
+            count = count,
+            size = size?.takeIf { it.isNotBlank() },
+            quality = quality?.takeIf { it.isNotBlank() },
+        )
 
         val builder = Request.Builder()
             .url("${provider.baseUrl.trimEnd('/')}/images/generations")
-            .post(json.toString().toRequestBody(JSON))
+            .post(providerJson.encodeToString(body).toRequestBody(JSON))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
 
@@ -45,18 +51,13 @@ class OpenAiImageGenerationProvider(
     }
 
     private fun parseResponse(body: String): ImageGenerationProviderResponse {
-        val data = JSONObject(body).getJSONArray("data")
-        val images = buildList {
-            for (index in 0 until data.length()) {
-                val item = data.getJSONObject(index)
-                add(
-                    GeneratedImage(
-                        base64 = item.optString("b64_json").takeIf { it.isNotBlank() },
-                        url = item.optString("url").takeIf { it.isNotBlank() },
-                        revisedPrompt = item.optString("revised_prompt").takeIf { it.isNotBlank() },
-                    ),
-                )
-            }
+        val response = providerJson.decodeFromString<OpenAiImageResponse>(body)
+        val images = response.data.map { item ->
+            GeneratedImage(
+                base64 = item.base64?.takeIf { it.isNotBlank() },
+                url = item.url?.takeIf { it.isNotBlank() },
+                revisedPrompt = item.revisedPrompt?.takeIf { it.isNotBlank() },
+            )
         }
         return ImageGenerationProviderResponse(images = images)
     }
@@ -71,8 +72,8 @@ class OpenAiImageGenerationProvider(
 
     private fun parseHttpError(statusCode: Int, body: String): ProviderError {
         val message = runCatching {
-            JSONObject(body).getJSONObject("error").optString("message")
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Image generation request failed."
+            providerJson.decodeFromString<ProviderErrorEnvelope>(body).error?.message
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "图片生成请求失败。"
         val code = when (statusCode) {
             401 -> "authentication_failed"
             429 -> "rate_limited"
@@ -91,3 +92,24 @@ class OpenAiImageGenerationProvider(
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }
+
+@Serializable
+private data class OpenAiImageRequest(
+    val model: String,
+    val prompt: String,
+    @SerialName("n") val count: Int,
+    val size: String? = null,
+    val quality: String? = null,
+)
+
+@Serializable
+private data class OpenAiImageResponse(
+    val data: List<OpenAiImageItem> = emptyList(),
+)
+
+@Serializable
+private data class OpenAiImageItem(
+    @SerialName("b64_json") val base64: String? = null,
+    val url: String? = null,
+    @SerialName("revised_prompt") val revisedPrompt: String? = null,
+)

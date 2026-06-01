@@ -1,0 +1,11 @@
+HSPLcom/aichat/workbench/MainActivity;->**(**)**
+HSPLcom/aichat/workbench/app/AiChatApplication;->**(**)**
+HSPLcom/aichat/workbench/app/AppModuleKt;->**(**)**
+HSPLcom/aichat/workbench/navigation/AppDestination;->**(**)**
+HSPLcom/aichat/workbench/navigation/AppNavHostKt;->**(**)**
+HSPLcom/aichat/workbench/feature/home/HomeScreenKt;->**(**)**
+HSPLcom/aichat/workbench/feature/home/HomeViewModel;->**(**)**
+HSPLcom/aichat/workbench/ui/component/WorkbenchComponentsKt;->**(**)**
+HSPLcom/aichat/workbench/ui/theme/ThemeKt;->**(**)**
+HSPLorg/koin/androidx/viewmodel/**->**(**)**
+HSPLorg/koin/core/**->**(**)**

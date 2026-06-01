@@ -24,13 +24,13 @@ internal fun ChatUiState.validatedModelParameters(): ModelParameters {
     val maxTokens = maxTokensDraft.toNullableInt("max_tokens")
 
     require(temperature == null || temperature in 0.0..2.0) {
-        "temperature must be between 0 and 2."
+        "temperature 必须在 0 到 2 之间。"
     }
     require(topP == null || topP in 0.0..1.0) {
-        "top_p must be between 0 and 1."
+        "top_p 必须在 0 到 1 之间。"
     }
     require(maxTokens == null || maxTokens > 0) {
-        "max_tokens must be greater than 0."
+        "max_tokens 必须大于 0。"
     }
     return ModelParameters(
         temperature = temperature,
@@ -82,7 +82,7 @@ private fun decimalStatus(
     rangeLabel: String,
 ): ModelParameterDraftStatus {
     val number = value.toDoubleOrNull()
-        ?: return ModelParameterDraftStatus("$label number", isValid = false)
+        ?: return ModelParameterDraftStatus("$label 需为数字", isValid = false)
     if (number !in validRange) {
         return ModelParameterDraftStatus(rangeLabel, isValid = false)
     }
@@ -94,7 +94,7 @@ private fun intStatus(
     value: String,
 ): ModelParameterDraftStatus {
     val number = value.toIntOrNull()
-        ?: return ModelParameterDraftStatus("$label integer", isValid = false)
+        ?: return ModelParameterDraftStatus("$label 需为整数", isValid = false)
     if (number <= 0) {
         return ModelParameterDraftStatus("$label > 0", isValid = false)
     }
@@ -104,11 +104,11 @@ private fun intStatus(
 private fun String.toNullableDouble(name: String): Double? {
     val trimmed = trim()
     if (trimmed.isBlank()) return null
-    return trimmed.toDoubleOrNull() ?: error("$name must be a number.")
+    return trimmed.toDoubleOrNull() ?: error("$name 必须是数字。")
 }
 
 private fun String.toNullableInt(name: String): Int? {
     val trimmed = trim()
     if (trimmed.isBlank()) return null
-    return trimmed.toIntOrNull() ?: error("$name must be an integer.")
+    return trimmed.toIntOrNull() ?: error("$name 必须是整数。")
 }

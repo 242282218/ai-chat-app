@@ -7,8 +7,10 @@ import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.MessageSearchResult
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 class RoomConversationRepository(
@@ -55,5 +57,25 @@ class RoomConversationRepository(
     override suspend fun deleteMessages(conversationId: ConversationId) {
         dao.deleteMessages(conversationId.value)
         dao.touchConversation(conversationId.value, clock.millis())
+    }
+
+    override fun searchMessages(query: String, limit: Int): Flow<List<MessageSearchResult>> {
+        val normalized = query.toFtsQuery() ?: return flowOf(emptyList())
+        return dao.searchMessages(normalized, limit).map { entities ->
+            entities.map { entity ->
+                MessageSearchResult(
+                    conversation = entity.conversation.toDomain(),
+                    message = entity.message.toDomain(),
+                )
+            }
+        }
+    }
+
+    private fun String.toFtsQuery(): String? {
+        val tokens = trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return null
+        return tokens.joinToString(separator = " ") { token ->
+            "\"${token.replace("\"", "\"\"")}\""
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.aichat.workbench.feature.provider
 
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.ui.component.StatusTone
 import java.net.URI
 
@@ -20,29 +21,28 @@ internal data class HeaderStatus(
 )
 
 internal fun ProviderType.providerTypeLabel(): String =
-    when (this) {
-        ProviderType.OpenAI -> "OpenAI"
-        ProviderType.OpenAICompatible -> "Compatible"
-    }
+    ProviderRegistry.builtInDescriptor(this)?.displayName ?: value
 
 internal fun providerKeyStatus(
     apiKey: String,
     hasStoredKey: Boolean,
+    requiresApiKey: Boolean = true,
 ): ProviderKeyStatus =
     when {
-        apiKey.isNotBlank() -> ProviderKeyStatus("Key entered", StatusTone.Success)
-        hasStoredKey -> ProviderKeyStatus("Key stored", StatusTone.Success)
-        else -> ProviderKeyStatus("No key", StatusTone.Warning)
+        !requiresApiKey -> ProviderKeyStatus("无需 API Key", StatusTone.Neutral)
+        apiKey.isNotBlank() -> ProviderKeyStatus("已输入 API Key", StatusTone.Success)
+        hasStoredKey -> ProviderKeyStatus("已保存 API Key", StatusTone.Success)
+        else -> ProviderKeyStatus("无 API Key", StatusTone.Warning)
     }
 
 internal fun String.providerUrlStatus(allowHttp: Boolean): ProviderUrlStatus =
     when {
-        isBlank() -> ProviderUrlStatus("URL required", StatusTone.Warning)
+        isBlank() -> ProviderUrlStatus("需要 URL", StatusTone.Warning)
         isValidProviderBaseUrl(allowHttp) && trim().startsWith("http://") ->
-            ProviderUrlStatus("HTTP allowed", StatusTone.Warning)
-        isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("URL valid", StatusTone.Success)
-        trim().startsWith("http://") && !allowHttp -> ProviderUrlStatus("HTTP blocked", StatusTone.Critical)
-        else -> ProviderUrlStatus("URL invalid", StatusTone.Critical)
+            ProviderUrlStatus("已允许 HTTP", StatusTone.Warning)
+        isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("URL 有效", StatusTone.Success)
+        trim().startsWith("http://") && !allowHttp -> ProviderUrlStatus("HTTP 已阻止", StatusTone.Critical)
+        else -> ProviderUrlStatus("URL 无效", StatusTone.Critical)
     }
 
 internal fun String.isValidProviderBaseUrl(allowHttp: Boolean): Boolean {
@@ -59,13 +59,13 @@ internal fun String.headerStatus(): HeaderStatus {
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .toList()
-    if (headerLines.isEmpty()) return HeaderStatus("No headers", StatusTone.Neutral)
+    if (headerLines.isEmpty()) return HeaderStatus("无 Headers", StatusTone.Neutral)
 
     val invalidCount = headerLines.count { !it.isValidHeaderLine() }
     return if (invalidCount == 0) {
-        HeaderStatus("${headerLines.size} headers", StatusTone.Accent)
+        HeaderStatus("${headerLines.size} 个 Headers", StatusTone.Accent)
     } else {
-        HeaderStatus("$invalidCount invalid headers", StatusTone.Critical)
+        HeaderStatus("$invalidCount 个无效 Headers", StatusTone.Critical)
     }
 }
 

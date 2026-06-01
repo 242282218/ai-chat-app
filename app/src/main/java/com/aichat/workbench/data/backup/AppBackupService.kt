@@ -2,6 +2,7 @@ package com.aichat.workbench.data.backup
 
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.data.mapper.messagePartsFromJson
+import com.aichat.workbench.data.mapper.modelCapabilityFromJson
 import com.aichat.workbench.data.mapper.modelConfigsFromJson
 import com.aichat.workbench.data.mapper.modelParametersFromJson
 import com.aichat.workbench.data.mapper.stringListFromJson
@@ -12,6 +13,8 @@ import com.aichat.workbench.data.mapper.toJson
 import com.aichat.workbench.data.mapper.toJsonArrayString
 import com.aichat.workbench.data.mapper.toJsonObjectString
 import com.aichat.workbench.data.mapper.toModelConfigsJson
+import com.aichat.workbench.data.mapper.toToolCallsJson
+import com.aichat.workbench.data.repository.persistableProviderHeaders
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
@@ -34,8 +37,12 @@ import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 
 data class BackupImportSummary(
     val providers: Int,
@@ -65,50 +72,46 @@ class AppBackupService(
                 emptyList()
             }
 
-            JSONObject()
-                .put("version", 1)
-                .put("exportedAt", clock.instant().toString())
-                .put("providers", providers.toProviderJson())
-                .put("prompts", prompts.toPromptJson())
-                .put("modelPreferences", modelPreferences.toModelPreferenceJson())
-                .put("conversations", conversations.toConversationJson())
-                .toString(2)
+            backupJson.encodeToString(
+                BackupJson(
+                    version = 1,
+                    exportedAt = clock.instant().toString(),
+                    providers = providers.map { it.toBackupJson() },
+                    prompts = prompts.map { it.toBackupJson() },
+                    modelPreferences = modelPreferences.map { it.toBackupJson() },
+                    conversations = conversations.toBackupJson(),
+                ),
+            )
         }
 
     suspend fun importJson(value: String): BackupImportSummary =
         withContext(Dispatchers.IO) {
-            val root = JSONObject(value)
-            val providers = root.optJSONArray("providers").orEmpty()
-            val prompts = root.optJSONArray("prompts").orEmpty()
-            val modelPreferences = root.optJSONArray("modelPreferences").orEmpty()
-            val conversations = root.optJSONArray("conversations").orEmpty()
+            val root = backupJson.decodeFromString<BackupJson>(value)
             var messageCount = 0
 
-            for (index in 0 until providers.length()) {
-                providerRepository.saveProvider(providers.getJSONObject(index).toProvider(), plaintextApiKey = null)
+            root.providers.forEach { provider ->
+                providerRepository.saveProvider(provider.toProvider(), plaintextApiKey = null)
             }
-            for (index in 0 until prompts.length()) {
-                database.promptPresetDao().upsertPromptPreset(prompts.getJSONObject(index).toPrompt().toEntity())
+            root.prompts.forEach { prompt ->
+                database.promptPresetDao().upsertPromptPreset(prompt.toPrompt().toEntity())
             }
-            for (index in 0 until modelPreferences.length()) {
-                database.modelPreferenceDao().upsertModelPreference(modelPreferences.getJSONObject(index).toModelPreference().toEntity())
+            root.modelPreferences.forEach { preference ->
+                database.modelPreferenceDao().upsertModelPreference(preference.toModelPreference().toEntity())
             }
-            for (index in 0 until conversations.length()) {
-                val conversationJson = conversations.getJSONObject(index)
+            root.conversations.forEach { conversationJson ->
                 val conversation = conversationJson.toConversation()
                 conversationRepository.saveConversation(conversation)
-                val messages = conversationJson.optJSONArray("messages").orEmpty()
-                for (messageIndex in 0 until messages.length()) {
-                    conversationRepository.saveMessage(messages.getJSONObject(messageIndex).toMessage(conversation.id))
+                conversationJson.messages.forEach { messageJson ->
+                    conversationRepository.saveMessage(messageJson.toMessage(conversation.id))
                     messageCount += 1
                 }
             }
 
             BackupImportSummary(
-                providers = providers.length(),
-                prompts = prompts.length(),
-                modelPreferences = modelPreferences.length(),
-                conversations = conversations.length(),
+                providers = root.providers.size,
+                prompts = root.prompts.size,
+                modelPreferences = root.modelPreferences.size,
+                conversations = root.conversations.size,
                 messages = messageCount,
             )
         }
@@ -142,178 +145,235 @@ class AppBackupService(
         clearChatHistory()
     }
 
-    private fun List<ProviderConfig>.toProviderJson(): JSONArray =
-        JSONArray().also { array ->
-            forEach { provider ->
-                array.put(
-                    JSONObject()
-                        .put("id", provider.id.value)
-                        .put("name", provider.name)
-                        .put("type", provider.type.name)
-                        .put("baseUrl", provider.baseUrl)
-                        .put("headers", JSONObject(provider.headers.toJsonObjectString()))
-                        .put("models", JSONArray(provider.models.toModelConfigsJson()))
-                        .putNullable("defaultModel", provider.defaultModel)
-                        .put("enabled", provider.enabled),
-                )
-            }
-        }
+    private fun ProviderConfig.toBackupJson(): ProviderBackupJson =
+        ProviderBackupJson(
+            id = id.value,
+            name = name,
+            type = type.value,
+            baseUrl = baseUrl,
+            headers = providerJsonElement(headers.persistableProviderHeaders().toJsonObjectString()),
+            models = providerJsonElement(models.toModelConfigsJson()),
+            defaultModel = defaultModel,
+            enabled = enabled,
+        )
 
-    private fun List<PromptPreset>.toPromptJson(): JSONArray =
-        JSONArray().also { array ->
-            forEach { prompt ->
-                array.put(
-                    JSONObject()
-                        .put("id", prompt.id.value)
-                        .put("name", prompt.name)
-                        .putNullable("description", prompt.description)
-                        .put("systemPrompt", prompt.systemPrompt)
-                        .putNullable("defaultModel", prompt.defaultModel)
-                        .put("defaultToolNames", JSONArray(prompt.defaultToolNames.toJsonArrayString()))
-                        .put("createdAt", prompt.createdAt.toString())
-                        .put("updatedAt", prompt.updatedAt.toString()),
-                )
-            }
-        }
+    private fun PromptPreset.toBackupJson(): PromptBackupJson =
+        PromptBackupJson(
+            id = id.value,
+            name = name,
+            description = description,
+            systemPrompt = systemPrompt,
+            defaultModel = defaultModel,
+            defaultToolNames = providerJsonElement(defaultToolNames.toJsonArrayString()),
+            createdAt = createdAt.toString(),
+            updatedAt = updatedAt.toString(),
+        )
 
-    private fun List<ModelPreference>.toModelPreferenceJson(): JSONArray =
-        JSONArray().also { array ->
-            forEach { preference ->
-                array.put(
-                    JSONObject()
-                        .put("id", preference.id.value)
-                        .put("providerId", preference.providerId.value)
-                        .put("model", preference.model)
-                        .put("isFavorite", preference.isFavorite)
-                        .put("isDefault", preference.isDefault)
-                        .putNullable("capability", preference.capability?.let { JSONObject(it.toJson()) })
-                        .put("updatedAt", preference.updatedAt.toString()),
-                )
-            }
-        }
+    private fun ModelPreference.toBackupJson(): ModelPreferenceBackupJson =
+        ModelPreferenceBackupJson(
+            id = id.value,
+            providerId = providerId.value,
+            model = model,
+            isFavorite = isFavorite,
+            isDefault = isDefault,
+            capability = capability?.let { providerJsonElement(it.toJson()) },
+            updatedAt = updatedAt.toString(),
+        )
 
-    private suspend fun List<Conversation>.toConversationJson(): JSONArray {
-        val array = JSONArray()
-        forEach { conversation ->
-            array.put(
-                JSONObject()
-                    .put("id", conversation.id.value)
-                    .put("title", conversation.title)
-                    .put("createdAt", conversation.createdAt.toString())
-                    .put("updatedAt", conversation.updatedAt.toString())
-                    .putNullable("defaultProviderId", conversation.defaultProviderId?.value)
-                    .putNullable("defaultModel", conversation.defaultModel)
-                    .put("modelParameters", JSONObject(conversation.modelParameters.toJson()))
-                    .putNullable("systemPrompt", conversation.systemPrompt)
-                    .put("archivedAt", conversation.archivedAt?.toString())
-                    .put("messages", conversationRepository.getMessages(conversation.id).toMessageJson()),
+    private suspend fun List<Conversation>.toBackupJson(): List<ConversationBackupJson> =
+        map { conversation ->
+            ConversationBackupJson(
+                id = conversation.id.value,
+                title = conversation.title,
+                createdAt = conversation.createdAt.toString(),
+                updatedAt = conversation.updatedAt.toString(),
+                defaultProviderId = conversation.defaultProviderId?.value,
+                defaultModel = conversation.defaultModel,
+                modelParameters = providerJsonElement(conversation.modelParameters.toJson()),
+                systemPrompt = conversation.systemPrompt,
+                archivedAt = conversation.archivedAt?.toString(),
+                messages = conversationRepository.getMessages(conversation.id).map { it.toBackupJson() },
             )
         }
-        return array
-    }
 
-    private fun List<Message>.toMessageJson(): JSONArray =
-        JSONArray().also { array ->
-            forEach { message ->
-                array.put(
-                    JSONObject()
-                        .put("id", message.id.value)
-                        .put("role", message.role.name)
-                        .put("content", message.content)
-                        .put("contentParts", JSONArray(message.contentParts.toJson()))
-                        .putNullable("providerId", message.providerId?.value)
-                        .putNullable("model", message.model)
-                        .put("status", message.status.name)
-                        .putNullable("errorSummary", message.errorSummary)
-                        .put("createdAt", message.createdAt.toString())
-                        .put("updatedAt", message.updatedAt.toString())
-                        .putNullable("toolCallId", message.toolCallId?.value)
-                        .putNullable("parentMessageId", message.parentMessageId?.value),
-                )
-            }
-        }
+    private fun Message.toBackupJson(): MessageBackupJson =
+        MessageBackupJson(
+            id = id.value,
+            role = role.name,
+            content = content,
+            contentParts = providerJsonElement(contentParts.toJson()),
+            providerId = providerId?.value,
+            model = model,
+            status = status.name,
+            errorSummary = errorSummary,
+            createdAt = createdAt.toString(),
+            updatedAt = updatedAt.toString(),
+            toolCallId = toolCallId?.value,
+            parentMessageId = parentMessageId?.value,
+            toolCalls = providerJsonElement(toolCalls.toToolCallsJson()),
+            toolResult = toolResult,
+        )
 
-    private fun JSONObject.toProvider(): ProviderConfig =
+    private fun ProviderBackupJson.toProvider(): ProviderConfig =
         ProviderConfig(
-            id = ProviderId(getString("id")),
-            name = getString("name"),
-            type = ProviderType.valueOf(getString("type")),
-            baseUrl = getString("baseUrl"),
+            id = ProviderId(id),
+            name = name,
+            type = ProviderType.fromStorage(type),
+            baseUrl = baseUrl,
             apiKeyRef = null,
-            headers = stringMapFromJson(optJSONObject("headers")?.toString().orEmpty()),
-            models = modelConfigsFromJson(optJSONArray("models")?.toString().orEmpty()),
-            defaultModel = optNullableString("defaultModel"),
-            enabled = optBoolean("enabled", true),
+            headers = stringMapFromJson(headers.jsonStringOrBlank()),
+            models = modelConfigsFromJson(models.jsonStringOrBlank()),
+            defaultModel = defaultModel,
+            enabled = enabled,
         )
 
-    private fun JSONObject.toPrompt(): PromptPreset =
+    private fun PromptBackupJson.toPrompt(): PromptPreset =
         PromptPreset(
-            id = PromptPresetId(getString("id")),
-            name = getString("name"),
-            description = optNullableString("description"),
-            systemPrompt = getString("systemPrompt"),
-            defaultModel = optNullableString("defaultModel"),
-            defaultToolNames = stringListFromJson(optJSONArray("defaultToolNames")?.toString().orEmpty()),
-            createdAt = optInstant("createdAt"),
-            updatedAt = optInstant("updatedAt"),
+            id = PromptPresetId(id),
+            name = name,
+            description = description,
+            systemPrompt = systemPrompt,
+            defaultModel = defaultModel,
+            defaultToolNames = stringListFromJson(defaultToolNames.jsonStringOrBlank()),
+            createdAt = createdAt.toInstantOrNow(),
+            updatedAt = updatedAt.toInstantOrNow(),
         )
 
-    private fun JSONObject.toModelPreference(): ModelPreference =
+    private fun ModelPreferenceBackupJson.toModelPreference(): ModelPreference =
         ModelPreference(
-            id = ModelPreferenceId(getString("id")),
-            providerId = ProviderId(getString("providerId")),
-            model = getString("model"),
-            isFavorite = optBoolean("isFavorite"),
-            isDefault = optBoolean("isDefault"),
-            capability = optJSONObject("capability")?.let {
-                com.aichat.workbench.data.mapper.modelCapabilityFromJson(it.toString())
-            },
-            updatedAt = optInstant("updatedAt"),
+            id = ModelPreferenceId(id),
+            providerId = ProviderId(providerId),
+            model = model,
+            isFavorite = isFavorite,
+            isDefault = isDefault,
+            capability = capability?.let { modelCapabilityFromJson(it.jsonStringOrBlank()) },
+            updatedAt = updatedAt.toInstantOrNow(),
         )
 
-    private fun JSONObject.toConversation(): Conversation =
+    private fun ConversationBackupJson.toConversation(): Conversation =
         Conversation(
-            id = ConversationId(getString("id")),
-            title = getString("title"),
-            createdAt = optInstant("createdAt"),
-            updatedAt = optInstant("updatedAt"),
-            defaultProviderId = optNullableString("defaultProviderId")?.let(::ProviderId),
-            defaultModel = optNullableString("defaultModel"),
-            modelParameters = modelParametersFromJson(optJSONObject("modelParameters")?.toString().orEmpty()),
-            systemPrompt = optNullableString("systemPrompt"),
+            id = ConversationId(id),
+            title = title,
+            createdAt = createdAt.toInstantOrNow(),
+            updatedAt = updatedAt.toInstantOrNow(),
+            defaultProviderId = defaultProviderId?.let(::ProviderId),
+            defaultModel = defaultModel,
+            modelParameters = modelParametersFromJson(modelParameters.jsonStringOrBlank()),
+            systemPrompt = systemPrompt,
             isTemporary = false,
             isSensitive = false,
-            archivedAt = optNullableString("archivedAt")?.let(Instant::parse),
+            archivedAt = archivedAt?.let(Instant::parse),
         )
 
-    private fun JSONObject.toMessage(conversationId: ConversationId): Message =
+    private fun MessageBackupJson.toMessage(conversationId: ConversationId): Message =
         Message(
-            id = MessageId(getString("id")),
+            id = MessageId(id),
             conversationId = conversationId,
-            role = MessageRole.valueOf(getString("role")),
-            content = getString("content"),
-            contentParts = messagePartsFromJson(optJSONArray("contentParts")?.toString().orEmpty()),
-            providerId = optNullableString("providerId")?.let(::ProviderId),
-            model = optNullableString("model"),
-            status = MessageStatus.valueOf(getString("status")),
-            errorSummary = optNullableString("errorSummary"),
-            createdAt = optInstant("createdAt"),
-            updatedAt = optInstant("updatedAt"),
-            toolCallId = optNullableString("toolCallId")?.let(::ToolCallId),
-            parentMessageId = optNullableString("parentMessageId")?.let(::MessageId),
+            role = MessageRole.valueOf(role),
+            content = content,
+            contentParts = messagePartsFromJson(contentParts.jsonStringOrBlank()),
+            providerId = providerId?.let(::ProviderId),
+            model = model,
+            status = MessageStatus.valueOf(status),
+            errorSummary = errorSummary,
+            createdAt = createdAt.toInstantOrNow(),
+            updatedAt = updatedAt.toInstantOrNow(),
+            toolCallId = toolCallId?.let(::ToolCallId),
+            parentMessageId = parentMessageId?.let(::MessageId),
+            toolCalls = com.aichat.workbench.data.mapper.toolCallsFromJson(toolCalls.jsonStringOrBlank()),
+            toolResult = toolResult,
         )
 
-    private fun JSONObject.optInstant(name: String): Instant =
-        optNullableString(name)?.let(Instant::parse) ?: clock.instant()
+    private fun String?.toInstantOrNow(): Instant =
+        this?.let(Instant::parse) ?: clock.instant()
 
-    private fun JSONArray?.orEmpty(): JSONArray =
-        this ?: JSONArray()
+    private fun providerJsonElement(value: String): JsonElement =
+        backupJson.parseToJsonElement(value)
 
-    private fun JSONObject.putNullable(name: String, value: Any?): JSONObject {
-        put(name, value ?: JSONObject.NULL)
-        return this
-    }
-
-    private fun JSONObject.optNullableString(name: String): String? =
-        if (has(name) && !isNull(name)) getString(name) else null
+    private fun JsonElement?.jsonStringOrBlank(): String =
+        if (this == null || this is JsonNull) "" else toString()
 }
+
+private val backupJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    encodeDefaults = true
+    prettyPrint = true
+}
+
+@Serializable
+private data class BackupJson(
+    val version: Int = 1,
+    val exportedAt: String? = null,
+    val providers: List<ProviderBackupJson> = emptyList(),
+    val prompts: List<PromptBackupJson> = emptyList(),
+    val modelPreferences: List<ModelPreferenceBackupJson> = emptyList(),
+    val conversations: List<ConversationBackupJson> = emptyList(),
+)
+
+@Serializable
+private data class ProviderBackupJson(
+    val id: String,
+    val name: String,
+    val type: String,
+    val baseUrl: String,
+    val headers: JsonElement? = null,
+    val models: JsonElement? = null,
+    val defaultModel: String? = null,
+    val enabled: Boolean = true,
+)
+
+@Serializable
+private data class PromptBackupJson(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val systemPrompt: String,
+    val defaultModel: String? = null,
+    val defaultToolNames: JsonElement? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+private data class ModelPreferenceBackupJson(
+    val id: String,
+    val providerId: String,
+    val model: String,
+    val isFavorite: Boolean = false,
+    val isDefault: Boolean = false,
+    val capability: JsonElement? = null,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+private data class ConversationBackupJson(
+    val id: String,
+    val title: String,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val defaultProviderId: String? = null,
+    val defaultModel: String? = null,
+    val modelParameters: JsonElement? = null,
+    val systemPrompt: String? = null,
+    val archivedAt: String? = null,
+    val messages: List<MessageBackupJson> = emptyList(),
+)
+
+@Serializable
+private data class MessageBackupJson(
+    val id: String,
+    val role: String,
+    val content: String,
+    val contentParts: JsonElement? = null,
+    val providerId: String? = null,
+    val model: String? = null,
+    val status: String,
+    val errorSummary: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val toolCallId: String? = null,
+    val parentMessageId: String? = null,
+    val toolCalls: JsonElement? = null,
+    val toolResult: String? = null,
+)

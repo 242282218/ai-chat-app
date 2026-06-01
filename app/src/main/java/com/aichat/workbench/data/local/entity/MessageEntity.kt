@@ -45,4 +45,8 @@ data class MessageEntity(
     val toolCallId: String?,
     @ColumnInfo(name = "parent_message_id")
     val parentMessageId: String?,
+    @ColumnInfo(name = "tool_calls")
+    val toolCallsJson: String,
+    @ColumnInfo(name = "tool_result")
+    val toolResult: String?,
 )

@@ -40,9 +40,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
+import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.usecase.SavePromptPresetUseCase
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.SectionHeader
@@ -50,8 +50,10 @@ import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchPanel
+import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +61,8 @@ fun PromptPresetScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val repository = remember { AppGraph.promptPresetRepository }
+    val repository = koinInject<PromptPresetRepository>()
+    val clock = koinInject<Clock>()
     val savePromptPreset = remember(repository) { SavePromptPresetUseCase(repository) }
     val presets by repository.observePromptPresets().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
@@ -113,18 +116,18 @@ fun PromptPresetScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Prompts") },
+                title = { Text(text = "Prompt 预设") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "返回",
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { requestResetForm() }) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = "New prompt")
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = "新建 Prompt")
                     }
                 },
             )
@@ -154,7 +157,7 @@ fun PromptPresetScreen(
                     canSave = name.isNotBlank() && systemPrompt.isNotBlank(),
                     canClear = hasPromptDraft,
                     onSave = {
-                        val now = AppGraph.clock.instant()
+                        val now = clock.instant()
                         val existing = editingId?.let { id ->
                             presets.firstOrNull { it.id.value == id }
                         }
@@ -174,9 +177,9 @@ fun PromptPresetScreen(
                                 savePromptPreset(preset)
                             }.onSuccess {
                                 resetForm()
-                                message = "Saved"
+                                message = "已保存"
                             }.onFailure { error ->
-                                message = error.message ?: "Save failed"
+                                message = error.message ?: "保存失败"
                             }
                         }
                     },
@@ -186,19 +189,19 @@ fun PromptPresetScreen(
 
             item {
                 SectionHeader(
-                    title = "Saved prompts",
-                    description = "Reusable local instructions for fast task switching.",
+                    title = "已保存的 Prompt",
+                    description = "用于快速切换任务的本地复用指令。",
                 )
             }
 
             if (presets.isEmpty()) {
                 item {
                     WorkbenchPanel(
-                        title = "No prompt presets",
-                        description = "Create one to pin a system prompt, model, and tool set.",
+                        title = "暂无 Prompt 预设",
+                        description = "创建后可固定 system prompt、Model 和 Tool 组合。",
                         icon = Icons.Filled.AutoAwesome,
                     ) {
-                        StatusPill(text = "Local", tone = StatusTone.Success)
+                        StatusPill(text = "本地", tone = StatusTone.Success)
                     }
                 }
             } else {
@@ -215,9 +218,9 @@ fun PromptPresetScreen(
 
     pendingDeletePreset?.let { preset ->
         WorkbenchConfirmDialog(
-            title = "Delete prompt?",
-            message = "This removes \"${preset.name}\" from local prompt presets.",
-            confirmLabel = "Delete",
+            title = "删除 Prompt？",
+            message = "这会从本地 Prompt 预设中删除「${preset.name}」。",
+            confirmLabel = "删除",
             onConfirm = {
                 pendingDeletePreset = null
                 scope.launch {
@@ -231,9 +234,9 @@ fun PromptPresetScreen(
 
     if (pendingClearDraft) {
         WorkbenchConfirmDialog(
-            title = "Clear prompt draft?",
-            message = "Discard the current form values and return to a new prompt draft.",
-            confirmLabel = "Clear",
+            title = "清空 Prompt 草稿？",
+            message = "丢弃当前表单内容并回到新 Prompt 草稿。",
+            confirmLabel = "清空",
             onConfirm = {
                 pendingClearDraft = false
                 resetForm()
@@ -265,13 +268,13 @@ private fun PromptPresetForm(
     modifier: Modifier = Modifier,
 ) {
     WorkbenchPanel(
-        title = if (editing) "Edit prompt" else "New prompt",
-        description = "Keep repeated instructions local and apply them from chat.",
+        title = if (editing) "编辑 Prompt" else "新建 Prompt",
+        description = "重复使用的指令保存在本地，可在聊天中应用。",
         icon = Icons.Filled.AutoAwesome,
         modifier = modifier,
         trailing = {
             StatusPill(
-                text = if (editing) "Editing" else "Draft",
+                text = if (editing) "编辑中" else "草稿",
                 tone = if (editing) StatusTone.Accent else StatusTone.Neutral,
             )
         },
@@ -286,14 +289,14 @@ private fun PromptPresetForm(
             value = name,
             onValueChange = onNameChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Name") },
+            label = { Text(text = "名称") },
             singleLine = true,
         )
         OutlinedTextField(
             value = description,
             onValueChange = onDescriptionChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Description") },
+            label = { Text(text = "描述") },
             singleLine = true,
         )
         OutlinedTextField(
@@ -308,14 +311,14 @@ private fun PromptPresetForm(
             value = defaultModel,
             onValueChange = onDefaultModelChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Default model") },
+            label = { Text(text = "默认 Model") },
             singleLine = true,
         )
         OutlinedTextField(
             value = defaultTools,
             onValueChange = onDefaultToolsChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Default tools") },
+            label = { Text(text = "默认 Tools") },
             singleLine = true,
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -326,20 +329,20 @@ private fun PromptPresetForm(
             ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Save")
+                Text(text = "保存")
             }
             OutlinedButton(
                 onClick = onClear,
                 enabled = canClear,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Clear draft")
+                Text(text = "清空草稿")
             }
         }
         message?.let {
             PromptFormFeedback(
                 message = it,
-                success = it == "Saved",
+                success = it == "已保存",
             )
         }
     }
@@ -355,25 +358,25 @@ private fun PromptFormSummary(
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (name.isBlank()) "Name required" else "Named",
+                text = if (name.isBlank()) "需要名称" else "已命名",
                 tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
         item {
             StatusPill(
-                text = if (systemPrompt.isBlank()) "System required" else "System ready",
+                text = if (systemPrompt.isBlank()) "需要 System" else "System 就绪",
                 tone = if (systemPrompt.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
         item {
             StatusPill(
-                text = defaultModel.ifBlank { "No model" },
+                text = defaultModel.ifBlank { "无 Model" },
                 tone = StatusTone.Neutral,
             )
         }
         item {
             StatusPill(
-                text = "${parseToolNames(defaultTools).size} tools",
+                text = "${parseToolNames(defaultTools).size} 个 Tools",
                 tone = if (defaultTools.isBlank()) StatusTone.Neutral else StatusTone.Accent,
             )
         }
@@ -387,7 +390,7 @@ private fun PromptFormFeedback(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         StatusPill(
-            text = if (success) "Saved" else "Save failed",
+            text = if (success) "已保存" else "保存失败",
             tone = if (success) StatusTone.Success else StatusTone.Critical,
         )
         Text(
@@ -413,7 +416,7 @@ private fun PromptPresetRow(
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete prompt ${preset.name}",
+                    contentDescription = "删除 Prompt ${preset.name}",
                     tint = MaterialTheme.colorScheme.error,
                 )
             }
@@ -428,23 +431,23 @@ private fun PromptPresetRow(
 private fun PromptPresetSummary(preset: PromptPreset) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            StatusPill(text = preset.defaultModel ?: "No model", tone = StatusTone.Neutral)
+            StatusPill(text = preset.defaultModel ?: "无 Model", tone = StatusTone.Neutral)
         }
         item {
             StatusPill(
-                text = if (preset.defaultToolNames.isEmpty()) "No tools" else "${preset.defaultToolNames.size} tools",
+                text = if (preset.defaultToolNames.isEmpty()) "无 Tools" else "${preset.defaultToolNames.size} 个 Tools",
                 tone = if (preset.defaultToolNames.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
             )
         }
         item {
             StatusPill(
-                text = "${preset.systemPrompt.length} chars",
+                text = "${preset.systemPrompt.length} 字符",
                 tone = StatusTone.Success,
             )
         }
         item {
             StatusPill(
-                text = if (preset.description == null) "No description" else "Described",
+                text = if (preset.description == null) "无描述" else "已描述",
                 tone = if (preset.description == null) StatusTone.Neutral else StatusTone.Success,
             )
         }

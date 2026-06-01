@@ -58,14 +58,43 @@ class ProviderConnectionTesterTest {
 
         assertFalse(result.ok)
         assertEquals(401, result.statusCode)
-        assertEquals("Provider returned HTTP 401", result.message)
+        assertEquals("Provider 返回 HTTP 401", result.message)
     }
 
-    private fun provider(): ProviderConfig =
+    @Test
+    fun test_returnsMissingApiKeyWhenDescriptorRequiresOne() = runTest {
+        val tester = ProviderConnectionTester()
+
+        val result = tester.test(provider(), null)
+
+        assertFalse(result.ok)
+        assertEquals(null, result.statusCode)
+        assertEquals("API Key 缺失。", result.message)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun test_usesOllamaTagsWithoutApiKey() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"models":[]}"""),
+        )
+        val tester = ProviderConnectionTester()
+
+        val result = tester.test(provider(type = ProviderType.Ollama), null)
+        val recorded = server.takeRequest()
+
+        assertTrue(result.ok)
+        assertEquals("/api/tags", recorded.path)
+        assertEquals(null, recorded.getHeader("Authorization"))
+    }
+
+    private fun provider(type: ProviderType = ProviderType.OpenAICompatible): ProviderConfig =
         ProviderConfig(
             id = ProviderId("provider-1"),
             name = "OpenAI compatible",
-            type = ProviderType.OpenAICompatible,
+            type = type,
             baseUrl = server.url("/v1").toString().trimEnd('/'),
             apiKeyRef = null,
             headers = emptyMap(),

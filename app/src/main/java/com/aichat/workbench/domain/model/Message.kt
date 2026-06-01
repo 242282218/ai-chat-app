@@ -16,6 +16,14 @@ data class Message(
     val updatedAt: Instant,
     val toolCallId: ToolCallId?,
     val parentMessageId: MessageId?,
+    val toolCalls: List<ToolCall> = emptyList(),
+    val toolResult: String? = null,
+)
+
+data class ToolCall(
+    val id: ToolCallId,
+    val name: String,
+    val arguments: String,
 )
 
 enum class MessageRole {
@@ -30,6 +38,7 @@ enum class MessageStatus {
     Pending,
     Streaming,
     Completed,
+    Compressed,
     Failed,
     Cancelled,
 }

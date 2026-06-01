@@ -1,15 +1,21 @@
 package com.aichat.workbench.provider.openai
 
 import com.aichat.workbench.domain.model.MessageRole
+import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ModelParameters
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.model.ToolCall
+import com.aichat.workbench.domain.model.ToolCallId
+import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.compatible.OpenAiCompatibleChatProvider
+import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolSource
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -111,6 +117,93 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun stream_aggregatesChatCompletionsToolCallDeltas() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"AI"}}]},"finish_reason":null}]}
+
+                    data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":" news\"}"}}]},"finish_reason":null}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider()
+        val tool = ToolDescriptor(
+            name = "web_search",
+            displayName = "Web search",
+            description = "Search the web.",
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSchemaJson = """{"type":"object","properties":{"query":{"type":"string"}}}""",
+            outputSchemaJson = null,
+            timeoutSeconds = null,
+            source = ToolSource.Gateway,
+        )
+
+        val events = provider.stream(openAiRequest(tools = listOf(tool))).toList()
+        val recorded = server.takeRequest()
+
+        assertEquals("/v1/chat/completions", recorded.path)
+        assertTrue(recorded.body.readUtf8().contains(""""tools""""))
+        assertEquals(
+            listOf(
+                ProviderStreamEvent.ToolCallDelta(
+                    ToolCall(
+                        id = ToolCallId("call_1"),
+                        name = "web_search",
+                        arguments = """{"query":"AI news"}""",
+                    ),
+                ),
+                ProviderStreamEvent.Completed,
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun stream_withImageInputUsesChatCompletionsContentArray() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"delta":{"content":"Seen"},"finish_reason":null}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider()
+        val image = MessagePart.Image("data:image/jpeg;base64,abc", "image/jpeg")
+
+        val events = provider.stream(
+            openAiRequest(
+                messages = listOf(
+                    ProviderChatMessage(
+                        role = MessageRole.User,
+                        content = "Describe",
+                        contentParts = listOf(MessagePart.Text("Describe"), image),
+                    ),
+                ),
+            ),
+        ).toList()
+        val recorded = server.takeRequest()
+        val body = recorded.body.readUtf8()
+
+        assertEquals("/v1/chat/completions", recorded.path)
+        assertTrue(body.contains(""""type":"image_url""""))
+        assertTrue(body.contains(""""url":"data:image/jpeg;base64,abc""""))
+        assertEquals(listOf(ProviderStreamEvent.TextDelta("Seen"), ProviderStreamEvent.Completed), events)
+    }
+
+    @Test
     fun complete_mapsProviderErrors() = runTest {
         server.enqueue(
             MockResponse()
@@ -129,7 +222,11 @@ class OpenAiChatProviderTest {
         assertEquals(401, error.error.statusCode)
     }
 
-    private fun openAiRequest(type: ProviderType = ProviderType.OpenAI): ChatProviderRequest =
+    private fun openAiRequest(
+        type: ProviderType = ProviderType.OpenAI,
+        tools: List<ToolDescriptor> = emptyList(),
+        messages: List<ProviderChatMessage> = listOf(ProviderChatMessage(MessageRole.User, "Hello")),
+    ): ChatProviderRequest =
         ChatProviderRequest(
             provider = ProviderConfig(
                 id = ProviderId("provider-1"),
@@ -145,7 +242,8 @@ class OpenAiChatProviderTest {
             apiKey = "test-key",
             model = "gpt-test",
             systemPrompt = "Be concise.",
-            messages = listOf(ProviderChatMessage(MessageRole.User, "Hello")),
+            messages = messages,
             parameters = ModelParameters(temperature = 0.2, topP = 0.9, maxTokens = 64),
+            tools = tools,
         )
 }

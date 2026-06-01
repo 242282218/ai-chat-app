@@ -4,6 +4,12 @@ import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+
+data class MessageSearchResult(
+    val conversation: Conversation,
+    val message: Message,
+)
 
 interface ConversationRepository {
     fun observeConversations(includeArchived: Boolean = false): Flow<List<Conversation>>
@@ -25,4 +31,7 @@ interface ConversationRepository {
     suspend fun saveMessage(message: Message)
 
     suspend fun deleteMessages(conversationId: ConversationId)
+
+    fun searchMessages(query: String, limit: Int = 50): Flow<List<MessageSearchResult>> =
+        flowOf(emptyList())
 }

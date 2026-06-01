@@ -7,11 +7,19 @@ import (
 	"strings"
 	"time"
 
+	"example.com/ai-chat-app/gateway/internal/config"
 	"example.com/ai-chat-app/gateway/internal/sandbox"
 	"example.com/ai-chat-app/gateway/internal/search"
 )
 
 const serviceName = "ai-chat-gateway"
+const bearerPrefix = "Bearer "
+
+type Options struct {
+	APIToken            string
+	MaxRequestBodyBytes int64
+	MaxSandboxCodeBytes int
+}
 
 type HealthResponse struct {
 	Status  string `json:"status"`
@@ -53,15 +61,27 @@ type GatewayError struct {
 }
 
 func NewMux(version string) http.Handler {
-	return NewMuxWithSandboxRunner(version, sandbox.NewDockerRunner())
+	return NewMuxWithDependencies(version, sandbox.NewDockerRunner(), search.MockAdapter{}, Options{})
 }
 
 func NewMuxWithSandboxRunner(version string, sandboxRunner sandbox.Runner) http.Handler {
+	return NewMuxWithDependencies(version, sandboxRunner, search.MockAdapter{}, Options{})
+}
+
+func OptionsFromConfig(cfg config.Config) Options {
+	return Options{
+		APIToken:            cfg.APIToken,
+		MaxRequestBodyBytes: cfg.MaxRequestBodyBytes,
+		MaxSandboxCodeBytes: cfg.MaxSandboxCodeBytes,
+	}
+}
+
+func NewMuxWithDependencies(version string, sandboxRunner sandbox.Runner, searchAdapter search.Adapter, options Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(version))
 	mux.HandleFunc("GET /v1/tools/manifest", toolManifestHandler())
-	mux.HandleFunc("POST /v1/search", searchHandler(search.MockAdapter{}))
-	mux.HandleFunc("POST /v1/sandbox/run", sandboxRunHandler(sandboxRunner))
+	mux.Handle("POST /v1/search", protectedHandler(searchHandler(searchAdapter), options))
+	mux.Handle("POST /v1/sandbox/run", protectedHandler(sandboxRunHandler(sandboxRunner, options), options))
 	return mux
 }
 
@@ -84,7 +104,7 @@ func toolManifestHandler() http.HandlerFunc {
 			Tools: []ToolDefinition{
 				{
 					Name:            "web_search",
-					Description:     "Search web or news sources through the configured gateway search adapter.",
+					Description:     "通过已配置的 Gateway search adapter 搜索网页或新闻来源。",
 					PermissionLevel: "Network",
 					InputSchema: map[string]any{
 						"type":     "object",
@@ -100,7 +120,7 @@ func toolManifestHandler() http.HandlerFunc {
 				},
 				{
 					Name:            "code_sandbox",
-					Description:     "Run short code snippets in the remote sandbox when enabled.",
+					Description:     "启用后在远端 Sandbox 运行短代码片段。",
 					PermissionLevel: "Execute",
 					InputSchema: map[string]any{
 						"type":     "object",
@@ -124,39 +144,49 @@ func toolManifestHandler() http.HandlerFunc {
 func searchHandler(adapter search.Adapter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request SearchRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			writeGatewayError(w, http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", r.Header.Get("X-Request-Id"))
+		if err := decodeJSON(w, r, &request); err != nil {
+			if errors.Is(err, http.ErrBodyReadAfterClose) {
+				return
+			}
+			writeGatewayError(w, http.StatusBadRequest, "invalid_request", "请求 body 必须是有效 JSON。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		request.Query = strings.TrimSpace(request.Query)
 		if request.Query == "" {
-			writeGatewayError(w, http.StatusBadRequest, "invalid_query", "Search query must not be blank.", r.Header.Get("X-Request-Id"))
+			writeGatewayError(w, http.StatusBadRequest, "invalid_query", "Search query 不能为空。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		response, err := adapter.Search(r.Context(), request.Query)
 		if err != nil {
-			writeGatewayError(w, http.StatusServiceUnavailable, "search_unavailable", "Search adapter is unavailable.", r.Header.Get("X-Request-Id"))
+			writeGatewayError(w, http.StatusServiceUnavailable, "search_unavailable", "Search adapter 不可用。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
 }
 
-func sandboxRunHandler(runner sandbox.Runner) http.HandlerFunc {
+func sandboxRunHandler(runner sandbox.Runner, options Options) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request SandboxRunRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			writeGatewayError(w, http.StatusBadRequest, "invalid_request", "Request body must be valid JSON.", r.Header.Get("X-Request-Id"))
+		if err := decodeJSON(w, r, &request); err != nil {
+			if errors.Is(err, http.ErrBodyReadAfterClose) {
+				return
+			}
+			writeGatewayError(w, http.StatusBadRequest, "invalid_request", "请求 body 必须是有效 JSON。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		request.Language = strings.TrimSpace(strings.ToLower(request.Language))
 		request.Code = strings.TrimSpace(request.Code)
 		if request.Language != "python" {
-			writeGatewayError(w, http.StatusBadRequest, "unsupported_language", "Only python sandbox runs are supported.", r.Header.Get("X-Request-Id"))
+			writeGatewayError(w, http.StatusBadRequest, "unsupported_language", "仅支持 python sandbox 运行。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		if request.Code == "" {
-			writeGatewayError(w, http.StatusBadRequest, "invalid_code", "Sandbox code must not be blank.", r.Header.Get("X-Request-Id"))
+			writeGatewayError(w, http.StatusBadRequest, "invalid_code", "Sandbox code 不能为空。", r.Header.Get("X-Request-Id"))
+			return
+		}
+		if options.MaxSandboxCodeBytes > 0 && len([]byte(request.Code)) > options.MaxSandboxCodeBytes {
+			writeGatewayError(w, http.StatusRequestEntityTooLarge, "code_too_large", "Sandbox code 超出大小限制。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		timeout := time.Duration(request.TimeoutSeconds) * time.Second
@@ -167,14 +197,51 @@ func sandboxRunHandler(runner sandbox.Runner) http.HandlerFunc {
 		})
 		if err != nil {
 			if errors.Is(err, sandbox.ErrUnavailable) {
-				writeGatewayError(w, http.StatusServiceUnavailable, "sandbox_unavailable", "Sandbox runner is unavailable.", r.Header.Get("X-Request-Id"))
+				writeGatewayError(w, http.StatusServiceUnavailable, "sandbox_unavailable", "Sandbox runner 不可用。", r.Header.Get("X-Request-Id"))
 				return
 			}
-			writeGatewayError(w, http.StatusServiceUnavailable, "sandbox_failed", "Sandbox runner failed.", r.Header.Get("X-Request-Id"))
+			writeGatewayError(w, http.StatusServiceUnavailable, "sandbox_failed", "Sandbox runner 执行失败。", r.Header.Get("X-Request-Id"))
 			return
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
+}
+
+func protectedHandler(next http.HandlerFunc, options Options) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-Id")
+		if strings.TrimSpace(options.APIToken) == "" {
+			writeGatewayError(w, http.StatusServiceUnavailable, "gateway_token_required", "Gateway API token 未配置。", requestID)
+			return
+		}
+		if !hasValidToken(r.Header.Get("Authorization"), options.APIToken) {
+			writeGatewayError(w, http.StatusUnauthorized, "unauthorized", "Gateway API token 无效。", requestID)
+			return
+		}
+		if options.MaxRequestBodyBytes > 0 {
+			r.Body = http.MaxBytesReader(w, r.Body, options.MaxRequestBodyBytes)
+		}
+		next(w, r)
+	})
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
+	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request_too_large", "请求 body 超出大小限制。", r.Header.Get("X-Request-Id"))
+			return http.ErrBodyReadAfterClose
+		}
+		return err
+	}
+	return nil
+}
+
+func hasValidToken(header string, token string) bool {
+	if !strings.HasPrefix(header, bearerPrefix) {
+		return false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(header, bearerPrefix)) == token
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

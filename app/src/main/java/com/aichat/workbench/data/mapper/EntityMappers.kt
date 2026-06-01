@@ -70,6 +70,8 @@ fun Message.toEntity(): MessageEntity =
         updatedAt = updatedAt.toEpochMilli(),
         toolCallId = toolCallId?.value,
         parentMessageId = parentMessageId?.value,
+        toolCallsJson = toolCalls.toToolCallsJson(),
+        toolResult = toolResult,
     )
 
 fun MessageEntity.toDomain(): Message =
@@ -87,6 +89,8 @@ fun MessageEntity.toDomain(): Message =
         updatedAt = Instant.ofEpochMilli(updatedAt),
         toolCallId = toolCallId?.let(::ToolCallId),
         parentMessageId = parentMessageId?.let(::MessageId),
+        toolCalls = toolCallsFromJson(toolCallsJson),
+        toolResult = toolResult,
     )
 
 fun PromptPreset.toEntity(): PromptPresetEntity =
@@ -140,7 +144,7 @@ fun ProviderConfig.toEntity(createdAt: Instant, updatedAt: Instant): ProviderCon
     ProviderConfigEntity(
         id = id.value,
         name = name,
-        type = type.name,
+        type = type.value,
         baseUrl = baseUrl,
         apiKeyRef = apiKeyRef,
         headersJson = headers.toJsonObjectString(),
@@ -155,7 +159,7 @@ fun ProviderConfigEntity.toDomain(): ProviderConfig =
     ProviderConfig(
         id = ProviderId(id),
         name = name,
-        type = ProviderType.valueOf(type),
+        type = ProviderType.fromStorage(type),
         baseUrl = baseUrl,
         apiKeyRef = apiKeyRef,
         headers = stringMapFromJson(headersJson),

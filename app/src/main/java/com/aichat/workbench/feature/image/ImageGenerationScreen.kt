@@ -56,7 +56,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.ui.component.MetadataRow
@@ -66,6 +65,7 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.io.File
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,7 +73,7 @@ fun ImageGenerationScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: ImageGenerationViewModel = viewModel(factory = ImageGenerationViewModel.Factory),
+    viewModel: ImageGenerationViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -83,12 +83,12 @@ fun ImageGenerationScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Images") },
+                title = { Text(text = "图片") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "返回",
                         )
                     }
                 },
@@ -97,7 +97,7 @@ fun ImageGenerationScreen(
                         onClick = { confirmClearHistory = true },
                         enabled = state.generations.isNotEmpty() && !state.isGenerating,
                     ) {
-                        Icon(imageVector = Icons.Filled.ClearAll, contentDescription = "Clear history")
+                        Icon(imageVector = Icons.Filled.ClearAll, contentDescription = "清空历史")
                     }
                 },
             )
@@ -119,18 +119,18 @@ fun ImageGenerationScreen(
             }
             item {
                 SectionHeader(
-                    title = "History",
-                    description = "Generated images are listed from local thumbnail files.",
+                    title = "历史",
+                    description = "生成图片按本地缩略图文件展示。",
                 )
             }
             if (state.generations.isEmpty()) {
                 item {
                     WorkbenchPanel(
-                        title = "No image history",
-                        description = "Completed generations will appear here with reuse, save, and share actions.",
+                        title = "暂无图片历史",
+                        description = "完成后的生成记录会在这里显示，并提供复用、保存和分享操作。",
                         icon = Icons.Filled.Image,
                     ) {
-                        StatusPill(text = "Local thumbnails", tone = StatusTone.Success)
+                        StatusPill(text = "本地缩略图", tone = StatusTone.Success)
                     }
                 }
             } else {
@@ -149,9 +149,9 @@ fun ImageGenerationScreen(
 
     if (confirmClearHistory) {
         WorkbenchConfirmDialog(
-            title = "Clear image history?",
-            message = "This removes ${state.generations.size} local image generation records and their stored files.",
-            confirmLabel = "Clear",
+            title = "清空图片历史？",
+            message = "这会删除 ${state.generations.size} 条本地图片生成记录及其文件。",
+            confirmLabel = "清空",
             onConfirm = {
                 confirmClearHistory = false
                 viewModel.clearHistory()
@@ -168,12 +168,12 @@ private fun ImageGenerationForm(
     viewModel: ImageGenerationViewModel,
 ) {
     WorkbenchPanel(
-        title = "Image generation",
-        description = "Create image requests directly through a configured provider.",
+        title = "图片生成",
+        description = "通过已配置的 Provider 直接创建图片请求。",
         icon = Icons.Filled.Image,
         trailing = {
             StatusPill(
-                text = if (state.isGenerating) "Generating" else "Ready",
+                text = if (state.isGenerating) "生成中" else "就绪",
                 tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Success,
             )
         },
@@ -185,12 +185,12 @@ private fun ImageGenerationForm(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "No enabled provider",
+                        text = "没有启用的 Provider",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Configure a provider before generating images.",
+                        text = "生成图片前请先配置 Provider。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -199,7 +199,7 @@ private fun ImageGenerationForm(
                     onClick = onOpenProviders,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(text = "Configure provider")
+                    Text(text = "配置 Provider")
                 }
             }
         } else {
@@ -247,29 +247,29 @@ private fun ImageGenerationForm(
                 value = state.size,
                 onValueChange = viewModel::updateSize,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Size") },
+                label = { Text(text = "尺寸") },
                 singleLine = true,
             )
             OutlinedTextField(
                 value = state.quality,
                 onValueChange = viewModel::updateQuality,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Quality") },
+                label = { Text(text = "质量") },
                 singleLine = true,
             )
             OutlinedTextField(
                 value = state.count,
                 onValueChange = viewModel::updateCount,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Count") },
+                label = { Text(text = "数量") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
             )
         }
         if (state.selectedModelUnsupported) {
             ImageFormFeedback(
-                label = "Model support",
-                message = "Selected model does not advertise image generation support.",
+                label = "Model 支持",
+                message = "所选 Model 未声明支持图片生成。",
                 tone = StatusTone.Warning,
             )
         }
@@ -280,11 +280,11 @@ private fun ImageGenerationForm(
         ) {
             Icon(imageVector = Icons.Filled.Image, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = if (state.isGenerating) "Generating" else "Generate")
+            Text(text = if (state.isGenerating) "生成中" else "生成")
         }
         state.error?.let {
             ImageFormFeedback(
-                label = "Generation error",
+                label = "生成错误",
                 message = it,
                 tone = StatusTone.Critical,
             )
@@ -297,13 +297,13 @@ private fun ImageFormSummary(state: ImageGenerationUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.selectedProvider != null) "Provider ready" else "Provider needed",
+                text = if (state.selectedProvider != null) "Provider 就绪" else "需要 Provider",
                 tone = if (state.selectedProvider != null) StatusTone.Success else StatusTone.Warning,
             )
         }
         item {
             StatusPill(
-                text = if (state.prompt.isBlank()) "Prompt required" else "Prompt ready",
+                text = if (state.prompt.isBlank()) "需要 Prompt" else "Prompt 就绪",
                 tone = if (state.prompt.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
@@ -352,7 +352,7 @@ private fun ImageGenerationRow(
         icon = Icons.Filled.Image,
         trailing = {
             StatusPill(
-                text = generation.status.name,
+                text = generation.status.displayLabel(),
                 tone = generation.statusTone(),
             )
         },
@@ -373,7 +373,7 @@ private fun ImageGenerationRow(
                 onClick = onReusePrompt,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Reuse prompt")
+                Text(text = "复用 Prompt")
             }
             OutlinedButton(
                 onClick = onRegenerate,
@@ -382,7 +382,7 @@ private fun ImageGenerationRow(
             ) {
                 Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Regenerate")
+                Text(text = "重新生成")
             }
             OutlinedButton(
                 onClick = onShare,
@@ -392,7 +392,7 @@ private fun ImageGenerationRow(
             ) {
                 Icon(imageVector = Icons.Filled.Share, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Share")
+                Text(text = "分享")
             }
             OutlinedButton(
                 onClick = onSave,
@@ -402,7 +402,7 @@ private fun ImageGenerationRow(
             ) {
                 Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Save")
+                Text(text = "保存")
             }
         }
     }
@@ -413,13 +413,20 @@ private fun imageGenerationMetadata(generation: ImageGeneration): String =
         generation.model,
         generation.size,
         generation.quality,
-    ).joinToString(" / ").ifBlank { "No model metadata" }
+    ).joinToString(" / ").ifBlank { "无 Model 元数据" }
 
 private fun ImageGeneration.statusTone(): StatusTone =
     when (status) {
         ImageGenerationStatus.Completed -> StatusTone.Success
         ImageGenerationStatus.Failed -> StatusTone.Critical
         ImageGenerationStatus.Pending -> StatusTone.Accent
+    }
+
+private fun ImageGenerationStatus.displayLabel(): String =
+    when (this) {
+        ImageGenerationStatus.Pending -> "等待中"
+        ImageGenerationStatus.Completed -> "完成"
+        ImageGenerationStatus.Failed -> "失败"
     }
 
 private fun ImageGenerationUiState.canGenerateImages(): Boolean {
@@ -439,10 +446,10 @@ private fun ImageGenerationUiState.imageCountOrNull(): Int? =
 private fun ImageGenerationUiState.imageCountLabel(): String {
     val parsedCount = imageCountOrNull()
     return when {
-        count.isBlank() -> "Count required"
-        parsedCount == null -> "Count invalid"
-        parsedCount in 1..4 -> "$parsedCount image${if (parsedCount == 1) "" else "s"}"
-        else -> "Count 1-4"
+        count.isBlank() -> "需要数量"
+        parsedCount == null -> "数量无效"
+        parsedCount in 1..4 -> "${parsedCount} 张图片"
+        else -> "数量 1-4"
     }
 }
 
@@ -457,9 +464,9 @@ private fun ImageGenerationUiState.imageCountTone(): StatusTone {
 
 private fun ImageGenerationUiState.imageModelLabel(): String =
     when {
-        model.isBlank() -> "Model required"
-        selectedModelUnsupported -> "Model unsupported"
-        else -> "Model ready"
+        model.isBlank() -> "需要 Model"
+        selectedModelUnsupported -> "Model 不支持"
+        else -> "Model 就绪"
     }
 
 private fun ImageGenerationUiState.imageModelTone(): StatusTone =
@@ -476,7 +483,7 @@ private fun LocalThumbnail(path: String) {
     }
     if (bitmap == null) {
         Text(
-            text = "Thumbnail unavailable",
+            text = "缩略图不可用",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -490,7 +497,7 @@ private fun LocalThumbnail(path: String) {
     ) {
         Image(
             bitmap = bitmap,
-            contentDescription = "Generated image preview",
+            contentDescription = "生成图片预览",
             modifier = Modifier.fillMaxWidth(),
             contentScale = ContentScale.Crop,
         )
@@ -528,7 +535,7 @@ private fun shareImage(context: Context, path: String) {
         .setType("image/png")
         .putExtra(Intent.EXTRA_STREAM, uri)
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(intent, "Share image"))
+    context.startActivity(Intent.createChooser(intent, "分享图片"))
 }
 
 private fun String.preview(maxLength: Int): String {

@@ -25,6 +25,6 @@ class ConversationTitlesTest {
 
     @Test
     fun previewFallsBackForBlankText() {
-        assertEquals("New chat", conversationTitlePreview("   "))
+        assertEquals("新对话", conversationTitlePreview("   "))
     }
 }

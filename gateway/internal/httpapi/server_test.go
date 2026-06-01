@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"example.com/ai-chat-app/gateway/internal/sandbox"
+	"example.com/ai-chat-app/gateway/internal/search"
 )
 
 func TestHealth(t *testing.T) {
@@ -77,10 +78,10 @@ func TestToolManifest(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-	server := httptest.NewServer(NewMux("test"))
+	server := httptest.NewServer(newAuthenticatedTestMux())
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/search", "application/json", bytes.NewBufferString(`{"query":"AI news"}`))
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, testToken)
 	if err != nil {
 		t.Fatalf("post search: %v", err)
 	}
@@ -114,10 +115,10 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearchRejectsBlankQuery(t *testing.T) {
-	server := httptest.NewServer(NewMux("test"))
+	server := httptest.NewServer(newAuthenticatedTestMux())
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/search", "application/json", bytes.NewBufferString(`{"query":" "}`))
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":" "}`, testToken)
 	if err != nil {
 		t.Fatalf("post search: %v", err)
 	}
@@ -148,10 +149,10 @@ func TestSandboxRunReturnsStdout(t *testing.T) {
 			Truncated:  false,
 		},
 	}
-	server := httptest.NewServer(NewMuxWithSandboxRunner("test", runner))
+	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/sandbox/run", "application/json", bytes.NewBufferString(`{"language":"python","code":"print(1 + 1)"}`))
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"python","code":"print(1 + 1)"}`, testToken)
 	if err != nil {
 		t.Fatalf("post sandbox: %v", err)
 	}
@@ -185,10 +186,10 @@ func TestSandboxRunReturnsSyntaxErrorResult(t *testing.T) {
 			Truncated:  false,
 		},
 	}
-	server := httptest.NewServer(NewMuxWithSandboxRunner("test", runner))
+	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/sandbox/run", "application/json", bytes.NewBufferString(`{"language":"python","code":"if"}`))
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"python","code":"if"}`, testToken)
 	if err != nil {
 		t.Fatalf("post sandbox: %v", err)
 	}
@@ -222,10 +223,10 @@ func TestSandboxRunReturnsTimeoutResult(t *testing.T) {
 			Truncated:  false,
 		},
 	}
-	server := httptest.NewServer(NewMuxWithSandboxRunner("test", runner))
+	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/sandbox/run", "application/json", bytes.NewBufferString(`{"language":"python","code":"while True: pass","timeoutSeconds":1}`))
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"python","code":"while True: pass","timeoutSeconds":1}`, testToken)
 	if err != nil {
 		t.Fatalf("post sandbox: %v", err)
 	}
@@ -249,10 +250,10 @@ func TestSandboxRunReturnsTimeoutResult(t *testing.T) {
 
 func TestSandboxRunReturnsUnavailableWhenDockerUnavailable(t *testing.T) {
 	runner := &fakeSandboxRunner{err: sandbox.ErrUnavailable}
-	server := httptest.NewServer(NewMuxWithSandboxRunner("test", runner))
+	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/sandbox/run", "application/json", bytes.NewBufferString(`{"language":"python","code":"print(1)"}`))
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"python","code":"print(1)"}`, testToken)
 	if err != nil {
 		t.Fatalf("post sandbox: %v", err)
 	}
@@ -273,10 +274,10 @@ func TestSandboxRunReturnsUnavailableWhenDockerUnavailable(t *testing.T) {
 
 func TestSandboxRunRejectsUnsupportedLanguage(t *testing.T) {
 	runner := &fakeSandboxRunner{}
-	server := httptest.NewServer(NewMuxWithSandboxRunner("test", runner))
+	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/sandbox/run", "application/json", bytes.NewBufferString(`{"language":"javascript","code":"console.log(1)"}`))
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"javascript","code":"console.log(1)"}`, testToken)
 	if err != nil {
 		t.Fatalf("post sandbox: %v", err)
 	}
@@ -288,6 +289,111 @@ func TestSandboxRunRejectsUnsupportedLanguage(t *testing.T) {
 	if runner.called {
 		t.Fatal("runner was called for unsupported language")
 	}
+}
+
+func TestSensitiveEndpointsRequireToken(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMux())
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, "")
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func TestSensitiveEndpointsRejectWhenTokenNotConfigured(t *testing.T) {
+	server := httptest.NewServer(NewMux("test"))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/search", "application/json", bytes.NewBufferString(`{"query":"AI news"}`))
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+}
+
+func TestRequestBodyLimitReturnsStructuredError(t *testing.T) {
+	server := httptest.NewServer(
+		NewMuxWithDependencies(
+			"test",
+			&fakeSandboxRunner{},
+			search.MockAdapter{},
+			Options{APIToken: testToken, MaxRequestBodyBytes: 8},
+		),
+	)
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, testToken)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusRequestEntityTooLarge)
+	}
+	var body GatewayError
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "request_too_large" {
+		t.Fatalf("code = %q, want request_too_large", body.Code)
+	}
+}
+
+func TestSandboxRunRejectsLargeCode(t *testing.T) {
+	runner := &fakeSandboxRunner{}
+	server := httptest.NewServer(
+		newAuthenticatedSandboxTestMux(
+			runner,
+			Options{APIToken: testToken, MaxSandboxCodeBytes: 4},
+		),
+	)
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/sandbox/run", `{"language":"python","code":"print(1)"}`, testToken)
+	if err != nil {
+		t.Fatalf("post sandbox: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusRequestEntityTooLarge)
+	}
+	if runner.called {
+		t.Fatal("runner was called for oversized code")
+	}
+}
+
+const testToken = "test-token"
+
+func newAuthenticatedTestMux() http.Handler {
+	return NewMuxWithDependencies("test", &fakeSandboxRunner{}, search.MockAdapter{}, Options{APIToken: testToken})
+}
+
+func newAuthenticatedSandboxTestMux(runner sandbox.Runner, options Options) http.Handler {
+	return NewMuxWithDependencies("test", runner, search.MockAdapter{}, options)
+}
+
+func postJSON(url string, body string, token string) (*http.Response, error) {
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	return http.DefaultClient.Do(request)
 }
 
 type fakeSandboxRunner struct {

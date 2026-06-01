@@ -1,9 +1,7 @@
 package com.aichat.workbench.feature.image
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderType
@@ -120,13 +118,13 @@ class ImageGenerationViewModel(
             val provider = current.selectedProvider
             val imageCount = current.count.trim().toIntOrNull()
             runCatching {
-                requireNotNull(provider) { "Provider is not configured." }
-                require(current.prompt.isNotBlank()) { "Image prompt must not be blank." }
-                require(!current.selectedModelUnsupported) { "Selected model does not support image generation." }
-                require(imageCount != null && imageCount in 1..4) { "Image count must be between 1 and 4." }
+                requireNotNull(provider) { "Provider 未配置。" }
+                require(current.prompt.isNotBlank()) { "图片 Prompt 不能为空。" }
+                require(!current.selectedModelUnsupported) { "所选 Model 不支持图片生成。" }
+                require(imageCount != null && imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
                 if (provider.type == ProviderType.OpenAI) {
-                    require(!apiKey.isNullOrBlank()) { "API key is missing." }
+                    require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
                 }
 
                 _state.update { it.copy(isGenerating = true, error = null) }
@@ -148,7 +146,7 @@ class ImageGenerationViewModel(
                     ),
                 )
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "Image generation failed.") }
+                _state.update { it.copy(error = error.message ?: "图片生成失败。") }
             }
             _state.update { it.copy(isGenerating = false) }
         }
@@ -167,20 +165,6 @@ class ImageGenerationViewModel(
         models.firstOrNull { it.capability?.imageGeneration == true }?.id
             ?: defaultModel?.takeIf { type != ProviderType.OpenAI }
             ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else defaultModel.orEmpty()
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ImageGenerationViewModel(
-                    imageRepository = AppGraph.imageGenerationRepository,
-                    providerRepository = AppGraph.providerConfigRepository,
-                    imageProvider = AppGraph.imageGenerationProvider,
-                    imageStorage = AppGraph.imageStorage,
-                    clock = AppGraph.clock,
-                ) as T
-        }
-    }
 }
 
 private const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"

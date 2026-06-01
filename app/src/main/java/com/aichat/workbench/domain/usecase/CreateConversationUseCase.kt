@@ -24,7 +24,7 @@ class CreateConversationUseCase(
         val now = clock.instant()
         val conversation = Conversation(
             id = ConversationId(UUID.randomUUID().toString()),
-            title = title.ifBlank { "New chat" },
+            title = title.ifBlank { "新对话" },
             createdAt = now,
             updatedAt = now,
             defaultProviderId = defaultProviderId,

@@ -5,7 +5,7 @@ private const val ConversationTitleMaxLength = 40
 fun conversationTitlePreview(message: String): String {
     val normalized = message.replace(Regex("\\s+"), " ").trim()
     return when {
-        normalized.isBlank() -> "New chat"
+        normalized.isBlank() -> "新对话"
         normalized.length <= ConversationTitleMaxLength -> normalized
         else -> "${normalized.take(ConversationTitleMaxLength - 3)}..."
     }

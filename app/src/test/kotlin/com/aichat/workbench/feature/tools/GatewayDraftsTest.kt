@@ -12,19 +12,19 @@ class GatewayDraftsTest {
     @Test
     fun classifiesGatewayUrls() {
         assertEquals(
-            GatewayUrlStatus(label = "URL required", isValid = false, isWarning = true),
+            GatewayUrlStatus(label = "需要 URL", isValid = false, isWarning = true),
             "".gatewayUrlStatus(),
         )
         assertEquals(
-            GatewayUrlStatus(label = "URL invalid", isValid = false, isWarning = false),
+            GatewayUrlStatus(label = "URL 无效", isValid = false, isWarning = false),
             "gateway.local".gatewayUrlStatus(),
         )
         assertEquals(
-            GatewayUrlStatus(label = "HTTP gateway", isValid = true, isWarning = true),
+            GatewayUrlStatus(label = "HTTP Gateway", isValid = true, isWarning = true),
             "http://localhost:8080".gatewayUrlStatus(),
         )
         assertEquals(
-            GatewayUrlStatus(label = "URL valid", isValid = true, isWarning = false),
+            GatewayUrlStatus(label = "URL 有效", isValid = true, isWarning = false),
             "https://gateway.example.com".gatewayUrlStatus(),
         )
     }

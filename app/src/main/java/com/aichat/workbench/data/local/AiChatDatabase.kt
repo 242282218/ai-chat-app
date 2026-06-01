@@ -13,6 +13,7 @@ import com.aichat.workbench.data.local.dao.ToolInvocationDao
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
+import com.aichat.workbench.data.local.entity.MessageFts
 import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
 import com.aichat.workbench.data.local.entity.PromptPresetEntity
 import com.aichat.workbench.data.local.entity.ProviderConfigEntity
@@ -22,13 +23,14 @@ import com.aichat.workbench.data.local.entity.ToolInvocationEntity
     entities = [
         ConversationEntity::class,
         MessageEntity::class,
+        MessageFts::class,
         ProviderConfigEntity::class,
         PromptPresetEntity::class,
         ModelPreferenceEntity::class,
         ToolInvocationEntity::class,
         ImageGenerationEntity::class,
     ],
-    version = 4,
+    version = 7,
     exportSchema = true,
 )
 abstract class AiChatDatabase : RoomDatabase() {
@@ -103,6 +105,53 @@ abstract class AiChatDatabase : RoomDatabase() {
                 )
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS index_tool_invocations_status ON tool_invocations(status)",
+                )
+            }
+        }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE provider_configs SET type = 'openai' WHERE type = 'OpenAI'")
+                db.execSQL(
+                    "UPDATE provider_configs SET type = 'openai_compatible' WHERE type = 'OpenAICompatible'",
+                )
+            }
+        }
+
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE messages ADD COLUMN tool_result TEXT DEFAULT NULL")
+            }
+        }
+
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING FTS4(content, content=`messages`)")
+                db.execSQL("INSERT INTO messages_fts(rowid, content) SELECT rowid, content FROM messages")
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+                        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, content)
+                        VALUES('delete', old.rowid, old.content);
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, content)
+                        VALUES('delete', old.rowid, old.content);
+                        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+                    END
+                    """.trimIndent(),
                 )
             }
         }

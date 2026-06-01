@@ -1,9 +1,7 @@
 package com.aichat.workbench.feature.tools
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.data.settings.GatewaySettingsRepository
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolCallId
@@ -15,23 +13,27 @@ import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.tool.gateway.GatewayClient
 import com.aichat.workbench.tool.gateway.GatewayHttpException
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
+import com.aichat.workbench.tool.gateway.SearchResponse
 import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.requiresConfirmation
 import com.aichat.workbench.tool.registry.BuiltInToolRegistry
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 data class ToolsUiState(
     val gatewayEnabled: Boolean = false,
     val gatewayBaseUrlDraft: String = "",
+    val gatewayApiTokenDraft: String = "",
     val remoteTools: List<ToolDescriptor> = emptyList(),
     val isLoading: Boolean = false,
     val status: String? = null,
@@ -66,6 +68,7 @@ class ToolsViewModel(
                     it.copy(
                         gatewayEnabled = settings.enabled,
                         gatewayBaseUrlDraft = settings.baseUrl,
+                        gatewayApiTokenDraft = settings.apiToken,
                     )
                 }
             }
@@ -78,6 +81,10 @@ class ToolsViewModel(
 
     fun updateGatewayBaseUrl(value: String) {
         _state.update { it.copy(gatewayBaseUrlDraft = value) }
+    }
+
+    fun updateGatewayApiToken(value: String) {
+        _state.update { it.copy(gatewayApiTokenDraft = value) }
     }
 
     fun updateSearchQuery(value: String) {
@@ -93,8 +100,9 @@ class ToolsViewModel(
         settingsRepository.saveSettings(
             enabled = current.gatewayEnabled,
             baseUrl = current.gatewayBaseUrlDraft,
+            apiToken = current.gatewayApiTokenDraft,
         )
-        _state.update { it.copy(status = "Saved") }
+        _state.update { it.copy(status = "已保存") }
     }
 
     fun checkHealth() {
@@ -106,7 +114,7 @@ class ToolsViewModel(
             }.onSuccess { health ->
                 _state.update { it.copy(status = "Gateway ${health.status} / ${health.version}") }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Gateway health check failed.") }
+                _state.update { it.copy(status = error.message ?: "Gateway Health 检查失败。") }
             }
             _state.update { it.copy(isLoading = false) }
         }
@@ -122,11 +130,11 @@ class ToolsViewModel(
                 _state.update {
                     it.copy(
                         remoteTools = manifest.tools,
-                        status = "Loaded ${manifest.tools.size} gateway tools",
+                        status = "已加载 ${manifest.tools.size} 个 Gateway Tools",
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Load manifest failed.") }
+                _state.update { it.copy(status = error.message ?: "加载 Manifest 失败。") }
             }
             _state.update { it.copy(isLoading = false) }
         }
@@ -134,7 +142,7 @@ class ToolsViewModel(
 
     fun requestPermission(tool: ToolDescriptor) {
         if (!tool.permissionLevel.requiresConfirmation()) {
-            _state.update { it.copy(status = "${tool.displayName} is read-only") }
+            _state.update { it.copy(status = "${tool.displayName} 是只读 Tool") }
             return
         }
         _state.update { it.copy(pendingConfirmation = tool) }
@@ -146,26 +154,26 @@ class ToolsViewModel(
         if (query.isBlank()) {
             _state.update {
                 it.copy(
-                    status = "Search query must not be blank.",
+                    status = "Search query 不能为空。",
                     searchError = ToolError(
                         code = "invalid_query",
-                        message = "Search query must not be blank.",
+                        message = "Search query 不能为空。",
                     ),
                 )
             }
             return
         }
         if (!current.gatewayEnabled) {
-            _state.update { it.copy(status = "Enable Gateway before searching.") }
+            _state.update { it.copy(status = "搜索前请启用 Gateway。") }
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
-            _state.update { it.copy(status = "Gateway URL is invalid.") }
+            _state.update { it.copy(status = "Gateway URL 无效。") }
             return
         }
         val searchTool = current.remoteTools.firstOrNull { it.name == "web_search" }
         if (searchTool == null) {
-            _state.update { it.copy(status = "Load gateway manifest before searching.") }
+            _state.update { it.copy(status = "搜索前请先加载 Gateway Manifest。") }
             return
         }
         _state.update {
@@ -182,26 +190,26 @@ class ToolsViewModel(
         if (code.isBlank()) {
             _state.update {
                 it.copy(
-                    status = "Sandbox code must not be blank.",
+                    status = "Sandbox code 不能为空。",
                     sandboxError = ToolError(
                         code = "invalid_code",
-                        message = "Sandbox code must not be blank.",
+                        message = "Sandbox code 不能为空。",
                     ),
                 )
             }
             return
         }
         if (!current.gatewayEnabled) {
-            _state.update { it.copy(status = "Enable Gateway before running code.") }
+            _state.update { it.copy(status = "运行代码前请启用 Gateway。") }
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
-            _state.update { it.copy(status = "Gateway URL is invalid.") }
+            _state.update { it.copy(status = "Gateway URL 无效。") }
             return
         }
         val sandboxTool = current.remoteTools.firstOrNull { it.name == "code_sandbox" }
         if (sandboxTool == null) {
-            _state.update { it.copy(status = "Load gateway manifest before running code.") }
+            _state.update { it.copy(status = "运行代码前请先加载 Gateway Manifest。") }
             return
         }
         _state.update {
@@ -221,7 +229,7 @@ class ToolsViewModel(
                 pendingConfirmation = null,
                 pendingSearchQuery = null,
                 pendingSandboxCode = null,
-                status = "Confirmed ${tool.permissionLevel.label()} tool: ${tool.displayName}",
+                status = "已确认${tool.permissionLevel.label()} Tool：${tool.displayName}",
             )
         }
         if (tool.name == "web_search" && query != null) {
@@ -256,7 +264,7 @@ class ToolsViewModel(
                 )
             }
             runCatching {
-                gatewayClient.search(baseUrl, query)
+                gatewayClient.search(baseUrl, query, _state.value.gatewayApiTokenDraft)
             }.onSuccess { response ->
                 val toolResult = ToolResult(
                     id = toolCallId,
@@ -275,7 +283,7 @@ class ToolsViewModel(
                         searchResults = response.results,
                         searchFetchedAt = response.fetchedAt.toString(),
                         searchError = null,
-                        status = "Search returned ${response.results.size} sources",
+                        status = "Search 返回 ${response.results.size} 个来源",
                     )
                 }
             }.onFailure { error ->
@@ -294,7 +302,7 @@ class ToolsViewModel(
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
                     it.copy(
-                        status = "Search failed.",
+                        status = "Search 失败。",
                         searchError = toolError,
                     )
                 }
@@ -322,6 +330,7 @@ class ToolsViewModel(
                     language = "python",
                     code = code,
                     timeoutSeconds = 3,
+                    apiToken = _state.value.gatewayApiTokenDraft,
                 )
             }.onSuccess { response ->
                 val toolResult = ToolResult(
@@ -340,13 +349,13 @@ class ToolsViewModel(
                     it.copy(
                         sandboxResult = response,
                         sandboxError = null,
-                        status = "Sandbox finished with exit code ${response.exitCode}",
+                        status = "Sandbox exit code ${response.exitCode}",
                     )
                 }
             }.onFailure { error ->
                 val toolError = error.toToolError(
                     fallbackCode = "sandbox_failed",
-                    fallbackMessage = "Sandbox run failed.",
+                    fallbackMessage = "Sandbox 运行失败。",
                 )
                 val toolResult = ToolResult(
                     id = toolCallId,
@@ -362,7 +371,7 @@ class ToolsViewModel(
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
                     it.copy(
-                        status = "Sandbox failed.",
+                        status = "Sandbox 失败。",
                         sandboxError = toolError,
                     )
                 }
@@ -374,7 +383,7 @@ class ToolsViewModel(
     private fun Throwable.toSearchToolError(): ToolError =
         toToolError(
             fallbackCode = "search_failed",
-            fallbackMessage = "Search failed.",
+            fallbackMessage = "Search 失败。",
         )
 
     private fun Throwable.toToolError(
@@ -402,72 +411,95 @@ class ToolsViewModel(
         }
     }
 
-    private fun emptySearchOutputJson(query: String, fetchedAt: java.time.Instant): String =
-        JSONObject()
-            .put("query", query)
-            .put("fetchedAt", fetchedAt.toString())
-            .put("results", JSONArray())
-            .toString()
+    private fun emptySearchOutputJson(query: String, fetchedAt: Instant): String =
+        toolsJson.encodeToString(
+            SearchOutputJson(
+                query = query,
+                fetchedAt = fetchedAt.toString(),
+                results = emptyList(),
+            ),
+        )
 
     private fun emptySandboxOutputJson(): String =
-        JSONObject()
-            .put("language", "python")
-            .put("stdout", "")
-            .put("stderr", "")
-            .put("exitCode", -1)
-            .put("durationMs", 0)
-            .put("timedOut", false)
-            .put("truncated", false)
-            .toString()
+        toolsJson.encodeToString(
+            SandboxOutputJson(
+                language = "python",
+                stdout = "",
+                stderr = "",
+                exitCode = -1,
+                durationMs = 0,
+                timedOut = false,
+                truncated = false,
+            ),
+        )
 
     private fun SandboxRunResponse.toJson(): String =
-        JSONObject()
-            .put("language", language)
-            .put("stdout", stdout)
-            .put("stderr", stderr)
-            .put("exitCode", exitCode)
-            .put("durationMs", durationMs)
-            .put("timedOut", timedOut)
-            .put("truncated", truncated)
-            .toString()
+        toolsJson.encodeToString(
+            SandboxOutputJson(
+                language = language,
+                stdout = stdout,
+                stderr = stderr,
+                exitCode = exitCode,
+                durationMs = durationMs,
+                timedOut = timedOut,
+                truncated = truncated,
+            ),
+        )
 
-    private fun com.aichat.workbench.tool.gateway.SearchResponse.toJson(): String {
-        val resultsJson = JSONArray()
-        results.forEach { result ->
-            resultsJson.put(
-                JSONObject()
-                    .put("title", result.title)
-                    .put("summary", result.summary)
-                    .put("url", result.url)
-                    .put("source", result.source)
-                    .put("publishedAt", result.publishedAt?.toString()),
-            )
-        }
-        return JSONObject()
-            .put("query", query)
-            .put("fetchedAt", fetchedAt.toString())
-            .put("results", resultsJson)
-            .toString()
-    }
+    private fun SearchResponse.toJson(): String =
+        toolsJson.encodeToString(
+            SearchOutputJson(
+                query = query,
+                fetchedAt = fetchedAt.toString(),
+                results = results.map { result ->
+                    SearchResultOutputJson(
+                        title = result.title,
+                        summary = result.summary,
+                        url = result.url,
+                        source = result.source,
+                        publishedAt = result.publishedAt?.toString(),
+                    )
+                },
+            ),
+        )
 
     private fun ToolPermissionLevel.label(): String =
         when (this) {
-            ToolPermissionLevel.ReadOnly -> "read-only"
-            ToolPermissionLevel.Network -> "network"
-            ToolPermissionLevel.Execute -> "execute"
-            ToolPermissionLevel.HighRisk -> "high-risk"
+            ToolPermissionLevel.ReadOnly -> "只读"
+            ToolPermissionLevel.Network -> "联网"
+            ToolPermissionLevel.Execute -> "执行"
+            ToolPermissionLevel.HighRisk -> "高风险"
         }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ToolsViewModel(
-                    settingsRepository = AppGraph.gatewaySettingsRepository,
-                    gatewayClient = AppGraph.gatewayClient,
-                    toolInvocationRepository = AppGraph.toolInvocationRepository,
-                    clock = AppGraph.clock,
-                ) as T
-        }
-    }
 }
+
+private val toolsJson = Json {
+    explicitNulls = false
+    encodeDefaults = true
+}
+
+@Serializable
+private data class SearchOutputJson(
+    val query: String,
+    val fetchedAt: String,
+    val results: List<SearchResultOutputJson>,
+)
+
+@Serializable
+private data class SearchResultOutputJson(
+    val title: String,
+    val summary: String,
+    val url: String,
+    val source: String,
+    val publishedAt: String? = null,
+)
+
+@Serializable
+private data class SandboxOutputJson(
+    val language: String,
+    val stdout: String,
+    val stderr: String,
+    val exitCode: Int,
+    val durationMs: Long,
+    val timedOut: Boolean,
+    val truncated: Boolean,
+)

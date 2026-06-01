@@ -18,9 +18,11 @@ class ModelParameterDraftsTest {
     @Test
     fun parsesValidDrafts() {
         val state = ChatUiState(
-            temperatureDraft = "0.7",
-            topPDraft = "0.9",
-            maxTokensDraft = "512",
+            draft = DraftState(
+                temperature = "0.7",
+                topP = "0.9",
+                maxTokens = "512",
+            ),
         )
 
         assertEquals(
@@ -33,16 +35,16 @@ class ModelParameterDraftsTest {
     @Test
     fun rejectsOutOfRangeDrafts() {
         assertValidationMessage(
-            state = ChatUiState(temperatureDraft = "2.1"),
-            message = "temperature must be between 0 and 2.",
+            state = ChatUiState(draft = DraftState(temperature = "2.1")),
+            message = "temperature 必须在 0 到 2 之间。",
         )
         assertValidationMessage(
-            state = ChatUiState(topPDraft = "-0.1"),
-            message = "top_p must be between 0 and 1.",
+            state = ChatUiState(draft = DraftState(topP = "-0.1")),
+            message = "top_p 必须在 0 到 1 之间。",
         )
         assertValidationMessage(
-            state = ChatUiState(maxTokensDraft = "0"),
-            message = "max_tokens must be greater than 0.",
+            state = ChatUiState(draft = DraftState(maxTokens = "0")),
+            message = "max_tokens 必须大于 0。",
         )
     }
 
@@ -53,14 +55,14 @@ class ModelParameterDraftsTest {
             modelParameterDraftStatus("3", ModelParameterDraftKind.Temperature),
         )
         assertEquals(
-            ModelParameterDraftStatus(label = "Top P number", isValid = false),
+            ModelParameterDraftStatus(label = "Top P 需为数字", isValid = false),
             modelParameterDraftStatus("many", ModelParameterDraftKind.TopP),
         )
         assertEquals(
             ModelParameterDraftStatus(label = "Max > 0", isValid = false),
             modelParameterDraftStatus("-1", ModelParameterDraftKind.MaxTokens),
         )
-        assertFalse(ChatUiState(temperatureDraft = "3").hasValidModelParameterDrafts())
+        assertFalse(ChatUiState(draft = DraftState(temperature = "3")).hasValidModelParameterDrafts())
     }
 
     private fun assertValidationMessage(

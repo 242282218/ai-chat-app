@@ -40,7 +40,7 @@ class RoomProviderConfigRepository(
         val now = clock.instant()
         val sanitizedProvider = provider.copy(
             apiKeyRef = secretRef,
-            headers = provider.headers.withoutSensitiveHeaders(),
+            headers = provider.headers.persistableProviderHeaders(),
         )
         providerDao.upsertProvider(
             sanitizedProvider.toEntity(
@@ -70,20 +70,4 @@ class RoomProviderConfigRepository(
     private fun apiKeyRef(providerId: ProviderId): String =
         "provider:${providerId.value}:api-key"
 
-    private fun Map<String, String>.withoutSensitiveHeaders(): Map<String, String> =
-        filterKeys { name -> !name.isSensitiveHeaderName() }
-            .filter { (name, value) -> name.isNotBlank() && value.isNotBlank() }
-
-    private fun String.isSensitiveHeaderName(): Boolean =
-        lowercase() in SENSITIVE_HEADER_NAMES
-
-    private companion object {
-        val SENSITIVE_HEADER_NAMES = setOf(
-            "authorization",
-            "proxy-authorization",
-            "x-api-key",
-            "api-key",
-            "openai-api-key",
-        )
-    }
 }

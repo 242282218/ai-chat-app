@@ -2,165 +2,195 @@ package com.aichat.workbench.data.mapper
 
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ModelCapability
+import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelParameters
-import org.json.JSONArray
-import org.json.JSONObject
+import com.aichat.workbench.domain.model.ToolCall
+import com.aichat.workbench.domain.model.ToolCallId
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val mapperJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    encodeDefaults = true
+}
 
 fun ModelParameters.toJson(): String =
-    JSONObject().apply {
-        putNullable("temperature", temperature)
-        putNullable("topP", topP)
-        putNullable("maxTokens", maxTokens)
-    }.toString()
+    mapperJson.encodeToString(
+        ModelParametersJson(
+            temperature = temperature,
+            topP = topP,
+            maxTokens = maxTokens,
+        ),
+    )
 
 fun modelParametersFromJson(value: String): ModelParameters {
     if (value.isBlank()) return ModelParameters()
-    val json = JSONObject(value)
+    val json = mapperJson.decodeFromString<ModelParametersJson>(value)
     return ModelParameters(
-        temperature = json.optNullableDouble("temperature"),
-        topP = json.optNullableDouble("topP"),
-        maxTokens = json.optNullableInt("maxTokens"),
+        temperature = json.temperature,
+        topP = json.topP,
+        maxTokens = json.maxTokens,
     )
 }
 
-fun List<MessagePart>.toJson(): String {
-    val array = JSONArray()
-    forEach { part ->
-        val json = JSONObject()
-        when (part) {
-            is MessagePart.Text -> {
-                json.put("type", "text")
-                json.put("text", part.text)
+fun List<MessagePart>.toJson(): String =
+    mapperJson.encodeToString(
+        map { part ->
+            when (part) {
+                is MessagePart.Text -> MessagePartJson(type = "text", text = part.text)
+                is MessagePart.Image -> MessagePartJson(
+                    type = "image",
+                    uri = part.uri,
+                    mimeType = part.mimeType,
+                )
             }
-            is MessagePart.Image -> {
-                json.put("type", "image")
-                json.put("uri", part.uri)
-                json.putNullable("mimeType", part.mimeType)
-            }
-        }
-        array.put(json)
-    }
-    return array.toString()
-}
+        },
+    )
 
 fun messagePartsFromJson(value: String): List<MessagePart> {
     if (value.isBlank()) return emptyList()
-    val array = JSONArray(value)
-    return buildList {
-        for (index in 0 until array.length()) {
-            val json = array.getJSONObject(index)
-            when (json.optString("type")) {
-                "text" -> add(MessagePart.Text(json.optString("text")))
-                "image" -> add(MessagePart.Image(json.optString("uri"), json.optNullableString("mimeType")))
-            }
+    return mapperJson.decodeFromString<List<MessagePartJson>>(value).mapNotNull { part ->
+        when (part.type) {
+            "text" -> MessagePart.Text(part.text.orEmpty())
+            "image" -> MessagePart.Image(part.uri.orEmpty(), part.mimeType)
+            else -> null
         }
     }
 }
 
-fun List<String>.toJsonArrayString(): String {
-    val array = JSONArray()
-    forEach { array.put(it) }
-    return array.toString()
+fun List<ToolCall>.toToolCallsJson(): String =
+    mapperJson.encodeToString(
+        map { call ->
+            ToolCallJson(
+                id = call.id.value,
+                name = call.name,
+                arguments = call.arguments,
+            )
+        },
+    )
+
+fun toolCallsFromJson(value: String?): List<ToolCall> {
+    if (value.isNullOrBlank()) return emptyList()
+    return mapperJson.decodeFromString<List<ToolCallJson>>(value).map { call ->
+        ToolCall(
+            id = ToolCallId(call.id),
+            name = call.name,
+            arguments = call.arguments,
+        )
+    }
 }
+
+fun List<String>.toJsonArrayString(): String =
+    mapperJson.encodeToString(this)
 
 fun stringListFromJson(value: String): List<String> {
     if (value.isBlank()) return emptyList()
-    val array = JSONArray(value)
-    return buildList {
-        for (index in 0 until array.length()) {
-            add(array.getString(index))
-        }
-    }
+    return mapperJson.decodeFromString(value)
 }
 
 fun Map<String, String>.toJsonObjectString(): String =
-    JSONObject().apply {
-        entries.sortedBy { it.key }.forEach { (key, value) ->
-            put(key, value)
-        }
-    }.toString()
+    mapperJson.encodeToString<Map<String, String>>(toSortedMap())
 
 fun stringMapFromJson(value: String): Map<String, String> {
     if (value.isBlank()) return emptyMap()
-    val json = JSONObject(value)
-    return buildMap {
-        json.keys().forEach { key ->
-            put(key, json.getString(key))
-        }
-    }
+    return mapperJson.decodeFromString(value)
 }
 
-fun List<ModelConfig>.toModelConfigsJson(): String {
-    val array = JSONArray()
-    forEach { model ->
-        array.put(
-            JSONObject().apply {
-                put("id", model.id)
-                put("displayName", model.displayName)
-                putNullable("capability", model.capability?.let { JSONObject(it.toJson()) })
-            },
-        )
-    }
-    return array.toString()
-}
+fun List<ModelConfig>.toModelConfigsJson(): String =
+    mapperJson.encodeToString(map { it.toJsonModel() })
 
 fun modelConfigsFromJson(value: String): List<ModelConfig> {
     if (value.isBlank()) return emptyList()
-    val array = JSONArray(value)
-    return buildList {
-        for (index in 0 until array.length()) {
-            val json = array.getJSONObject(index)
-            add(
-                ModelConfig(
-                    id = json.getString("id"),
-                    displayName = json.optString("displayName", json.getString("id")),
-                    capability = json.optJSONObject("capability")?.let { modelCapabilityFromJson(it.toString()) },
-                ),
-            )
-        }
-    }
+    return mapperJson.decodeFromString<List<ModelConfigJson>>(value).map { it.toDomain() }
 }
 
 fun ModelCapability.toJson(): String =
-    JSONObject().apply {
-        put("model", model)
-        put("text", text)
-        put("vision", vision)
-        put("imageGeneration", imageGeneration)
-        put("toolCalling", toolCalling)
-        put("structuredOutput", structuredOutput)
-        put("longContext", longContext)
-        putNullable("maxContextTokens", maxContextTokens)
-    }.toString()
+    mapperJson.encodeToString(toJsonModel())
 
-fun modelCapabilityFromJson(value: String): ModelCapability {
-    val json = JSONObject(value)
-    return ModelCapability(
-        model = json.getString("model"),
-        text = json.getBoolean("text"),
-        vision = json.getBoolean("vision"),
-        imageGeneration = json.getBoolean("imageGeneration"),
-        toolCalling = json.getBoolean("toolCalling"),
-        structuredOutput = json.getBoolean("structuredOutput"),
-        longContext = json.getBoolean("longContext"),
-        maxContextTokens = json.optNullableInt("maxContextTokens"),
+fun modelCapabilityFromJson(value: String): ModelCapability =
+    mapperJson.decodeFromString<ModelCapabilityJson>(value).toDomain()
+
+private fun ModelConfig.toJsonModel(): ModelConfigJson =
+    ModelConfigJson(
+        id = id,
+        displayName = displayName,
+        capability = capability?.toJsonModel(),
     )
-}
 
-private fun JSONObject.putNullable(name: String, value: Any?) {
-    if (value == null) {
-        put(name, JSONObject.NULL)
-    } else {
-        put(name, value)
-    }
-}
+private fun ModelConfigJson.toDomain(): ModelConfig =
+    ModelConfig(
+        id = id,
+        displayName = displayName ?: id,
+        capability = capability?.toDomain(),
+    )
 
-private fun JSONObject.optNullableString(name: String): String? =
-    if (has(name) && !isNull(name)) getString(name) else null
+private fun ModelCapability.toJsonModel(): ModelCapabilityJson =
+    ModelCapabilityJson(
+        model = model,
+        text = text,
+        vision = vision,
+        imageGeneration = imageGeneration,
+        toolCalling = toolCalling,
+        structuredOutput = structuredOutput,
+        longContext = longContext,
+        maxContextTokens = maxContextTokens,
+        source = source,
+    )
 
-private fun JSONObject.optNullableDouble(name: String): Double? =
-    if (has(name) && !isNull(name)) getDouble(name) else null
+private fun ModelCapabilityJson.toDomain(): ModelCapability =
+    ModelCapability(
+        model = model,
+        text = text,
+        vision = vision,
+        imageGeneration = imageGeneration,
+        toolCalling = toolCalling,
+        structuredOutput = structuredOutput,
+        longContext = longContext,
+        maxContextTokens = maxContextTokens,
+        source = source,
+    )
 
-private fun JSONObject.optNullableInt(name: String): Int? =
-    if (has(name) && !isNull(name)) getInt(name) else null
+@Serializable
+private data class ModelParametersJson(
+    val temperature: Double? = null,
+    val topP: Double? = null,
+    val maxTokens: Int? = null,
+)
+
+@Serializable
+private data class MessagePartJson(
+    val type: String,
+    val text: String? = null,
+    val uri: String? = null,
+    val mimeType: String? = null,
+)
+
+@Serializable
+private data class ToolCallJson(
+    val id: String,
+    val name: String,
+    val arguments: String,
+)
+
+@Serializable
+private data class ModelConfigJson(
+    val id: String,
+    val displayName: String? = null,
+    val capability: ModelCapabilityJson? = null,
+)
+
+@Serializable
+private data class ModelCapabilityJson(
+    val model: String,
+    val text: Boolean,
+    val vision: Boolean,
+    val imageGeneration: Boolean,
+    val toolCalling: Boolean,
+    val structuredOutput: Boolean,
+    val longContext: Boolean,
+    val maxContextTokens: Int? = null,
+    val source: ModelCapabilitySource = ModelCapabilitySource.UserOverride,
+)

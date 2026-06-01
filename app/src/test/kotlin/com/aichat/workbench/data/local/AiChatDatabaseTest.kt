@@ -2,7 +2,10 @@ package com.aichat.workbench.data.local
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.aichat.workbench.data.backup.AppBackupService
 import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.mapper.toEntity
@@ -65,7 +68,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -74,6 +79,13 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AiChatDatabaseTest {
+    @get:Rule
+    val migrationHelper = MigrationTestHelper(
+        InstrumentationRegistry.getInstrumentation(),
+        AiChatDatabase::class.java.canonicalName,
+        FrameworkSQLiteOpenHelperFactory(),
+    )
+
     private lateinit var database: AiChatDatabase
     private lateinit var clock: Clock
 
@@ -146,6 +158,38 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun compressedMessages_roundTripThroughRoom() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
+        val summary = message(conversation.id).copy(
+            id = MessageId("summary-1"),
+            role = MessageRole.System,
+            content = "早期对话摘要",
+            contentParts = listOf(MessagePart.Text("早期对话摘要")),
+            status = MessageStatus.Compressed,
+        )
+
+        repository.saveMessage(summary)
+
+        assertEquals(summary, repository.getMessages(conversation.id).single())
+    }
+
+    @Test
+    fun searchMessages_returnsMatchingMessagesWithConversation() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        val first = CreateConversationUseCase(repository, clock)(title = "Research")
+        val second = CreateConversationUseCase(repository, clock)(title = "Notes")
+        repository.saveMessage(message(first.id).copy(id = MessageId("message-1"), content = "AI search needle"))
+        repository.saveMessage(message(second.id).copy(id = MessageId("message-2"), content = "unrelated text"))
+
+        val results = repository.searchMessages("needle").first()
+
+        assertEquals(1, results.size)
+        assertEquals(first.id, results.single().conversation.id)
+        assertEquals("AI search needle", results.single().message.content)
+    }
+
+    @Test
     fun promptPresets_areStoredAndObserved() = runTest {
         val repository = RoomPromptPresetRepository(database.promptPresetDao())
         val savePromptPreset = SavePromptPresetUseCase(repository)
@@ -214,6 +258,11 @@ class AiChatDatabaseTest {
         assertEquals("test-secret", providerRepository.getApiKey(providerId))
         assertFalse(entity.headersJson.contains("test-secret"))
         assertFalse(entity.headersJson.contains("Authorization", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("anthropic-api-key", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("x-goog-api-key", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("cookie", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("x-auth-token", ignoreCase = true))
+        assertTrue(entity.headersJson.contains("X-Trace"))
         assertEquals(listOf("gpt-4.1-mini"), savedProvider.models.map { it.id })
 
         deleteProvider(providerId)
@@ -278,6 +327,10 @@ class AiChatDatabaseTest {
         val json = service.exportJson(includeChats = true)
 
         assertFalse(json.contains("test-secret"))
+        assertFalse(json.contains("anthropic-secret"))
+        assertFalse(json.contains("goog-secret"))
+        assertFalse(json.contains("cookie-secret"))
+        assertFalse(json.contains("auth-token-secret"))
         assertFalse(json.contains("apiKeyRef"))
         assertEquals(true, json.contains("Normal chat"))
         assertFalse(json.contains("Temporary chat"))
@@ -394,6 +447,217 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun migration4To5_convertsProviderTypeNamesToStableValues() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("provider-type-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 4).apply {
+            execSQL(
+                """
+                INSERT INTO provider_configs (
+                    id, name, type, base_url, api_key_ref, headers_json, models_json,
+                    default_model, enabled, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "openai",
+                    "OpenAI",
+                    "OpenAI",
+                    "https://api.openai.com/v1",
+                    null,
+                    "{}",
+                    "[]",
+                    null,
+                    1,
+                    1L,
+                    1L,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO provider_configs (
+                    id, name, type, base_url, api_key_ref, headers_json, models_json,
+                    default_model, enabled, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "compatible",
+                    "Compatible",
+                    "OpenAICompatible",
+                    "https://example.test/v1",
+                    null,
+                    "{}",
+                    "[]",
+                    null,
+                    1,
+                    1L,
+                    1L,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            5,
+            true,
+            AiChatDatabase.MIGRATION_4_5,
+        )
+        val values = mutableMapOf<String, String>()
+        val cursor = migrated.query("SELECT id, type FROM provider_configs")
+        cursor.use {
+            while (it.moveToNext()) {
+                values[it.getString(0)] = it.getString(1)
+            }
+        }
+        migrated.close()
+
+        assertEquals("openai", values["openai"])
+        assertEquals("openai_compatible", values["compatible"])
+    }
+
+    @Test
+    fun migration5To6_addsToolCallColumnsWithDefaults() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("message-tool-call-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 5).apply {
+            execSQL(
+                """
+                INSERT INTO conversations (
+                    id, title, created_at, updated_at, default_provider_id, default_model,
+                    model_parameters_json, system_prompt, is_temporary, is_sensitive, archived_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "conversation-1",
+                    "Chat",
+                    1L,
+                    1L,
+                    null,
+                    null,
+                    "{}",
+                    null,
+                    0,
+                    0,
+                    null,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO messages (
+                    id, conversation_id, role, content, content_parts_json, provider_id, model,
+                    status, error_summary, created_at, updated_at, tool_call_id, parent_message_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "message-1",
+                    "conversation-1",
+                    "User",
+                    "Hello",
+                    """[{"type":"text","text":"Hello"}]""",
+                    null,
+                    null,
+                    "Completed",
+                    null,
+                    1L,
+                    1L,
+                    null,
+                    null,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            6,
+            true,
+            AiChatDatabase.MIGRATION_5_6,
+        )
+        val cursor = migrated.query("SELECT tool_calls, tool_result FROM messages WHERE id = 'message-1'")
+        cursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("[]", it.getString(0))
+            assertTrue(it.isNull(1))
+        }
+        migrated.close()
+    }
+
+    @Test
+    fun migration6To7_createsMessageFtsIndex() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("message-fts-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 6).apply {
+            execSQL(
+                """
+                INSERT INTO conversations (
+                    id, title, created_at, updated_at, default_provider_id, default_model,
+                    model_parameters_json, system_prompt, is_temporary, is_sensitive, archived_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "conversation-1",
+                    "Chat",
+                    1L,
+                    1L,
+                    null,
+                    null,
+                    "{}",
+                    null,
+                    0,
+                    0,
+                    null,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO messages (
+                    id, conversation_id, role, content, content_parts_json, provider_id, model,
+                    status, error_summary, created_at, updated_at, tool_call_id, parent_message_id,
+                    tool_calls, tool_result
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "message-1",
+                    "conversation-1",
+                    "User",
+                    "needle content",
+                    """[{"type":"text","text":"needle content"}]""",
+                    null,
+                    null,
+                    "Completed",
+                    null,
+                    1L,
+                    1L,
+                    null,
+                    null,
+                    "[]",
+                    null,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            7,
+            true,
+            AiChatDatabase.MIGRATION_6_7,
+        )
+        val cursor = migrated.query(
+            """
+            SELECT m.content FROM messages m
+            JOIN messages_fts fts ON fts.rowid = m.rowid
+            WHERE messages_fts MATCH 'needle'
+            """.trimIndent(),
+        )
+        cursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("needle content", it.getString(0))
+        }
+        migrated.close()
+    }
+
+    @Test
     fun sendMessageUseCase_streamsAndPersistsAssistantMessage() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
@@ -487,7 +751,11 @@ class AiChatDatabaseTest {
             baseUrl = "https://api.openai.com/v1",
             apiKeyRef = null,
             headers = mapOf(
-            "Authorization" to "Bearer test-secret",
+                "Authorization" to "Bearer test-secret",
+                "anthropic-api-key" to "anthropic-secret",
+                "x-goog-api-key" to "goog-secret",
+                "cookie" to "cookie-secret",
+                "x-auth-token" to "auth-token-secret",
                 "X-Trace" to "phase2",
             ),
             models = listOf(ModelConfig("gpt-4.1-mini", "GPT-4.1 mini", capability = null)),

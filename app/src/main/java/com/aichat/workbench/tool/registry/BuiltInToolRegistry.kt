@@ -8,8 +8,8 @@ object BuiltInToolRegistry {
     val tools: List<ToolDescriptor> = listOf(
         ToolDescriptor(
             name = "time",
-            displayName = "Time",
-            description = "Read the local device time.",
+            displayName = "本机时间",
+            description = "读取设备本地时间。",
             permissionLevel = ToolPermissionLevel.ReadOnly,
             inputSchemaJson = """{"type":"object","properties":{}}""",
             outputSchemaJson = """{"type":"object"}""",
@@ -18,8 +18,8 @@ object BuiltInToolRegistry {
         ),
         ToolDescriptor(
             name = "image_generation",
-            displayName = "Image generation",
-            description = "Generate images through the configured image Provider.",
+            displayName = "图片生成",
+            description = "通过已配置的图片 Provider 生成图片。",
             permissionLevel = ToolPermissionLevel.ReadOnly,
             inputSchemaJson = """{"type":"object","required":["prompt"],"properties":{"prompt":{"type":"string"}}}""",
             outputSchemaJson = """{"type":"object"}""",

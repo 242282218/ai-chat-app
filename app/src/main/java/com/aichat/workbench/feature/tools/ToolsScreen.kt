@@ -49,10 +49,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aichat.workbench.domain.model.ToolError
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
@@ -66,13 +66,14 @@ import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchPanel
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ToolsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: ToolsViewModel = viewModel(factory = ToolsViewModel.Factory),
+    viewModel: ToolsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
 
@@ -85,7 +86,7 @@ fun ToolsScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = "返回",
                         )
                     }
                 },
@@ -114,7 +115,7 @@ fun ToolsScreen(
                 item {
                     SectionHeader(
                         title = searchResultHeader(state),
-                        description = "Original links stay visible so answers remain traceable.",
+                        description = "保留原始链接，便于回答可追溯。",
                     )
                 }
                 items(state.searchResults, key = { it.url }) { result ->
@@ -136,8 +137,8 @@ fun ToolsScreen(
             }
             item {
                 SectionHeader(
-                    title = "Available tools",
-                    description = "Permissions are explicit before network or execution actions run.",
+                    title = "可用 Tools",
+                    description = "联网或执行类操作运行前都会明确确认权限。",
                 )
             }
             items(state.tools, key = { "${it.source}:${it.name}" }) { tool ->
@@ -164,8 +165,8 @@ private fun SandboxPanel(
     viewModel: ToolsViewModel,
 ) {
     WorkbenchPanel(
-        title = "Code sandbox",
-        description = "Run short Python snippets through the configured gateway.",
+        title = "Code Sandbox",
+        description = "通过配置的 Gateway 运行短 Python 代码片段。",
         icon = Icons.Filled.Code,
         trailing = {
             val (label, tone) = sandboxPanelStatus(state)
@@ -177,7 +178,7 @@ private fun SandboxPanel(
             value = state.sandboxCode,
             onValueChange = viewModel::updateSandboxCode,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "Python code") },
+            label = { Text(text = "Python 代码") },
             minLines = 4,
             maxLines = 8,
         )
@@ -188,7 +189,7 @@ private fun SandboxPanel(
         ) {
             Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Run")
+            Text(text = "运行")
         }
     }
 }
@@ -199,7 +200,7 @@ private fun SandboxPanelSummary(state: ToolsUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway on" else "Gateway off",
+                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -208,13 +209,13 @@ private fun SandboxPanelSummary(state: ToolsUiState) {
         }
         item {
             StatusPill(
-                text = if (state.hasSandboxTool()) "Sandbox loaded" else "Manifest needed",
+                text = if (state.hasSandboxTool()) "Sandbox 已加载" else "需要 Manifest",
                 tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Warning,
             )
         }
         item {
             StatusPill(
-                text = if (state.sandboxCode.isBlank()) "Code required" else "Code ready",
+                text = if (state.sandboxCode.isBlank()) "需要代码" else "代码就绪",
                 tone = if (state.sandboxCode.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
@@ -228,14 +229,14 @@ private fun SandboxErrorRow(error: ToolError) {
         description = error.message,
         icon = Icons.Filled.Security,
     ) {
-        StatusPill(text = "Sandbox error", tone = StatusTone.Critical)
+        StatusPill(text = "Sandbox 错误", tone = StatusTone.Critical)
     }
 }
 
 @Composable
 private fun SandboxResultRow(result: SandboxRunResponse) {
     WorkbenchPanel(
-        title = "Sandbox result",
+        title = "Sandbox 结果",
         icon = Icons.Filled.Code,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -251,7 +252,7 @@ private fun SandboxResultSummary(result: SandboxRunResponse) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = "Exit ${result.exitCode}",
+                text = "exit code ${result.exitCode}",
                 tone = if (result.exitCode == 0) StatusTone.Success else StatusTone.Critical,
             )
         }
@@ -260,12 +261,12 @@ private fun SandboxResultSummary(result: SandboxRunResponse) {
         }
         if (result.timedOut) {
             item {
-                StatusPill(text = "Timeout", tone = StatusTone.Critical)
+                StatusPill(text = "超时", tone = StatusTone.Critical)
             }
         }
         if (result.truncated) {
             item {
-                StatusPill(text = "Truncated", tone = StatusTone.Warning)
+                StatusPill(text = "已截断", tone = StatusTone.Warning)
             }
         }
     }
@@ -283,7 +284,7 @@ private fun OutputText(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = value.ifBlank { "(empty)" },
+            text = value.ifBlank { "(空)" },
             style = MaterialTheme.typography.bodyMedium,
             fontFamily = FontFamily.Monospace,
         )
@@ -296,8 +297,8 @@ private fun SearchPanel(
     viewModel: ToolsViewModel,
 ) {
     WorkbenchPanel(
-        title = "Web search",
-        description = "Fetch structured sources before the model summarizes them.",
+        title = "Web Search",
+        description = "先获取结构化来源，再交给 Model 汇总。",
         icon = Icons.Filled.Search,
         trailing = {
             val (label, tone) = searchPanelStatus(state)
@@ -313,7 +314,7 @@ private fun SearchPanel(
                 value = state.searchQuery,
                 onValueChange = viewModel::updateSearchQuery,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = "Search query") },
+                label = { Text(text = "搜索 query") },
                 singleLine = true,
             )
             Button(
@@ -323,7 +324,7 @@ private fun SearchPanel(
             ) {
                 Icon(imageVector = Icons.Filled.Search, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Search")
+                Text(text = "搜索")
             }
         }
     }
@@ -335,7 +336,7 @@ private fun SearchPanelSummary(state: ToolsUiState) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway on" else "Gateway off",
+                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -344,13 +345,13 @@ private fun SearchPanelSummary(state: ToolsUiState) {
         }
         item {
             StatusPill(
-                text = if (state.hasSearchTool()) "Search loaded" else "Manifest needed",
+                text = if (state.hasSearchTool()) "Search 已加载" else "需要 Manifest",
                 tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Warning,
             )
         }
         item {
             StatusPill(
-                text = if (state.searchQuery.isBlank()) "Query required" else "Query ready",
+                text = if (state.searchQuery.isBlank()) "需要 query" else "query 就绪",
                 tone = if (state.searchQuery.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
@@ -364,7 +365,7 @@ private fun SearchErrorRow(error: ToolError) {
         description = error.message,
         icon = Icons.Filled.Public,
     ) {
-        StatusPill(text = "Search error", tone = StatusTone.Critical)
+        StatusPill(text = "Search 错误", tone = StatusTone.Critical)
     }
 }
 
@@ -378,7 +379,7 @@ private fun SearchResultRow(result: SearchResult) {
             IconButton(onClick = { openUrl(context, result.url) }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "Open source: ${result.title}",
+                    contentDescription = "打开来源：${result.title}",
                 )
             }
         },
@@ -406,7 +407,7 @@ private fun SearchResultSummary(result: SearchResult) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = result.source.ifBlank { "Source" },
+                text = result.source.ifBlank { "来源" },
                 tone = StatusTone.Neutral,
             )
         }
@@ -420,7 +421,7 @@ private fun SearchResultSummary(result: SearchResult) {
 
 private fun searchResultHeader(state: ToolsUiState): String =
     buildString {
-        append("Search results")
+        append("搜索结果")
         state.searchFetchedAt?.let { fetchedAt ->
             append(" | ")
             append(fetchedAt)
@@ -443,7 +444,7 @@ private fun GatewaySettingsPanel(
     val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
     WorkbenchPanel(
         title = "Gateway",
-        description = "Optional boundary for web search, manifests, and code execution.",
+        description = "Web Search、Manifest 和代码执行的可选边界。",
         icon = Icons.Filled.CloudSync,
         trailing = {
             Switch(
@@ -457,8 +458,8 @@ private fun GatewaySettingsPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MetadataRow(
-                label = "State",
-                value = if (state.gatewayEnabled) "Enabled" else "Disabled",
+                label = "状态",
+                value = if (state.gatewayEnabled) "已启用" else "已禁用",
             )
         }
         GatewaySettingsSummary(state, gatewayUrlStatus)
@@ -470,6 +471,15 @@ private fun GatewaySettingsPanel(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
         )
+        OutlinedTextField(
+            value = state.gatewayApiTokenDraft,
+            onValueChange = viewModel::updateGatewayApiToken,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Gateway API Token") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+        )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = viewModel::saveGatewaySettings,
@@ -478,14 +488,14 @@ private fun GatewaySettingsPanel(
             ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Save")
+                Text(text = "保存")
             }
             OutlinedButton(
                 onClick = viewModel::checkHealth,
                 enabled = gatewayUrlValid && !state.isLoading,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Health")
+                Text(text = "Health 检查")
             }
             OutlinedButton(
                 onClick = viewModel::fetchManifest,
@@ -496,7 +506,7 @@ private fun GatewaySettingsPanel(
             ) {
                 Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Manifest")
+                Text(text = "加载 Manifest")
             }
         }
         state.status?.let { message ->
@@ -513,12 +523,12 @@ private fun GatewaySettingsSummary(
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (state.isLoading) {
             item {
-                StatusPill(text = "Working", tone = StatusTone.Accent)
+                StatusPill(text = "处理中", tone = StatusTone.Accent)
             }
         }
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "Gateway on" else "Gateway off",
+                text = if (state.gatewayEnabled) "Gateway 开启" else "Gateway 关闭",
                 tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Neutral,
             )
         }
@@ -527,7 +537,7 @@ private fun GatewaySettingsSummary(
         }
         if (state.remoteTools.isNotEmpty()) {
             item {
-                StatusPill(text = "${state.remoteTools.size} tools", tone = StatusTone.Accent)
+                StatusPill(text = "${state.remoteTools.size} 个 Tools", tone = StatusTone.Accent)
             }
         }
     }
@@ -590,9 +600,9 @@ private fun ToolDescriptor.permissionIcon(): ImageVector =
 
 private fun ToolDescriptor.permissionActionDescription(): String =
     if (permissionLevel.requiresConfirmation()) {
-        "Review ${permissionLevel.displayLabel()} permission for $displayName"
+        "查看 ${displayName} 的${permissionLevel.displayLabel()}权限"
     } else {
-        "$displayName is read-only"
+        "$displayName 无需确认"
     }
 
 @Composable
@@ -603,18 +613,18 @@ private fun ToolPermissionDialog(
 ) {
     val warning = when (tool.permissionLevel) {
         ToolPermissionLevel.ReadOnly ->
-            "This tool is read-only."
+            "该 Tool 为只读。"
         ToolPermissionLevel.Network ->
-            "This tool will access the network through the configured gateway."
+            "该 Tool 会通过配置的 Gateway 访问网络。"
         ToolPermissionLevel.Execute ->
-            "This tool will run code in the remote gateway sandbox."
+            "该 Tool 会在远端 Gateway Sandbox 中运行代码。"
         ToolPermissionLevel.HighRisk ->
-            "This tool can perform high-risk actions and must be reviewed carefully."
+            "该 Tool 可执行高风险操作，请仔细确认。"
     }
     WorkbenchConfirmDialog(
         title = tool.displayName,
         message = "$warning\n\n${tool.description}",
-        confirmLabel = "Confirm",
+        confirmLabel = "确认",
         onConfirm = onConfirm,
         onDismiss = onDismiss,
         tone = tool.permissionTone(),
@@ -632,30 +642,30 @@ private fun ToolDescriptor.permissionTone(): StatusTone =
 
 private fun ToolPermissionLevel.displayLabel(): String =
     when (this) {
-        ToolPermissionLevel.ReadOnly -> "Read-only"
-        ToolPermissionLevel.Network -> "Network"
-        ToolPermissionLevel.Execute -> "Execute"
-        ToolPermissionLevel.HighRisk -> "High risk"
+        ToolPermissionLevel.ReadOnly -> "只读"
+        ToolPermissionLevel.Network -> "联网"
+        ToolPermissionLevel.Execute -> "执行"
+        ToolPermissionLevel.HighRisk -> "高风险"
     }
 
 private fun ToolSource.displayLabel(): String =
     when (this) {
-        ToolSource.BuiltIn -> "Built-in"
+        ToolSource.BuiltIn -> "内置"
         ToolSource.Gateway -> "Gateway"
     }
 
 private fun searchPanelStatus(state: ToolsUiState): Pair<String, StatusTone> =
     when {
-        state.isLoading -> "Working" to StatusTone.Accent
-        state.canSearch() -> "Ready" to StatusTone.Success
-        else -> "Needs setup" to StatusTone.Warning
+        state.isLoading -> "处理中" to StatusTone.Accent
+        state.canSearch() -> "就绪" to StatusTone.Success
+        else -> "需要配置" to StatusTone.Warning
     }
 
 private fun sandboxPanelStatus(state: ToolsUiState): Pair<String, StatusTone> =
     when {
-        state.isLoading -> "Working" to StatusTone.Accent
-        state.canRunSandbox() -> "Ready" to StatusTone.Success
-        else -> "Needs setup" to StatusTone.Warning
+        state.isLoading -> "处理中" to StatusTone.Accent
+        state.canRunSandbox() -> "就绪" to StatusTone.Success
+        else -> "需要配置" to StatusTone.Warning
     }
 
 private fun GatewayUrlStatus.tone(): StatusTone =
@@ -668,9 +678,9 @@ private fun GatewayUrlStatus.tone(): StatusTone =
 
 private fun toolStatusLabel(message: String): String =
     when {
-        toolStatusTone(message) == StatusTone.Critical -> "Attention"
-        message == "Saved" -> "Saved"
-        else -> "Status"
+        toolStatusTone(message) == StatusTone.Critical -> "需要处理"
+        message == "已保存" -> "已保存"
+        else -> "状态"
     }
 
 private fun toolStatusTone(message: String): StatusTone {
@@ -680,8 +690,13 @@ private fun toolStatusTone(message: String): StatusTone {
             normalized.contains("must not") ||
             normalized.contains("enable gateway") ||
             normalized.contains("load gateway") ||
-            normalized.contains("invalid") -> StatusTone.Critical
-        message == "Saved" -> StatusTone.Success
+            normalized.contains("invalid") ||
+            normalized.contains("不能为空") ||
+            normalized.contains("无效") ||
+            normalized.contains("请启用 gateway") ||
+            normalized.contains("请先加载 gateway") ||
+            normalized.contains("失败") -> StatusTone.Critical
+        message == "已保存" -> StatusTone.Success
         else -> StatusTone.Accent
     }
 }

@@ -89,11 +89,12 @@ class GatewayClientTest {
         )
         val client = GatewayClient()
 
-        val response = client.search(server.url("/").toString(), "AI news")
+        val response = client.search(server.url("/").toString(), "AI news", apiToken = "token-1")
         val recorded = server.takeRequest()
 
         assertEquals("/v1/search", recorded.path)
         assertEquals("POST", recorded.method)
+        assertEquals("Bearer token-1", recorded.getHeader("Authorization"))
         assertNotNull(recorded.getHeader("X-Request-Id"))
         assertTrue(recorded.body.readUtf8().contains("AI news"))
         assertEquals("AI news", response.query)
@@ -114,7 +115,7 @@ class GatewayClientTest {
                     """
                     {
                       "code": "invalid_query",
-                      "message": "Search query must not be blank.",
+                      "message": "Search query 不能为空。",
                       "requestId": "request-1",
                       "details": null
                     }
@@ -130,7 +131,7 @@ class GatewayClientTest {
             assertEquals(400, error.statusCode)
             assertEquals("invalid_query", error.gatewayCode)
             assertEquals("request-1", error.requestId)
-            assertEquals("Search query must not be blank.", error.message)
+            assertEquals("Search query 不能为空。", error.message)
         }
     }
 
@@ -160,11 +161,13 @@ class GatewayClientTest {
             language = "python",
             code = "print(1 + 1)",
             timeoutSeconds = 3,
+            apiToken = "token-2",
         )
         val recorded = server.takeRequest()
 
         assertEquals("/v1/sandbox/run", recorded.path)
         assertEquals("POST", recorded.method)
+        assertEquals("Bearer token-2", recorded.getHeader("Authorization"))
         assertNotNull(recorded.getHeader("X-Request-Id"))
         assertTrue(recorded.body.readUtf8().contains("print(1 + 1)"))
         assertEquals("python", response.language)
@@ -185,7 +188,7 @@ class GatewayClientTest {
                     """
                     {
                       "code": "sandbox_unavailable",
-                      "message": "Sandbox runner is unavailable.",
+                      "message": "Sandbox runner 不可用。",
                       "requestId": "request-2",
                       "details": null
                     }
@@ -206,7 +209,7 @@ class GatewayClientTest {
             assertEquals(503, error.statusCode)
             assertEquals("sandbox_unavailable", error.gatewayCode)
             assertEquals("request-2", error.requestId)
-            assertEquals("Sandbox runner is unavailable.", error.message)
+            assertEquals("Sandbox runner 不可用。", error.message)
         }
     }
 

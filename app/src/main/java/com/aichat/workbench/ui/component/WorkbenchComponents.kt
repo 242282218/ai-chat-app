@@ -249,7 +249,7 @@ fun WorkbenchConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     tone: StatusTone = StatusTone.Critical,
-    dismissLabel: String = "Cancel",
+    dismissLabel: String = "取消",
 ) {
     val destructive = tone == StatusTone.Critical
     AlertDialog(

@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "web_search",
-      "description": "Search web or news sources through the configured gateway search adapter.",
+      "description": "通过已配置的 Gateway search adapter 搜索网页或新闻来源。",
       "permissionLevel": "Network",
       "inputSchema": {
         "type": "object",
@@ -23,7 +23,7 @@
     },
     {
       "name": "code_sandbox",
-      "description": "Run short code snippets in the remote sandbox when enabled.",
+      "description": "启用后在远端 Sandbox 运行短代码片段。",
       "permissionLevel": "Execute",
       "inputSchema": {
         "type": "object",

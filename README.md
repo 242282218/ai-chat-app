@@ -27,7 +27,7 @@
 构建和验证：
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lint assembleDebug --no-daemon --stacktrace
+.\gradlew.bat testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
 ```
 
 可以从 Android Studio 运行 debug App，也可以安装生成的 APK：
@@ -63,11 +63,13 @@ cd gateway
 go run .\cmd\gateway
 ```
 
-网关默认监听 `:8080`。可以用环境变量覆盖：
+网关默认监听 `127.0.0.1:8080`。可以用环境变量覆盖：
 
 ```powershell
-$env:GATEWAY_ADDR = ":8081"
+$env:GATEWAY_ADDR = "127.0.0.1:8081"
 ```
+
+`/v1/search` 和 `/v1/sandbox/run` 需要配置 `GATEWAY_API_TOKEN`，客户端请求使用 `Authorization: Bearer <token>`。
 
 接口：
 
@@ -83,9 +85,16 @@ $env:GATEWAY_ADDR = ":8081"
 最近一次本地验证：
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lint assembleDebug --no-daemon --stacktrace
+.\gradlew.bat testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
 cd gateway
 go test ./...
 ```
 
-当前验收证据和已知限制见 `docs/reports/2026-05-31-mvp-acceptance.md`。
+当前优化优先级和已知风险见 `docs/优化路线图.md`。
+
+## 隐私边界
+
+- App 默认关闭 Android Auto Backup，不把 Room 数据库、图片文件和 SharedPreferences 交给系统云备份或设备迁移。
+- API Key 通过 Android Keystore 支持的本地存储保存；应用内 JSON 导出不会包含 API Key。
+- 聊天内容默认只保存在本机；发送消息、图片或工具请求时，相关内容会发往用户配置的 Provider 或 Gateway。
+- 如需迁移数据，请使用 Settings 页面里的导出/导入功能；敏感会话和临时会话默认不随聊天备份导出。

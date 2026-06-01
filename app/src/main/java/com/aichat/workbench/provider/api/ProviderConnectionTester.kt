@@ -1,6 +1,9 @@
 package com.aichat.workbench.provider.api
 
 import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderModelDiscovery
+import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.provider.ProviderRegistry
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +18,7 @@ data class ProviderConnectionResult(
 
 class ProviderConnectionTester(
     private val client: OkHttpClient = OkHttpClient(),
+    private val providerRegistry: ProviderRegistry = ProviderRegistry(),
 ) {
     suspend fun test(
         provider: ProviderConfig,
@@ -22,18 +26,32 @@ class ProviderConnectionTester(
     ): ProviderConnectionResult =
         withContext(Dispatchers.IO) {
             runCatching {
-                client.newCall(provider.toModelsRequest(apiKey)).execute().use { response ->
+                val descriptor = providerRegistry.descriptor(provider.type)
+                if (descriptor.requiresApiKey && apiKey.isNullOrBlank()) {
+                    return@withContext ProviderConnectionResult(
+                        ok = false,
+                        statusCode = null,
+                        message = "API Key 缺失。",
+                    )
+                }
+                val discovery = descriptor.modelDiscovery
+                    ?: return@withContext ProviderConnectionResult(
+                        ok = false,
+                        statusCode = null,
+                        message = "当前 Provider 暂无模型发现接口。",
+                    )
+                client.newCall(provider.toModelsRequest(apiKey, discovery)).execute().use { response ->
                     if (response.isSuccessful) {
                         ProviderConnectionResult(
                             ok = true,
                             statusCode = response.code,
-                            message = "Connection OK",
+                            message = "连接正常",
                         )
                     } else {
                         ProviderConnectionResult(
                             ok = false,
                             statusCode = response.code,
-                            message = "Provider returned HTTP ${response.code}",
+                            message = "Provider 返回 HTTP ${response.code}",
                         )
                     }
                 }
@@ -42,17 +60,20 @@ class ProviderConnectionTester(
                     ok = false,
                     statusCode = null,
                     message = when (error) {
-                        is IllegalArgumentException -> "Provider URL is invalid."
-                        is IOException -> error.message ?: "Provider connection failed."
-                        else -> error.message ?: "Provider connection failed."
+                        is IllegalArgumentException -> "Provider URL 无效。"
+                        is IOException -> error.message ?: "Provider 连接失败。"
+                        else -> error.message ?: "Provider 连接失败。"
                     },
                 )
             }
         }
 
-    private fun ProviderConfig.toModelsRequest(apiKey: String?): Request {
+    private fun ProviderConfig.toModelsRequest(
+        apiKey: String?,
+        discovery: ProviderModelDiscovery,
+    ): Request {
         val builder = Request.Builder()
-            .url("${baseUrl.trimEnd('/')}/models")
+            .url("${modelDiscoveryBaseUrl()}/${discovery.path.trimStart('/')}")
             .get()
             .header("Accept", "application/json")
 
@@ -61,9 +82,22 @@ class ProviderConnectionTester(
                 builder.header(name, value)
             }
         }
-        apiKey?.takeIf { it.isNotBlank() }?.let {
-            builder.header("Authorization", "Bearer $it")
+        apiKey?.takeIf { it.isNotBlank() }?.let { key ->
+            when (type) {
+                ProviderType.Gemini -> builder.header("x-goog-api-key", key)
+                ProviderType.Anthropic -> builder.header("x-api-key", key)
+                else -> builder.header("Authorization", "Bearer $key")
+            }
         }
         return builder.build()
+    }
+
+    private fun ProviderConfig.modelDiscoveryBaseUrl(): String {
+        val trimmed = baseUrl.trimEnd('/')
+        return if (type == ProviderType.Ollama && trimmed.endsWith("/v1")) {
+            trimmed.removeSuffix("/v1")
+        } else {
+            trimmed
+        }
     }
 }

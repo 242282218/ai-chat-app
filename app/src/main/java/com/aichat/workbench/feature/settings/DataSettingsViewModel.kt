@@ -1,9 +1,7 @@
 package com.aichat.workbench.feature.settings
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.aichat.workbench.app.AppGraph
 import com.aichat.workbench.data.backup.AppBackupService
 import com.aichat.workbench.data.backup.BackupImportSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,11 +47,11 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         exportJson = json,
-                        status = "Export ready",
+                        status = "导出就绪",
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Export failed.") }
+                _state.update { it.copy(status = error.message ?: "导出失败。") }
             }
             _state.update { it.copy(isBusy = false) }
         }
@@ -65,7 +63,7 @@ class DataSettingsViewModel(
 
     fun importJson(value: String) {
         if (value.isBlank()) {
-            _state.update { it.copy(status = "Import JSON must not be blank.") }
+            _state.update { it.copy(status = "导入 JSON 不能为空。") }
             return
         }
         viewModelScope.launch {
@@ -76,36 +74,36 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         importSummary = summary,
-                        status = "Import complete",
+                        status = "导入完成",
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Import failed.") }
+                _state.update { it.copy(status = error.message ?: "导入失败。") }
             }
             _state.update { it.copy(isBusy = false) }
         }
     }
 
     fun clearChatHistory() {
-        runClear("Chat history cleared") {
+        runClear("聊天历史已清空") {
             backupService.clearChatHistory()
         }
     }
 
     fun clearProvidersAndApiKeys() {
-        runClear("Providers and API keys cleared") {
+        runClear("Providers 和 API Key 已清空") {
             backupService.clearProvidersAndApiKeys()
         }
     }
 
     fun clearPromptsModelsAndImages() {
-        runClear("Prompts, model preferences, and images cleared") {
+        runClear("Prompts、Model 偏好和图片已清空") {
             backupService.clearPromptsModelsAndImages()
         }
     }
 
     fun clearAllData() {
-        runClear("All local data cleared") {
+        runClear("全部本地数据已清空") {
             backupService.clearAllData()
         }
     }
@@ -127,17 +125,9 @@ class DataSettingsViewModel(
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "Clear failed.") }
+                _state.update { it.copy(status = error.message ?: "清空失败。") }
             }
             _state.update { it.copy(isBusy = false) }
-        }
-    }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                DataSettingsViewModel(AppGraph.backupService) as T
         }
     }
 }

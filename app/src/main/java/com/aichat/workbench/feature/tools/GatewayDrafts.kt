@@ -31,22 +31,22 @@ internal fun ToolsUiState.hasSandboxTool(): Boolean =
 internal fun String.gatewayUrlStatus(): GatewayUrlStatus =
     when {
         isBlank() -> GatewayUrlStatus(
-            label = "URL required",
+            label = "需要 URL",
             isValid = false,
             isWarning = true,
         )
         isValidGatewayBaseUrl() && trim().startsWith("http://") -> GatewayUrlStatus(
-            label = "HTTP gateway",
+            label = "HTTP Gateway",
             isValid = true,
             isWarning = true,
         )
         isValidGatewayBaseUrl() -> GatewayUrlStatus(
-            label = "URL valid",
+            label = "URL 有效",
             isValid = true,
             isWarning = false,
         )
         else -> GatewayUrlStatus(
-            label = "URL invalid",
+            label = "URL 无效",
             isValid = false,
             isWarning = false,
         )

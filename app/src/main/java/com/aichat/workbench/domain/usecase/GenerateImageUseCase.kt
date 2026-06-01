@@ -33,19 +33,19 @@ class GenerateImageUseCase(
     private val clock: Clock,
 ) {
     suspend operator fun invoke(request: GenerateImageRequest): List<ImageGeneration> {
-        require(request.prompt.isNotBlank()) { "Image prompt must not be blank." }
-        require(request.model.isNotBlank()) { "Image model must not be blank." }
-        require(request.count in 1..4) { "Image count must be between 1 and 4." }
+        require(request.prompt.isNotBlank()) { "图片 Prompt 不能为空。" }
+        require(request.model.isNotBlank()) { "图片 Model 不能为空。" }
+        require(request.count in 1..4) { "图片数量必须在 1 到 4 之间。" }
 
         val pending = request.pendingGeneration()
         repository.saveImageGeneration(pending)
 
         return try {
             val response = imageProvider.generate(request.toProviderRequest())
-            require(response.images.isNotEmpty()) { "Provider returned no images." }
+            require(response.images.isNotEmpty()) { "Provider 未返回图片。" }
             response.images.mapIndexed { index, generated ->
                 val base64 = generated.base64
-                    ?: error("Provider returned image URL; local persistence requires base64 image data.")
+                    ?: error("Provider 返回的是图片 URL；本地保存需要 base64 图片数据。")
                 val id = if (index == 0) pending.id else ImageGenerationId(UUID.randomUUID().toString())
                 val paths = imageStorage.savePng(id, Base64.getDecoder().decode(base64))
                 pending.copy(
@@ -100,6 +100,6 @@ class GenerateImageUseCase(
     private fun Throwable.summary(): String =
         when (this) {
             is ProviderHttpException -> error.message
-            else -> message ?: "Image generation failed."
+            else -> message ?: "图片生成失败。"
         }
 }

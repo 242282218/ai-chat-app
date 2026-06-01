@@ -42,4 +42,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Run Android checks
-        run: ./gradlew testDebugUnitTest lint assembleDebug --no-daemon
+        run: ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Upload Android reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml

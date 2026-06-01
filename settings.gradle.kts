@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ai-chat-app"
 include(":app")
+include(":baselineprofile")

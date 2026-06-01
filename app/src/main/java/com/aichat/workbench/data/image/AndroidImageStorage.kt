@@ -27,7 +27,7 @@ class AndroidImageStorage(
             originalFile.writeBytes(bytes)
 
             val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) {
-                "Generated image data is not a readable bitmap."
+                "生成的图片数据不是可读取的 bitmap。"
             }
             val thumbnail = bitmap.createThumbnail()
             bitmap.recycle()

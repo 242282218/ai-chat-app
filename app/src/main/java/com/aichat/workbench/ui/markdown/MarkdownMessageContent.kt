@@ -156,7 +156,7 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
     val title = when {
         block.mermaid -> "Mermaid"
         block.language != null -> block.language
-        else -> "code"
+        else -> "代码"
     }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
@@ -272,8 +272,9 @@ private fun CopyHeader(label: String, value: String) {
 
 private fun copyContentDescription(label: String): String =
     when (label.lowercase()) {
-        "code" -> "Copy code"
-        "latex" -> "Copy LaTeX"
-        "mermaid" -> "Copy Mermaid source"
-        else -> "Copy $label code"
+        "code",
+        "代码" -> "复制代码"
+        "latex" -> "复制 LaTeX"
+        "mermaid" -> "复制 Mermaid 源码"
+        else -> "复制 $label 代码"
     }

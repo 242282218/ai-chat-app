@@ -13,7 +13,9 @@ import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class RoomToolInvocationRepository(
     private val dao: ToolInvocationDao,
@@ -56,36 +58,48 @@ class RoomToolInvocationRepository(
 
     private fun ToolOutput.toJson(): String =
         when (this) {
-            is ToolOutput.Text -> JSONObject()
-                .put("type", "text")
-                .put("text", text)
-                .toString()
-            is ToolOutput.Json -> JSONObject()
-                .put("type", "json")
-                .put("value", value)
-                .toString()
+            is ToolOutput.Text -> repositoryJson.encodeToString(ToolOutputJson(type = "text", text = text))
+            is ToolOutput.Json -> repositoryJson.encodeToString(ToolOutputJson(type = "json", value = value))
         }
 
     private fun String.toToolOutput(): ToolOutput {
-        val json = JSONObject(this)
-        return when (json.optString("type")) {
-            "text" -> ToolOutput.Text(json.optString("text"))
-            "json" -> ToolOutput.Json(json.optString("value"))
+        val json = runCatching { repositoryJson.decodeFromString<ToolOutputJson>(this) }.getOrNull()
+            ?: return ToolOutput.Text(this)
+        return when (json.type) {
+            "text" -> ToolOutput.Text(json.text.orEmpty())
+            "json" -> ToolOutput.Json(json.value.orEmpty())
             else -> ToolOutput.Text(this)
         }
     }
 
     private fun ToolError.toJson(): String =
-        JSONObject()
-            .put("code", code)
-            .put("message", message)
-            .toString()
+        repositoryJson.encodeToString(ToolErrorJson(code = code, message = message))
 
     private fun String.toToolError(): ToolError {
-        val json = JSONObject(this)
+        val json = repositoryJson.decodeFromString<ToolErrorJson>(this)
         return ToolError(
-            code = json.optString("code"),
-            message = json.optString("message"),
+            code = json.code,
+            message = json.message,
         )
     }
+
+    private companion object {
+        val repositoryJson = Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
+    }
 }
+
+@Serializable
+private data class ToolOutputJson(
+    val type: String,
+    val text: String? = null,
+    val value: String? = null,
+)
+
+@Serializable
+private data class ToolErrorJson(
+    val code: String,
+    val message: String,
+)

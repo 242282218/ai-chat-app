@@ -27,3 +27,11 @@ jobs:
       - name: Run gateway tests
         working-directory: gateway
         run: go test ./...
+
+      - name: Run go vet
+        working-directory: gateway
+        run: go vet ./...
+
+      - name: Run govulncheck
+        working-directory: gateway
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
