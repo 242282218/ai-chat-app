@@ -54,7 +54,7 @@ fun WorkbenchIconButton(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(text = label) } },
         state = rememberTooltipState(),
     ) {
@@ -141,8 +141,8 @@ fun WorkbenchPanel(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         shape = MaterialTheme.shapes.medium,
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+        tonalElevation = 0.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -256,6 +256,7 @@ fun QuietListRow(
     enabled: Boolean = true,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
+    val contentAlpha = if (enabled) 1f else 0.42f
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -267,7 +268,7 @@ fun QuietListRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             modifier = Modifier.size(24.dp),
         )
         Column(
@@ -278,13 +279,14 @@ fun QuietListRow(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -454,29 +456,29 @@ private fun statusColors(tone: StatusTone): StatusColors {
     val scheme = MaterialTheme.colorScheme
     return when (tone) {
         StatusTone.Neutral -> StatusColors(
-            container = scheme.surfaceVariant.copy(alpha = 0.48f),
+            container = scheme.surfaceVariant.copy(alpha = 0.38f),
             content = scheme.onSurfaceVariant,
-            border = scheme.outlineVariant.copy(alpha = 0.68f),
+            border = scheme.outlineVariant.copy(alpha = 0.48f),
         )
         StatusTone.Accent -> StatusColors(
-            container = scheme.primary.copy(alpha = 0.12f),
+            container = scheme.primary.copy(alpha = 0.10f),
             content = scheme.primary,
-            border = scheme.primary.copy(alpha = 0.20f),
+            border = scheme.primary.copy(alpha = 0.16f),
         )
         StatusTone.Success -> StatusColors(
-            container = scheme.secondary.copy(alpha = 0.14f),
+            container = scheme.secondary.copy(alpha = 0.11f),
             content = scheme.secondary,
-            border = scheme.secondary.copy(alpha = 0.24f),
+            border = scheme.secondary.copy(alpha = 0.18f),
         )
         StatusTone.Warning -> StatusColors(
-            container = scheme.tertiary.copy(alpha = 0.16f),
+            container = scheme.tertiary.copy(alpha = 0.12f),
             content = scheme.tertiary,
-            border = scheme.tertiary.copy(alpha = 0.25f),
+            border = scheme.tertiary.copy(alpha = 0.19f),
         )
         StatusTone.Critical -> StatusColors(
-            container = scheme.error.copy(alpha = 0.12f),
+            container = scheme.error.copy(alpha = 0.10f),
             content = scheme.error,
-            border = scheme.error.copy(alpha = 0.22f),
+            border = scheme.error.copy(alpha = 0.18f),
         )
     }
 }
