@@ -91,13 +91,13 @@ class DataSettingsViewModel(
     }
 
     fun clearProvidersAndApiKeys() {
-        runClear("Providers 和 API Key 已清空") {
+        runClear("模型连接和 API Key 已清空") {
             backupService.clearProvidersAndApiKeys()
         }
     }
 
     fun clearPromptsModelsAndImages() {
-        runClear("Prompts、Model 偏好和图片已清空") {
+        runClear("提示词、模型偏好和图片已清空") {
             backupService.clearPromptsModelsAndImages()
         }
     }

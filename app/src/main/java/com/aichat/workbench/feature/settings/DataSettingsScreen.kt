@@ -101,7 +101,7 @@ fun DataSettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "Data Controls") },
+                title = { Text(text = "数据与隐私") },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -181,7 +181,7 @@ fun DataSettingsScreen(
     pendingImportJson?.let { json ->
         WorkbenchConfirmDialog(
             title = "导入备份？",
-            message = "将 ${json.length} 个字符的 JSON 合并到本地存储。Provider API Key 不会恢复。",
+            message = "将 ${json.length} 个字符的 JSON 合并到本地存储。服务商 API Key 不会恢复。",
             confirmLabel = "导入",
             onConfirm = {
                 pendingImportJson = null
@@ -200,7 +200,7 @@ private fun PrivacySummaryHeader() {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         QuietSectionHeader(
-            title = "Privacy Summary",
+            title = "隐私摘要",
             description = "先确认数据边界，再做导入、导出或清空。",
             trailing = {
                 StatusPill(text = "本地优先", tone = StatusTone.Success)
@@ -214,16 +214,16 @@ private fun PrivacySummaryHeader() {
                 StatusPill(text = "API Key 不进备份", tone = StatusTone.Success)
             }
             item {
-                StatusPill(text = "Gateway 可选", tone = StatusTone.Neutral)
+                StatusPill(text = "网关可选", tone = StatusTone.Neutral)
             }
         }
         MetadataRow(
-            label = "Provider 请求",
-            value = "聊天、图片和工具请求会直接发送到你配置的 endpoint 或 Gateway。",
+            label = "模型服务请求",
+            value = "聊天、图片和工具请求会直接发送到你配置的接口地址或网关。",
         )
         MetadataRow(
             label = "备份范围",
-            value = "导出 JSON 可包含配置和聊天内容，但不会恢复 Provider API Key。",
+            value = "导出 JSON 可包含配置和聊天内容，但不会恢复服务商 API Key。",
         )
     }
 }
@@ -333,7 +333,7 @@ private fun ImportPanel(
 ) {
     WorkbenchPanel(
         title = "导入",
-        description = "将 JSON 数据导入本地存储；Provider API Key 不会恢复。",
+        description = "将 JSON 数据导入本地存储；服务商 API Key 不会恢复。",
         icon = Icons.Filled.FileUpload,
         trailing = {
             StatusPill(
@@ -485,7 +485,7 @@ private fun ClearPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         QuietSectionHeader(
-            title = "Danger Zone",
+            title = "危险操作",
             description = "每项都会先说明影响范围并二次确认。",
             trailing = {
                 StatusPill(text = "破坏性", tone = StatusTone.Critical)
@@ -518,19 +518,19 @@ private enum class ClearAction(
     Chats(
         buttonText = "清空聊天",
         title = "清空聊天",
-        message = "删除所有会话、消息和 Tool 结果。",
+        message = "删除所有会话、消息和工具结果。",
         run = { it.clearChatHistory() },
     ),
     Providers(
-        buttonText = "清空 Providers",
-        title = "清空 Providers",
-        message = "删除 Provider 配置、API Key 引用、已保存 API Key，以及这些 Provider 的 Model 偏好。",
+        buttonText = "清空模型连接",
+        title = "清空模型连接",
+        message = "删除模型服务配置、API Key 引用、已保存 API Key，以及这些服务商的模型偏好。",
         run = { it.clearProvidersAndApiKeys() },
     ),
     PromptsModelsImages(
-        buttonText = "清空 Prompt/图片",
-        title = "清空 Prompt 和图片",
-        message = "删除 Prompt 预设、Model 偏好、图片历史和已保存图片文件。",
+        buttonText = "清空提示词和图片",
+        title = "清空提示词和图片",
+        message = "删除提示词预设、模型偏好、图片历史和已保存图片文件。",
         run = { it.clearPromptsModelsAndImages() },
     ),
     All(
