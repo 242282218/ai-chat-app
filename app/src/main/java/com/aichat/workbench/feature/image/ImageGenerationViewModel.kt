@@ -134,7 +134,7 @@ class ImageGenerationViewModel(
                 require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
                 require(imageCount != null && imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
-                if (provider.type == ProviderType.OpenAI) {
+                if (provider.requiresApiKey()) {
                     require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
                 }
 

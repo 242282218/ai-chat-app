@@ -348,7 +348,7 @@ private fun ImageGenerationForm(
 
 @Composable
 private fun ImageGenerationReadiness(state: ImageGenerationUiState) {
-    val readiness = imageGenerationReadiness(state)
+    val readiness = state.imageGenerationReadiness()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -365,53 +365,6 @@ private fun ImageGenerationReadiness(state: ImageGenerationUiState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-private data class ImageReadiness(
-    val label: String,
-    val tone: StatusTone,
-    val description: String,
-)
-
-private fun imageGenerationReadiness(state: ImageGenerationUiState): ImageReadiness {
-    val imageCount = state.imageCountOrNull()
-    return when {
-        state.isGenerating -> ImageReadiness(
-            label = "生成中",
-            tone = StatusTone.Accent,
-            description = "模型服务正在生成图片，可停止；已创建的记录会标记为已取消。",
-        )
-        state.selectedProvider == null -> ImageReadiness(
-            label = "需要模型服务",
-            tone = StatusTone.Warning,
-            description = "先配置支持图片生成的模型服务，再发起请求。",
-        )
-        state.prompt.isBlank() -> ImageReadiness(
-            label = "需要提示词",
-            tone = StatusTone.Warning,
-            description = "描述主体、风格和约束后再生成；失败后输入会保留。",
-        )
-        state.model.isBlank() -> ImageReadiness(
-            label = "需要模型",
-            tone = StatusTone.Warning,
-            description = "展开生成参数，填写或选择图片生成模型。",
-        )
-        imageCount == null || imageCount !in 1..4 -> ImageReadiness(
-            label = "数量无效",
-            tone = StatusTone.Critical,
-            description = "展开生成参数，将数量设为 1 到 4。",
-        )
-        state.selectedModelUnsupported -> ImageReadiness(
-            label = "模型不支持",
-            tone = StatusTone.Critical,
-            description = "当前模型未声明支持图片生成，请切换模型或模型服务。",
-        )
-        else -> ImageReadiness(
-            label = "就绪",
-            tone = StatusTone.Success,
-            description = "生成后会写入本地作品库，可复用提示词、保存或分享。",
         )
     }
 }
@@ -667,58 +620,11 @@ private fun ImageGeneration.metadataLabel(): String {
     return "$model · $size · $quality"
 }
 
-private fun ImageGenerationUiState.canGenerateImages(): Boolean {
-    val imageCount = imageCountOrNull()
-    return !isGenerating &&
-        selectedProvider != null &&
-        prompt.isNotBlank() &&
-        model.isNotBlank() &&
-        imageCount != null &&
-        imageCount in 1..4 &&
-        !selectedModelUnsupported
-}
-
 private fun ImageGenerationUiState.imageLibrarySummaryLabel(): String {
     if (generations.isEmpty()) return "暂无作品"
     val completedCount = generations.count { it.status == ImageGenerationStatus.Completed }
     return "${generations.size} 个作品 · $completedCount 个完成"
 }
-
-private fun ImageGenerationUiState.imageCountOrNull(): Int? =
-    count.trim().toIntOrNull()
-
-private fun ImageGenerationUiState.imageCountLabel(): String {
-    val parsedCount = imageCountOrNull()
-    return when {
-        count.isBlank() -> "需要数量"
-        parsedCount == null -> "数量无效"
-        parsedCount in 1..4 -> "${parsedCount} 张图片"
-        else -> "数量 1-4"
-    }
-}
-
-private fun ImageGenerationUiState.imageCountTone(): StatusTone {
-    val parsedCount = imageCountOrNull()
-    return when {
-        count.isBlank() -> StatusTone.Warning
-        parsedCount != null && parsedCount in 1..4 -> StatusTone.Success
-        else -> StatusTone.Critical
-    }
-}
-
-private fun ImageGenerationUiState.imageModelLabel(): String =
-    when {
-        model.isBlank() -> "需要模型"
-        selectedModelUnsupported -> "模型不支持"
-        else -> "模型就绪"
-    }
-
-private fun ImageGenerationUiState.imageModelTone(): StatusTone =
-    when {
-        model.isBlank() -> StatusTone.Warning
-        selectedModelUnsupported -> StatusTone.Critical
-        else -> StatusTone.Success
-    }
 
 @Composable
 private fun LocalThumbnail(path: String) {
