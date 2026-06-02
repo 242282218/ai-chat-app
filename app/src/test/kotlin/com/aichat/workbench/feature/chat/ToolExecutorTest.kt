@@ -258,7 +258,7 @@ class ToolExecutorTest {
     }
 
     @Test
-    fun executeWithKnownDescriptorDoesNotReloadManifest() = runTest {
+    fun executeWithKnownDescriptorReportsDisabledGatewayWithoutReloadingManifest() = runTest {
         val repository = RecordingToolInvocationRepository()
         val executor = ToolExecutor(
             gatewaySettingsProvider = { GatewaySettings(enabled = false, baseUrl = "", apiToken = "") },
@@ -284,7 +284,41 @@ class ToolExecutorTest {
         )
 
         assertEquals(ToolPermissionLevel.Network, execution.result.permissionLevel)
-        assertEquals("tool_failed", execution.result.error?.code)
+        assertEquals("gateway_disabled", execution.result.error?.code)
+        assertEquals("工具网关未启用。", execution.result.error?.message)
+        assertEquals(1, repository.savedResults.value.size)
+    }
+
+    @Test
+    fun executeSearchReportsInvalidGatewayUrlBeforeCreatingGatewayClient() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = ToolExecutor(
+            gatewaySettingsProvider = {
+                GatewaySettings(enabled = true, baseUrl = "gateway.local", apiToken = "token")
+            },
+            gatewayClientProvider = { error("GatewayClient should not be created for invalid gateway URL") },
+            toolInvocationRepository = repository,
+            clock = clock,
+        )
+        val descriptor = ToolDescriptor(
+            name = "web_search",
+            displayName = "Web Search",
+            description = "Remote search",
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = 20,
+            source = ToolSource.Gateway,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_5"), "web_search", """{"query":"AI"}"""),
+            descriptor = descriptor,
+        )
+
+        assertEquals("invalid_gateway_url", execution.result.error?.code)
+        assertEquals("工具网关地址无效。", execution.result.error?.message)
         assertEquals(1, repository.savedResults.value.size)
     }
 

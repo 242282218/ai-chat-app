@@ -179,8 +179,12 @@ class ToolExecutor(
 
     private suspend fun requireGatewaySettings(): GatewaySettings {
         val settings = gatewaySettingsProvider()
-        require(settings.enabled) { "工具网关未启用。" }
-        require(settings.baseUrl.isValidGatewayUrl()) { "工具网关地址无效。" }
+        if (!settings.enabled) {
+            throw GatewaySettingsException("gateway_disabled", "工具网关未启用。")
+        }
+        if (!settings.baseUrl.isValidGatewayUrl()) {
+            throw GatewaySettingsException("invalid_gateway_url", "工具网关地址无效。")
+        }
         return settings
     }
 
@@ -264,6 +268,7 @@ class ToolExecutor(
     private fun Throwable.toToolErrorCode(): String =
         when (this) {
             is GatewayHttpException -> gatewayCode
+            is GatewaySettingsException -> code
             is InvalidToolArgumentsException -> "invalid_tool_arguments"
             else -> "tool_failed"
         }
@@ -300,6 +305,11 @@ private class InvalidToolArgumentsException(
     message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
+
+private class GatewaySettingsException(
+    val code: String,
+    message: String,
+) : RuntimeException(message)
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
 private const val DEFAULT_SANDBOX_LANGUAGE = "python"
