@@ -169,6 +169,59 @@ class GenerationControllerTest {
     }
 
     @Test
+    fun failedToolCallPersistsReadableErrorSummary() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val toolRepository = GenerationControllerToolInvocationRepository()
+        val toolCall = ToolCall(ToolCallId("call_unknown"), "web_search", """{"query":"AI"}""")
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(
+                flowOf(ProviderStreamEvent.ToolCallDelta(toolCall), ProviderStreamEvent.Completed),
+                flowOf(ProviderStreamEvent.TextDelta("Final answer"), ProviderStreamEvent.Completed),
+            ),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAI.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock, toolRepository),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "gpt-test", input = "Search the web"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Search the web",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+        assertEquals(MessageStatus.Failed, toolMessage.status)
+        assertEquals("未知工具。", toolMessage.errorSummary)
+        assertEquals("unknown_tool", toolRepository.savedResults.value.single().error?.code)
+        assertTrue(conversationRepository.allMessages().any { it.content == "Final answer" && it.status == MessageStatus.Completed })
+    }
+
+    @Test
     fun startShowsClearErrorForUnregisteredProvider() = runTest(mainDispatcherRule.testDispatcher) {
         val provider = provider("anthropic", ProviderType.Anthropic)
         val conversationRepository = GenerationControllerConversationRepository(clock)

@@ -158,6 +158,7 @@ class ConversationManager(
         toolCallId: ToolCallId? = null,
         toolCalls: List<ToolCall> = emptyList(),
         toolResult: String? = null,
+        errorSummary: String? = null,
         contentParts: List<MessagePart> = if (content.isBlank()) emptyList() else listOf(MessagePart.Text(content)),
     ): Message =
         Message(
@@ -169,7 +170,7 @@ class ConversationManager(
             providerId = provider.id,
             model = model,
             status = status,
-            errorSummary = null,
+            errorSummary = errorSummary,
             createdAt = clock.instant(),
             updatedAt = clock.instant(),
             toolCallId = toolCallId,

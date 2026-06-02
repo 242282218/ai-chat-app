@@ -287,6 +287,7 @@ class GenerationController(
             parentMessageId = assistant.id,
             toolCallId = toolCall.id,
             toolResult = execution.messageContent,
+            errorSummary = execution.result.error?.message,
         )
         conversationRepository.saveMessage(toolMessage)
     }
