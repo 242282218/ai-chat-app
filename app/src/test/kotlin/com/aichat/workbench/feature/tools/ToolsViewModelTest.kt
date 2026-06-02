@@ -15,12 +15,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.yield
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -85,6 +89,40 @@ class ToolsViewModelTest {
         assertNull(viewModel.state.value.pendingConfirmation)
     }
 
+    @Test
+    fun failedManifestFetchClearsStaleRemoteTools() = runTest(mainDispatcherRule.testDispatcher) {
+        val server = MockWebServer()
+        server.enqueue(manifestResponse("web_search"))
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(503)
+                .setBody("""{"code":"gateway_unavailable","message":"Gateway unavailable"}"""),
+        )
+        server.start()
+        try {
+            val viewModel = viewModel()
+            advanceUntilIdle()
+            viewModel.updateGatewayEnabled(true)
+            viewModel.updateGatewayBaseUrl(server.url("/").toString())
+
+            viewModel.fetchManifest()
+            advanceUntilIdle()
+            viewModel.awaitNotLoading()
+
+            assertEquals(listOf("web_search"), viewModel.state.value.remoteTools.map { it.name })
+            assertEquals("已加载 1 个网关工具", viewModel.state.value.status)
+
+            viewModel.fetchManifest()
+            advanceUntilIdle()
+            viewModel.awaitNotLoading()
+
+            assertEquals(emptyList<String>(), viewModel.state.value.remoteTools.map { it.name })
+            assertEquals("Gateway unavailable", viewModel.state.value.status)
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun viewModel(): ToolsViewModel =
         ToolsViewModel(
             settingsRepository = GatewaySettingsRepository(context, FakeSecretStore()),
@@ -93,6 +131,32 @@ class ToolsViewModelTest {
             clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
         )
 }
+
+private suspend fun ToolsViewModel.awaitNotLoading() {
+    withTimeout(5_000) {
+        while (state.value.isLoading) {
+            yield()
+        }
+    }
+}
+
+private fun manifestResponse(toolName: String): MockResponse =
+    MockResponse().setResponseCode(200).setBody(
+        """
+        {
+          "version": 1,
+          "generatedAt": "2026-06-01T00:00:00Z",
+          "tools": [
+            {
+              "name": "$toolName",
+              "description": "Remote tool",
+              "permissionLevel": "Network",
+              "inputSchema": {}
+            }
+          ]
+        }
+        """.trimIndent(),
+    )
 
 private class FakeSecretStore : SecretStore {
     override suspend fun putSecret(ref: String, value: String) = Unit

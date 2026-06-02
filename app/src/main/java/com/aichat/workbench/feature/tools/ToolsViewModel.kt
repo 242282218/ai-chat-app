@@ -149,7 +149,12 @@ class ToolsViewModel(
                     )
                 }
             }.onFailure { error ->
-                _state.update { it.copy(status = error.message ?: "加载工具清单失败。") }
+                _state.update {
+                    it.copy(
+                        remoteTools = emptyList(),
+                        status = error.message ?: "加载工具清单失败。",
+                    )
+                }
             }
             _state.update { it.copy(isLoading = false) }
         }
