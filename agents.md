@@ -77,6 +77,15 @@ go run .\cmd\gateway
 
 CI：Android 看 [.github/workflows/android.yml](.github/workflows/android.yml)，Gateway 看 [.github/workflows/gateway.yml](.github/workflows/gateway.yml)。
 
+## 发布规则
+
+- 不为单个小 UI 调整、文案调整、状态标签、扫视性优化创建 GitHub Release 或 tag。
+- 只有重大更新才允许发版：完整功能闭环、重要架构变更、数据库/协议升级、可安装包修复、安全修复或用户明确要求发布。
+- 多个小改动应先合并到 `main`，等形成一个可说明的里程碑后再统一升级版本号、打 tag、创建 Release。
+- 发布前必须确认安装包可安装；禁止把 `app-release-unsigned.apk` 作为 GitHub Release 安装包上传。
+- 没有正式签名配置时，不发布 release APK；如临时需要给用户安装测试，必须明确产物类型并使用可安装的 debug APK 或已签名 APK。
+- Release notes 必须说明用户可感知的重大变化、验证命令和安装包类型。
+
 ## 行为边界
 
 - 先检查代码、文档、测试和当前 git diff，再修改。
