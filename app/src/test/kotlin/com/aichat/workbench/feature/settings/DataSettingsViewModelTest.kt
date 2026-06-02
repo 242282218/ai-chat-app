@@ -117,7 +117,7 @@ private class FakeBackupService(
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private class DataSettingsMainDispatcherRule(
+class DataSettingsMainDispatcherRule(
     val testDispatcher: TestDispatcher = StandardTestDispatcher(),
 ) : TestWatcher() {
     override fun starting(description: Description) {
