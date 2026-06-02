@@ -34,6 +34,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "gateway.local",
+            gatewayApiTokenDraft = "token",
             searchQuery = "release notes",
             remoteTools = listOf(tool("web_search", ToolPermissionLevel.Network)),
         )
@@ -47,6 +48,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "ftp://gateway.example.com",
+            gatewayApiTokenDraft = "token",
             sandboxCode = "print(1)",
             remoteTools = listOf(tool("code_sandbox", ToolPermissionLevel.Execute)),
         )
@@ -60,6 +62,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "https://gateway.example.com",
+            gatewayApiTokenDraft = "token",
             searchQuery = "release notes",
             sandboxCode = "print(1)",
             remoteTools = listOf(
@@ -72,6 +75,25 @@ class GatewayDraftsTest {
         assertTrue(base.canRunSandbox())
         assertFalse(base.copy(isLoading = true).canSearch())
         assertFalse(base.copy(isLoading = true).canRunSandbox())
+    }
+
+    @Test
+    fun remoteGatewayActionsRequireApiToken() {
+        val base = ToolsUiState(
+            gatewayEnabled = true,
+            gatewayBaseUrlDraft = "https://gateway.example.com",
+            searchQuery = "release notes",
+            sandboxCode = "print(1)",
+            remoteTools = listOf(
+                tool("web_search", ToolPermissionLevel.Network),
+                tool("code_sandbox", ToolPermissionLevel.Execute),
+            ),
+        )
+
+        assertFalse(base.canSearch())
+        assertFalse(base.canRunSandbox())
+        assertTrue(base.copy(gatewayApiTokenDraft = "token").canSearch())
+        assertTrue(base.copy(gatewayApiTokenDraft = "token").canRunSandbox())
     }
 
     private fun tool(

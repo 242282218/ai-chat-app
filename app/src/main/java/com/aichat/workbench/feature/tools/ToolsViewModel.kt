@@ -186,6 +186,15 @@ class ToolsViewModel(
             _state.update { it.copy(status = "工具网关地址无效。") }
             return
         }
+        if (current.gatewayApiTokenDraft.isBlank()) {
+            _state.update {
+                it.copy(
+                    status = "Gateway API token 未配置。",
+                    searchError = gatewayTokenRequiredError(),
+                )
+            }
+            return
+        }
         val searchTool = current.remoteTools.firstOrNull { it.name == "web_search" }
         if (searchTool == null) {
             _state.update { it.copy(status = "搜索前请先加载工具清单。") }
@@ -220,6 +229,15 @@ class ToolsViewModel(
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
             _state.update { it.copy(status = "工具网关地址无效。") }
+            return
+        }
+        if (current.gatewayApiTokenDraft.isBlank()) {
+            _state.update {
+                it.copy(
+                    status = "Gateway API token 未配置。",
+                    sandboxError = gatewayTokenRequiredError(),
+                )
+            }
             return
         }
         val sandboxTool = current.remoteTools.firstOrNull { it.name == "code_sandbox" }
@@ -399,6 +417,12 @@ class ToolsViewModel(
         toToolError(
             fallbackCode = "search_failed",
             fallbackMessage = "网络搜索失败。",
+        )
+
+    private fun gatewayTokenRequiredError(): ToolError =
+        ToolError(
+            code = "gateway_token_required",
+            message = "Gateway API token 未配置。",
         )
 
     private fun Throwable.toToolError(

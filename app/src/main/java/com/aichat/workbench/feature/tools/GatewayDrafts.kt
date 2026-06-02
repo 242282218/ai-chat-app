@@ -13,6 +13,7 @@ internal fun ToolsUiState.canSearch(): Boolean =
         searchQuery.isNotBlank() &&
         gatewayEnabled &&
         gatewayBaseUrlDraft.isValidGatewayBaseUrl() &&
+        gatewayApiTokenDraft.isNotBlank() &&
         hasSearchTool()
 
 internal fun ToolsUiState.canRunSandbox(): Boolean =
@@ -20,6 +21,7 @@ internal fun ToolsUiState.canRunSandbox(): Boolean =
         sandboxCode.isNotBlank() &&
         gatewayEnabled &&
         gatewayBaseUrlDraft.isValidGatewayBaseUrl() &&
+        gatewayApiTokenDraft.isNotBlank() &&
         hasSandboxTool()
 
 internal fun ToolsUiState.hasSearchTool(): Boolean =
