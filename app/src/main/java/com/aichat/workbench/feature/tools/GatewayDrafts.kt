@@ -20,6 +20,19 @@ internal fun ToolsUiState.canSearch(): Boolean =
 internal fun ToolsUiState.canRunSandbox(): Boolean =
     sandboxActionStatus().isReady
 
+internal fun ToolsUiState.canSaveGatewaySettings(): Boolean =
+    !isLoading &&
+        (!gatewayEnabled || gatewayBaseUrlDraft.isValidGatewayBaseUrl())
+
+internal fun ToolsUiState.canCheckGatewayHealth(): Boolean =
+    !isLoading &&
+        gatewayBaseUrlDraft.isValidGatewayBaseUrl()
+
+internal fun ToolsUiState.canFetchGatewayManifest(): Boolean =
+    !isLoading &&
+        gatewayEnabled &&
+        gatewayBaseUrlDraft.isValidGatewayBaseUrl()
+
 internal fun ToolsUiState.searchActionStatus(): GatewayActionStatus =
     when {
         isLoading -> GatewayActionStatus(label = "处理中", isReady = false, isBusy = true)

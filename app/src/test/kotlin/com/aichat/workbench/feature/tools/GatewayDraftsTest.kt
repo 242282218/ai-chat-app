@@ -82,6 +82,35 @@ class GatewayDraftsTest {
     }
 
     @Test
+    fun gatewaySettingsCanBeSavedDisabledWithInvalidUrl() {
+        val disabledInvalid = ToolsUiState(
+            gatewayEnabled = false,
+            gatewayBaseUrlDraft = "gateway.local",
+        )
+
+        assertTrue(disabledInvalid.canSaveGatewaySettings())
+        assertFalse(disabledInvalid.copy(gatewayEnabled = true).canSaveGatewaySettings())
+        assertFalse(disabledInvalid.copy(isLoading = true).canSaveGatewaySettings())
+    }
+
+    @Test
+    fun gatewayHealthCanRunDisabledButManifestRequiresEnabled() {
+        val enabledValid = ToolsUiState(
+            gatewayEnabled = true,
+            gatewayBaseUrlDraft = "https://gateway.example.com",
+        )
+
+        assertTrue(enabledValid.canCheckGatewayHealth())
+        assertTrue(enabledValid.canFetchGatewayManifest())
+        assertTrue(enabledValid.copy(gatewayEnabled = false).canCheckGatewayHealth())
+        assertFalse(enabledValid.copy(gatewayEnabled = false).canFetchGatewayManifest())
+        assertFalse(enabledValid.copy(gatewayBaseUrlDraft = "gateway.local").canCheckGatewayHealth())
+        assertFalse(enabledValid.copy(gatewayBaseUrlDraft = "gateway.local").canFetchGatewayManifest())
+        assertFalse(enabledValid.copy(isLoading = true).canCheckGatewayHealth())
+        assertFalse(enabledValid.copy(isLoading = true).canFetchGatewayManifest())
+    }
+
+    @Test
     fun searchActionStatusExplainsPrimaryMissingRequirement() {
         val ready = ToolsUiState(
             gatewayEnabled = true,

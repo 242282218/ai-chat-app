@@ -210,7 +210,6 @@ private fun GatewayActionStrip(
     onCheckHealth: () -> Unit,
     onFetchManifest: () -> Unit,
 ) {
-    val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -232,7 +231,7 @@ private fun GatewayActionStrip(
             item {
                 OutlinedButton(
                     onClick = onCheckHealth,
-                    enabled = gatewayUrlValid && !state.isLoading,
+                    enabled = state.canCheckGatewayHealth(),
                 ) {
                     Text(text = "健康检查")
                 }
@@ -240,7 +239,7 @@ private fun GatewayActionStrip(
             item {
                 OutlinedButton(
                     onClick = onFetchManifest,
-                    enabled = state.gatewayEnabled && gatewayUrlValid && !state.isLoading,
+                    enabled = state.canFetchGatewayManifest(),
                 ) {
                     Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -855,7 +854,6 @@ private fun GatewaySettingsPanel(
     viewModel: ToolsViewModel,
 ) {
     val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
-    val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
     var showGatewayApiToken by rememberSaveable { mutableStateOf(false) }
     WorkbenchPanel(
         title = "工具网关",
@@ -909,7 +907,7 @@ private fun GatewaySettingsPanel(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = viewModel::saveGatewaySettings,
-                enabled = gatewayUrlValid && !state.isLoading,
+                enabled = state.canSaveGatewaySettings(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(imageVector = Icons.Filled.Save, contentDescription = null)
@@ -918,16 +916,14 @@ private fun GatewaySettingsPanel(
             }
             OutlinedButton(
                 onClick = viewModel::checkHealth,
-                enabled = gatewayUrlValid && !state.isLoading,
+                enabled = state.canCheckGatewayHealth(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(text = "健康检查")
             }
             OutlinedButton(
                 onClick = viewModel::fetchManifest,
-                enabled = state.gatewayEnabled &&
-                    gatewayUrlValid &&
-                    !state.isLoading,
+                enabled = state.canFetchGatewayManifest(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
