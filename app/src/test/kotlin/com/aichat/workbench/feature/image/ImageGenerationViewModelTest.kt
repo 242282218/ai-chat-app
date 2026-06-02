@@ -10,12 +10,14 @@ import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.StoredImagePaths
+import com.aichat.workbench.provider.image.GeneratedImage
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -113,6 +115,58 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun generateWithoutSavedApiKeyDoesNotCallImageProvider() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val imageProvider = RecordingImageProvider()
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        advanceUntilIdle()
+
+        assertEquals("API Key 缺失。", viewModel.state.value.error)
+        assertEquals(emptyList<ImageGeneration>(), repository.generations.value)
+        assertEquals(0, imageProvider.requests.size)
+    }
+
+    @Test
+    fun generatePassesSavedApiKeyToImageProvider() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val imageProvider = RecordingImageProvider(
+            response = ImageGenerationProviderResponse(
+                images = listOf(base64Image(byteArrayOf(1, 2, 3))),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.error)
+        assertEquals("test-key", imageProvider.requests.single().apiKey)
+        assertEquals("Draw a test scene", imageProvider.requests.single().prompt)
+        assertEquals(ImageGenerationStatus.Completed, repository.generations.value.single().status)
+    }
+
+    @Test
     fun switchesToDefaultImageModelWhenImageProviderFallbackChanges() = runTest(mainDispatcherRule.testDispatcher) {
         val providerRepository = FakeProviderConfigRepository(
             listOf(provider("compatible", ProviderType.OpenAICompatible)),
@@ -164,17 +218,28 @@ class ImageGenerationViewModelTest {
             createdAt = clock.instant(),
         )
 
-    private fun provider(id: String, type: ProviderType): ProviderConfig =
+    private fun provider(
+        id: String,
+        type: ProviderType,
+        apiKeyRef: String? = null,
+    ): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
             name = id,
             type = type,
             baseUrl = "https://example.test/v1",
-            apiKeyRef = null,
+            apiKeyRef = apiKeyRef,
             headers = emptyMap(),
             models = emptyList(),
             defaultModel = "$id-model",
             enabled = true,
+        )
+
+    private fun base64Image(bytes: ByteArray): GeneratedImage =
+        GeneratedImage(
+            base64 = Base64.getEncoder().encodeToString(bytes),
+            url = null,
+            revisedPrompt = null,
         )
 }
 
@@ -235,6 +300,7 @@ private class FakeImageStorage(
 
 private class FakeProviderConfigRepository(
     initialProviders: List<ProviderConfig>,
+    private val apiKeys: Map<ProviderId, String> = emptyMap(),
 ) : ProviderConfigRepository {
     private val providers = MutableStateFlow(initialProviders)
 
@@ -255,7 +321,7 @@ private class FakeProviderConfigRepository(
         providers.value = providers.value.filterNot { it.id == provider.id } + provider
     }
 
-    override suspend fun getApiKey(providerId: ProviderId): String? = null
+    override suspend fun getApiKey(providerId: ProviderId): String? = apiKeys[providerId]
 
     override suspend fun deleteApiKeyRef(ref: String) = Unit
 
@@ -271,13 +337,15 @@ private class NoopImageProvider : ImageGenerationProvider {
         error("Image generation should not run in this test.")
 }
 
-private class RecordingImageProvider : ImageGenerationProvider {
+private class RecordingImageProvider(
+    private val response: ImageGenerationProviderResponse = ImageGenerationProviderResponse(emptyList()),
+) : ImageGenerationProvider {
     val requests = mutableListOf<ImageGenerationProviderRequest>()
 
     override suspend fun generate(
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse {
         requests += request
-        return ImageGenerationProviderResponse(emptyList())
+        return response
     }
 }
