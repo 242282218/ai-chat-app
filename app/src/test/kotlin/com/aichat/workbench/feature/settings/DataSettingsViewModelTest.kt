@@ -119,6 +119,32 @@ class DataSettingsViewModelTest {
     }
 
     @Test
+    fun stalePreviewResultDoesNotOverwriteClearStatus() = runTest(mainDispatcherRule.testDispatcher) {
+        val service = ControlledPreviewBackupService()
+        val viewModel = DataSettingsViewModel(service)
+        val staleSummary = BackupImportSummary(
+            providers = 1,
+            prompts = 0,
+            modelPreferences = 0,
+            conversations = 0,
+            messages = 0,
+        )
+
+        viewModel.updateImportJson(validBackupJson)
+        viewModel.previewImportJson(validBackupJson)
+        runCurrent()
+        viewModel.clearAllData()
+        advanceUntilIdle()
+        service.completePreview(validBackupJson, staleSummary)
+        advanceUntilIdle()
+
+        assertEquals(1, service.clearAllRequests)
+        assertEquals("全部本地数据已清空", viewModel.state.value.status)
+        assertNull(viewModel.state.value.importPreviewJson)
+        assertNull(viewModel.state.value.importPreviewSummary)
+    }
+
+    @Test
     fun duplicateExportsAreIgnoredWhileBusy() = runTest(mainDispatcherRule.testDispatcher) {
         val service = FakeBackupService()
         val viewModel = DataSettingsViewModel(service)
@@ -233,6 +259,7 @@ private class FakeBackupService(
 
 private class ControlledPreviewBackupService : BackupService {
     private val previewRequests = mutableMapOf<String, CompletableDeferred<BackupImportSummary>>()
+    var clearAllRequests = 0
 
     override suspend fun exportJson(includeChats: Boolean): String =
         validBackupJson
@@ -259,7 +286,9 @@ private class ControlledPreviewBackupService : BackupService {
 
     override suspend fun clearPromptsModelsAndImages() = Unit
 
-    override suspend fun clearAllData() = Unit
+    override suspend fun clearAllData() {
+        clearAllRequests += 1
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

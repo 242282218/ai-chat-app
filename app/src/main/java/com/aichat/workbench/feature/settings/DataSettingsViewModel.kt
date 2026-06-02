@@ -194,6 +194,7 @@ class DataSettingsViewModel(
         block: suspend () -> Unit,
     ) {
         if (_state.value.isBusy) return
+        importPreviewVersion += 1
         _state.update { beforeStart(it).copy(isBusy = true) }
         viewModelScope.launch {
             try {
