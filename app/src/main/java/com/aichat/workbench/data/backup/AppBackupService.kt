@@ -324,12 +324,96 @@ class AppBackupService(
     }
 
     private fun BackupJson.validateBackupPayloads() {
-        providers.forEach { it.toProvider() }
-        prompts.forEach { it.toPrompt() }
-        modelPreferences.forEach { it.toModelPreference() }
+        providers.forEach {
+            it.validateForImport()
+            it.toProvider()
+        }
+        prompts.forEach {
+            it.validateForImport()
+            it.toPrompt()
+        }
+        modelPreferences.forEach {
+            it.validateForImport()
+            it.toModelPreference()
+        }
         conversations.forEach { conversationJson ->
+            conversationJson.validateForImport()
             val conversation = conversationJson.toConversation()
-            conversationJson.messages.forEach { it.toMessage(conversation.id) }
+            conversationJson.messages.forEach {
+                it.validateForImport()
+                it.toMessage(conversation.id)
+            }
+        }
+    }
+
+    private fun ProviderBackupJson.validateForImport() {
+        id.requireMaxLength("模型连接 ID", MAX_BACKUP_ID_CHARS)
+        name.requireMaxLength("模型连接名称", MAX_BACKUP_NAME_CHARS)
+        type.requireMaxLength("模型连接类型", MAX_BACKUP_TYPE_CHARS)
+        baseUrl.requireMaxLength("模型连接 URL", MAX_BACKUP_URL_CHARS)
+        defaultModel?.requireMaxLength("默认模型", MAX_BACKUP_MODEL_CHARS)
+        models.requireJsonMaxLength("模型列表", MAX_BACKUP_JSON_FIELD_CHARS)
+        validateProviderHeaders(headers)
+    }
+
+    private fun PromptBackupJson.validateForImport() {
+        id.requireMaxLength("提示词 ID", MAX_BACKUP_ID_CHARS)
+        name.requireMaxLength("提示词名称", MAX_BACKUP_NAME_CHARS)
+        description?.requireMaxLength("提示词描述", MAX_BACKUP_DESCRIPTION_CHARS)
+        systemPrompt.requireMaxLength("系统提示词", MAX_BACKUP_PROMPT_CHARS)
+        defaultModel?.requireMaxLength("提示词默认模型", MAX_BACKUP_MODEL_CHARS)
+        defaultToolNames.requireJsonMaxLength("提示词工具列表", MAX_BACKUP_JSON_FIELD_CHARS)
+    }
+
+    private fun ModelPreferenceBackupJson.validateForImport() {
+        id.requireMaxLength("模型偏好 ID", MAX_BACKUP_ID_CHARS)
+        providerId.requireMaxLength("模型偏好 Provider ID", MAX_BACKUP_ID_CHARS)
+        model.requireMaxLength("模型偏好模型", MAX_BACKUP_MODEL_CHARS)
+        capability.requireJsonMaxLength("模型能力", MAX_BACKUP_JSON_FIELD_CHARS)
+    }
+
+    private fun ConversationBackupJson.validateForImport() {
+        id.requireMaxLength("会话 ID", MAX_BACKUP_ID_CHARS)
+        title.requireMaxLength("会话标题", MAX_BACKUP_TITLE_CHARS)
+        defaultProviderId?.requireMaxLength("会话默认 Provider ID", MAX_BACKUP_ID_CHARS)
+        defaultModel?.requireMaxLength("会话默认模型", MAX_BACKUP_MODEL_CHARS)
+        systemPrompt?.requireMaxLength("会话系统提示词", MAX_BACKUP_PROMPT_CHARS)
+        modelParameters.requireJsonMaxLength("会话模型参数", MAX_BACKUP_JSON_FIELD_CHARS)
+    }
+
+    private fun MessageBackupJson.validateForImport() {
+        id.requireMaxLength("消息 ID", MAX_BACKUP_ID_CHARS)
+        role.requireMaxLength("消息角色", MAX_BACKUP_TYPE_CHARS)
+        content.requireMaxLength("消息内容", MAX_BACKUP_MESSAGE_CHARS)
+        providerId?.requireMaxLength("消息 Provider ID", MAX_BACKUP_ID_CHARS)
+        model?.requireMaxLength("消息模型", MAX_BACKUP_MODEL_CHARS)
+        status.requireMaxLength("消息状态", MAX_BACKUP_TYPE_CHARS)
+        errorSummary?.requireMaxLength("消息错误摘要", MAX_BACKUP_ERROR_CHARS)
+        toolCallId?.requireMaxLength("工具调用 ID", MAX_BACKUP_ID_CHARS)
+        parentMessageId?.requireMaxLength("父消息 ID", MAX_BACKUP_ID_CHARS)
+        toolResult?.requireMaxLength("工具结果", MAX_BACKUP_TOOL_RESULT_CHARS)
+        contentParts.requireJsonMaxLength("消息内容部件", MAX_BACKUP_JSON_FIELD_CHARS)
+        toolCalls.requireJsonMaxLength("工具调用列表", MAX_BACKUP_JSON_FIELD_CHARS)
+    }
+
+    private fun validateProviderHeaders(headers: JsonElement?) {
+        val headerMap = stringMapFromJson(headers.jsonStringOrBlank())
+        require(headerMap.size <= MAX_BACKUP_PROVIDER_HEADERS) {
+            "导入模型连接 Header 数量超过 $MAX_BACKUP_PROVIDER_HEADERS 个限制。"
+        }
+        headerMap.forEach { (name, value) ->
+            name.requireMaxLength("Header 名称", MAX_BACKUP_HEADER_NAME_CHARS)
+            value.requireMaxLength("Header 值", MAX_BACKUP_HEADER_VALUE_CHARS)
+        }
+    }
+
+    private fun JsonElement?.requireJsonMaxLength(label: String, maxLength: Int) {
+        jsonStringOrBlank().requireMaxLength(label, maxLength)
+    }
+
+    private fun String.requireMaxLength(label: String, maxLength: Int) {
+        require(length <= maxLength) {
+            "$label 超过 $maxLength 字符限制。"
         }
     }
 
@@ -350,6 +434,21 @@ private const val MAX_BACKUP_PROMPTS = 500
 private const val MAX_BACKUP_MODEL_PREFERENCES = 1_000
 private const val MAX_BACKUP_CONVERSATIONS = 2_000
 private const val MAX_BACKUP_MESSAGES = 20_000
+private const val MAX_BACKUP_ID_CHARS = 160
+private const val MAX_BACKUP_TYPE_CHARS = 64
+private const val MAX_BACKUP_NAME_CHARS = 200
+private const val MAX_BACKUP_TITLE_CHARS = 240
+private const val MAX_BACKUP_DESCRIPTION_CHARS = 2_000
+private const val MAX_BACKUP_URL_CHARS = 1_024
+private const val MAX_BACKUP_MODEL_CHARS = 200
+private const val MAX_BACKUP_PROMPT_CHARS = 40_000
+private const val MAX_BACKUP_MESSAGE_CHARS = 120_000
+private const val MAX_BACKUP_ERROR_CHARS = 4_000
+private const val MAX_BACKUP_TOOL_RESULT_CHARS = 200_000
+private const val MAX_BACKUP_JSON_FIELD_CHARS = 200_000
+private const val MAX_BACKUP_PROVIDER_HEADERS = 20
+private const val MAX_BACKUP_HEADER_NAME_CHARS = 80
+private const val MAX_BACKUP_HEADER_VALUE_CHARS = 512
 
 private val backupJson = Json {
     ignoreUnknownKeys = true

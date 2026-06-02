@@ -64,6 +64,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertFailsWith
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -407,6 +408,50 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupImport_rejectsOversizedProviderHeaderBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val headerValue = "x".repeat(513)
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "OpenAI",
+                  "type": "OpenAI",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "headers": {"X-Trace": "$headerValue"},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("Header 值超过"))
+        assertNull(database.providerConfigDao().getProvider("provider-1"))
+    }
+
+    @Test
     fun backupImportPreview_reportsCountsWithoutWritingRows() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),
@@ -475,6 +520,54 @@ class AiChatDatabaseTest {
         assertEquals(1, summary.conversations)
         assertEquals(2, summary.messages)
         assertEquals(emptyList<ProviderConfig>(), providerRepository.observeProviders().first())
+    }
+
+    @Test
+    fun backupImport_rejectsOversizedMessageContentBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val conversationRepository = RoomConversationRepository(database.conversationDao(), clock)
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = conversationRepository,
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val messageContent = "x".repeat(120_001)
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": [
+                {
+                  "id": "conversation-1",
+                  "title": "Imported chat",
+                  "messages": [
+                    {
+                      "id": "message-1",
+                      "role": "User",
+                      "content": "$messageContent",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("消息内容超过"))
+        assertEquals(0, conversationRepository.observeConversations(includeArchived = true).first().size)
     }
 
     @Test

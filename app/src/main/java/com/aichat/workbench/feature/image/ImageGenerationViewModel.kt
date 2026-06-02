@@ -173,9 +173,14 @@ class ImageGenerationViewModel(
     fun clearHistory() {
         if (_state.value.isGenerating) return
         viewModelScope.launch {
-            imageStorage.deleteAllImages()
-            imageRepository.deleteAllImageGenerations()
-            _state.update { it.copy(error = null) }
+            runCatching {
+                imageStorage.deleteAllImages()
+                imageRepository.deleteAllImageGenerations()
+            }.onSuccess {
+                _state.update { it.copy(error = null) }
+            }.onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "清空图片历史失败。") }
+            }
         }
     }
 

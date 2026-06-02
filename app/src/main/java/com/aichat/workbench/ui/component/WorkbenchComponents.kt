@@ -33,6 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -307,8 +311,16 @@ fun InlineNotice(
     action: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = statusColors(tone)
+    val noticeModifier = modifier
+        .fillMaxWidth()
+        .semantics {
+            if (tone == StatusTone.Critical) {
+                liveRegion = LiveRegionMode.Polite
+                error(text)
+            }
+        }
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = noticeModifier,
         color = colors.container,
         contentColor = colors.content,
         shape = MaterialTheme.shapes.medium,

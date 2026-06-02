@@ -55,6 +55,25 @@ class GatewayDraftsTest {
         assertTrue(base.copy(gatewayBaseUrlDraft = "http://127.0.0.1:8080").canRunSandbox())
     }
 
+    @Test
+    fun toolWorkbenchActionsAreDisabledWhileLoading() {
+        val base = ToolsUiState(
+            gatewayEnabled = true,
+            gatewayBaseUrlDraft = "https://gateway.example.com",
+            searchQuery = "release notes",
+            sandboxCode = "print(1)",
+            remoteTools = listOf(
+                tool("web_search", ToolPermissionLevel.Network),
+                tool("code_sandbox", ToolPermissionLevel.Execute),
+            ),
+        )
+
+        assertTrue(base.canSearch())
+        assertTrue(base.canRunSandbox())
+        assertFalse(base.copy(isLoading = true).canSearch())
+        assertFalse(base.copy(isLoading = true).canRunSandbox())
+    }
+
     private fun tool(
         name: String,
         permissionLevel: ToolPermissionLevel,
