@@ -419,11 +419,11 @@ private fun OperationStatusPanel(
     InlineNotice(
         text = status,
         icon = Icons.Filled.Security,
-        tone = operationStatusTone(status, isBusy),
+        tone = dataOperationStatusTone(status, isBusy),
     ) {
         StatusPill(
-            text = operationStatusLabel(status, isBusy),
-            tone = operationStatusTone(status, isBusy),
+            text = dataOperationStatusLabel(status, isBusy),
+            tone = dataOperationStatusTone(status, isBusy),
         )
     }
 }
@@ -449,36 +449,6 @@ private fun BackupJsonSummary(
             }
         }
     }
-}
-
-private fun operationStatusLabel(
-    status: String,
-    isBusy: Boolean,
-): String =
-    when {
-        isBusy -> "处理中"
-        status.isErrorStatus() -> "错误"
-        else -> "完成"
-    }
-
-private fun operationStatusTone(
-    status: String,
-    isBusy: Boolean,
-): StatusTone =
-    when {
-        isBusy -> StatusTone.Accent
-        status.isErrorStatus() -> StatusTone.Critical
-        else -> StatusTone.Success
-    }
-
-private fun String.isErrorStatus(): Boolean {
-    val normalized = lowercase()
-    return normalized.contains("failed") ||
-        normalized.contains("error") ||
-        normalized.contains("must not") ||
-        normalized.contains("失败") ||
-        normalized.contains("错误") ||
-        normalized.contains("不能为空")
 }
 
 @Composable
