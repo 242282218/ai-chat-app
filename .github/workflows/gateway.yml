@@ -12,9 +12,6 @@ on:
       - "contracts/gateway/**"
       - ".github/workflows/gateway.yml"
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   gateway:
     runs-on: ubuntu-latest
