@@ -101,7 +101,7 @@ class ImageGenerationViewModelTest {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private class ImageMainDispatcherRule(
+class ImageMainDispatcherRule(
     val testDispatcher: TestDispatcher = StandardTestDispatcher(),
 ) : TestWatcher() {
     override fun starting(description: Description) {
