@@ -121,12 +121,17 @@ class ConversationManager(
         conversation: Conversation,
     ): ChatUiState {
         val selectionChanged = state.selectedConversationId != conversation.id
+        val selectedProviderId = conversation.defaultProviderId
+            ?.takeIf { providerId -> state.providers.any { it.id == providerId && it.enabled } }
+            ?.value
+            ?: state.selectedProviderId
         return state.copy(
             conversations = conversations,
             selectedConversationId = conversation.id,
+            selectedProviderId = selectedProviderId,
             messages = if (selectionChanged) emptyList() else state.messages,
             selectedConversationMessageCount = if (selectionChanged) 0 else state.selectedConversationMessageCount,
-            draft = draftFor(state, conversation),
+            draft = draftFor(state, conversation, selectedProviderId),
             error = null,
         )
     }
@@ -173,12 +178,16 @@ class ConversationManager(
             toolResult = toolResult,
         )
 
-    private fun draftFor(state: ChatUiState, conversation: Conversation): DraftState =
+    private fun draftFor(
+        state: ChatUiState,
+        conversation: Conversation,
+        selectedProviderId: String?,
+    ): DraftState =
         DraftState(
             title = conversation.title,
             systemPrompt = conversation.systemPrompt.orEmpty(),
             model = conversation.defaultModel
-                ?: state.selectedProviderId?.let { id ->
+                ?: selectedProviderId?.let { id ->
                     state.providers.firstOrNull { it.id.value == id }?.defaultModel
                 }.orEmpty(),
             temperature = conversation.modelParameters.temperature?.toString().orEmpty(),

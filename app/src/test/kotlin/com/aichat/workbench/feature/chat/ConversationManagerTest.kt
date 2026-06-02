@@ -72,6 +72,29 @@ class ConversationManagerTest {
     }
 
     @Test
+    fun withSelectedConversationSelectsConversationDefaultProvider() {
+        val selected = provider("selected", ProviderType.OpenAI, defaultModel = "selected-model")
+        val conversationProvider = provider("conversation", ProviderType.OpenAICompatible, defaultModel = "conversation-model")
+        val conversation = conversation(
+            defaultProviderId = conversationProvider.id,
+            defaultModel = null,
+        )
+        val manager = ConversationManager(ConversationManagerRepository(clock), clock)
+
+        val state = manager.withSelectedConversation(
+            state = ChatUiState(
+                providers = listOf(selected, conversationProvider),
+                selectedProviderId = selected.id.value,
+            ),
+            conversations = listOf(conversation),
+            conversation = conversation,
+        )
+
+        assertEquals(conversationProvider.id.value, state.selectedProviderId)
+        assertEquals("conversation-model", state.modelDraft)
+    }
+
+    @Test
     fun providerForPrefersRetryProviderOverSelectedProvider() {
         val selected = provider("selected", ProviderType.OpenAI)
         val retry = provider("retry", ProviderType.OpenAICompatible)
