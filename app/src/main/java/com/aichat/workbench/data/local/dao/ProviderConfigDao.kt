@@ -19,4 +19,7 @@ interface ProviderConfigDao {
 
     @Query("DELETE FROM provider_configs WHERE id = :id")
     suspend fun deleteProvider(id: String)
+
+    @Query("DELETE FROM provider_configs")
+    suspend fun deleteAllProviders()
 }

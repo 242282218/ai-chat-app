@@ -955,6 +955,100 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupClearPromptsModelsAndImages_keepsRowsWhenImageDeleteFails() = runTest {
+        val imageStorage = FakeImageStorage(failOnDelete = true)
+        val promptRepository = RoomPromptPresetRepository(database.promptPresetDao())
+        val service = AppBackupService(
+            database = database,
+            providerRepository = RoomProviderConfigRepository(
+                database.providerConfigDao(),
+                database.modelPreferenceDao(),
+                FakeSecretStore(),
+                clock,
+            ),
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = imageStorage,
+            clock = clock,
+        )
+        SavePromptPresetUseCase(promptRepository)(
+            PromptPreset(
+                id = PromptPresetId("prompt-1"),
+                name = "Writer",
+                description = null,
+                systemPrompt = "Improve clarity.",
+                defaultModel = null,
+                defaultToolNames = emptyList(),
+                createdAt = clock.instant(),
+                updatedAt = clock.instant(),
+            ),
+        )
+        database.modelPreferenceDao().upsertModelPreference(
+            modelPreference(ProviderId("provider-1"), "gpt-4.1-mini", favorite = true).toEntity(),
+        )
+        database.imageGenerationDao().upsertImageGeneration(imageGeneration().toEntity())
+
+        val error = assertFailsWith<IllegalStateException> {
+            service.clearPromptsModelsAndImages()
+        }
+
+        assertTrue(error.message.orEmpty().contains("image delete failed"))
+        assertEquals(1, promptRepository.observePromptPresets().first().size)
+        assertEquals(1, database.modelPreferenceDao().getAllModelPreferences().size)
+        assertEquals(1, database.imageGenerationDao().observeImageGenerations().first().size)
+    }
+
+    @Test
+    fun backupClearAll_keepsRowsSecretsAndImagesWhenImageDeleteFails() = runTest {
+        val secretStore = FakeSecretStore()
+        val imageStorage = FakeImageStorage(failOnDelete = true)
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            secretStore,
+            clock,
+        )
+        val promptRepository = RoomPromptPresetRepository(database.promptPresetDao())
+        val conversationRepository = RoomConversationRepository(database.conversationDao(), clock)
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = conversationRepository,
+            imageStorage = imageStorage,
+            clock = clock,
+        )
+        SaveProviderConfigUseCase(providerRepository)(
+            provider = providerConfig(ProviderId("provider-1")),
+            plaintextApiKey = "test-secret",
+            allowInsecureHttp = false,
+        )
+        SavePromptPresetUseCase(promptRepository)(
+            PromptPreset(
+                id = PromptPresetId("prompt-1"),
+                name = "Writer",
+                description = null,
+                systemPrompt = "Improve clarity.",
+                defaultModel = null,
+                defaultToolNames = emptyList(),
+                createdAt = clock.instant(),
+                updatedAt = clock.instant(),
+            ),
+        )
+        CreateConversationUseCase(conversationRepository, clock)(title = "Chat")
+        database.imageGenerationDao().upsertImageGeneration(imageGeneration().toEntity())
+
+        val error = assertFailsWith<IllegalStateException> {
+            service.clearAllData()
+        }
+
+        assertTrue(error.message.orEmpty().contains("image delete failed"))
+        assertEquals(1, providerRepository.observeProviders().first().size)
+        assertEquals("test-secret", providerRepository.getApiKey(ProviderId("provider-1")))
+        assertEquals(1, promptRepository.observePromptPresets().first().size)
+        assertEquals(1, conversationRepository.observeConversations(includeArchived = true).first().size)
+        assertEquals(1, database.imageGenerationDao().observeImageGenerations().first().size)
+    }
+
+    @Test
     fun migration4To5_convertsProviderTypeNamesToStableValues() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = context.getDatabasePath("provider-type-migration").absolutePath
@@ -1271,6 +1365,23 @@ class AiChatDatabaseTest {
             enabled = true,
         )
 
+    private fun imageGeneration(): ImageGeneration =
+        ImageGeneration(
+            id = ImageGenerationId("image-1"),
+            conversationId = null,
+            prompt = "A test image",
+            providerId = ProviderId("provider-1"),
+            model = "gpt-image-1",
+            size = null,
+            quality = null,
+            count = 1,
+            originalPath = "/tmp/original.png",
+            thumbnailPath = "/tmp/thumb.png",
+            status = ImageGenerationStatus.Completed,
+            errorSummary = null,
+            createdAt = clock.instant(),
+        )
+
     private class FakeSecretStore : SecretStore {
         private val values = mutableMapOf<String, String>()
 
@@ -1286,7 +1397,9 @@ class AiChatDatabaseTest {
         }
     }
 
-    private class FakeImageStorage : ImageStorage {
+    private class FakeImageStorage(
+        private val failOnDelete: Boolean = false,
+    ) : ImageStorage {
         var deleted: Boolean = false
 
         override suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths =
@@ -1296,6 +1409,9 @@ class AiChatDatabaseTest {
             )
 
         override suspend fun deleteAllImages() {
+            if (failOnDelete) {
+                throw IllegalStateException("image delete failed")
+            }
             deleted = true
         }
     }

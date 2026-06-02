@@ -146,31 +146,68 @@ class AppBackupService(
 
     override suspend fun clearChatHistory() {
         withContext(Dispatchers.IO) {
-            database.toolInvocationDao().deleteAllToolInvocations()
-            database.conversationDao().deleteAllConversations()
+            database.withTransaction {
+                deleteChatRows()
+            }
         }
     }
 
     override suspend fun clearProvidersAndApiKeys() {
-        val providers = providerRepository.observeProviders().first()
-        providers.forEach { provider ->
-            providerRepository.deleteProvider(provider.id)
+        withContext(Dispatchers.IO) {
+            val apiKeyRefsToDelete = providerRepository.observeProviders().first().mapNotNull { it.apiKeyRef }
+            database.withTransaction {
+                deleteProviderRows()
+            }
+            apiKeyRefsToDelete.forEach { ref ->
+                providerRepository.deleteApiKeyRef(ref)
+            }
         }
     }
 
     override suspend fun clearPromptsModelsAndImages() {
         withContext(Dispatchers.IO) {
-            database.promptPresetDao().deleteAllPromptPresets()
-            database.modelPreferenceDao().deleteAllModelPreferences()
-            database.imageGenerationDao().deleteAllImageGenerations()
             imageStorage.deleteAllImages()
+            database.withTransaction {
+                deletePromptModelAndImageRows()
+            }
         }
     }
 
     override suspend fun clearAllData() {
-        clearProvidersAndApiKeys()
-        clearPromptsModelsAndImages()
-        clearChatHistory()
+        withContext(Dispatchers.IO) {
+            val apiKeyRefsToDelete = providerRepository.observeProviders().first().mapNotNull { it.apiKeyRef }
+            imageStorage.deleteAllImages()
+            database.withTransaction {
+                deleteAllRows()
+            }
+            apiKeyRefsToDelete.forEach { ref ->
+                providerRepository.deleteApiKeyRef(ref)
+            }
+        }
+    }
+
+    private suspend fun deleteAllRows() {
+        deleteChatRows()
+        database.promptPresetDao().deleteAllPromptPresets()
+        database.modelPreferenceDao().deleteAllModelPreferences()
+        database.imageGenerationDao().deleteAllImageGenerations()
+        database.providerConfigDao().deleteAllProviders()
+    }
+
+    private suspend fun deleteChatRows() {
+        database.toolInvocationDao().deleteAllToolInvocations()
+        database.conversationDao().deleteAllConversations()
+    }
+
+    private suspend fun deletePromptModelAndImageRows() {
+        database.promptPresetDao().deleteAllPromptPresets()
+        database.modelPreferenceDao().deleteAllModelPreferences()
+        database.imageGenerationDao().deleteAllImageGenerations()
+    }
+
+    private suspend fun deleteProviderRows() {
+        database.modelPreferenceDao().deleteAllModelPreferences()
+        database.providerConfigDao().deleteAllProviders()
     }
 
     private fun ProviderConfig.toBackupJson(): ProviderBackupJson =
