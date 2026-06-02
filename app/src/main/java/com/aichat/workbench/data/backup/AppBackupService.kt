@@ -1,5 +1,6 @@
 package com.aichat.workbench.data.backup
 
+import androidx.room.withTransaction
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.data.mapper.messagePartsFromJson
 import com.aichat.workbench.data.mapper.modelCapabilityFromJson
@@ -104,26 +105,35 @@ class AppBackupService(
     override suspend fun importJson(value: String): BackupImportSummary =
         withContext(Dispatchers.IO) {
             val root = decodeAndValidateBackup(value)
+            val apiKeyRefsToDelete = mutableSetOf<String>()
 
-            root.providers.forEach { provider ->
-                providerRepository.saveProvider(
-                    provider = provider.toProvider(),
-                    plaintextApiKey = null,
-                    preserveExistingApiKey = false,
-                )
-            }
-            root.prompts.forEach { prompt ->
-                database.promptPresetDao().upsertPromptPreset(prompt.toPrompt().toEntity())
-            }
-            root.modelPreferences.forEach { preference ->
-                database.modelPreferenceDao().upsertModelPreference(preference.toModelPreference().toEntity())
-            }
-            root.conversations.forEach { conversationJson ->
-                val conversation = conversationJson.toConversation()
-                conversationRepository.saveConversation(conversation)
-                conversationJson.messages.forEach { messageJson ->
-                    conversationRepository.saveMessage(messageJson.toMessage(conversation.id))
+            database.withTransaction {
+                root.providers.forEach { provider ->
+                    val importedProvider = provider.toProvider()
+                    providerRepository.getProvider(importedProvider.id)?.apiKeyRef?.let(apiKeyRefsToDelete::add)
+                    providerRepository.saveProvider(
+                        provider = importedProvider,
+                        plaintextApiKey = null,
+                        preserveExistingApiKey = false,
+                        deleteReplacedApiKey = false,
+                    )
                 }
+                root.prompts.forEach { prompt ->
+                    database.promptPresetDao().upsertPromptPreset(prompt.toPrompt().toEntity())
+                }
+                root.modelPreferences.forEach { preference ->
+                    database.modelPreferenceDao().upsertModelPreference(preference.toModelPreference().toEntity())
+                }
+                root.conversations.forEach { conversationJson ->
+                    val conversation = conversationJson.toConversation()
+                    conversationRepository.saveConversation(conversation)
+                    conversationJson.messages.forEach { messageJson ->
+                        conversationRepository.saveMessage(messageJson.toMessage(conversation.id))
+                    }
+                }
+            }
+            apiKeyRefsToDelete.forEach { ref ->
+                providerRepository.deleteApiKeyRef(ref)
             }
 
             root.toImportSummary()

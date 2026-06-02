@@ -250,11 +250,14 @@ private class FakeProviderConfigRepository(
         provider: ProviderConfig,
         plaintextApiKey: String?,
         preserveExistingApiKey: Boolean,
+        deleteReplacedApiKey: Boolean,
     ) {
         providers.value = providers.value.filterNot { it.id == provider.id } + provider
     }
 
     override suspend fun getApiKey(providerId: ProviderId): String? = null
+
+    override suspend fun deleteApiKeyRef(ref: String) = Unit
 
     override suspend fun deleteProvider(id: ProviderId) {
         providers.value = providers.value.filterNot { it.id == id }

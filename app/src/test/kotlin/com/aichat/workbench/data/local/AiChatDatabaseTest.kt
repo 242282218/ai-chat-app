@@ -14,6 +14,7 @@ import com.aichat.workbench.data.repository.RoomModelPreferenceRepository
 import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
 import com.aichat.workbench.data.repository.RoomToolInvocationRepository
+import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
@@ -36,6 +37,7 @@ import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.model.ToolStatus
+import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.domain.usecase.ArchiveConversationUseCase
@@ -540,6 +542,74 @@ class AiChatDatabaseTest {
         service.importJson(backupJson)
 
         assertEquals("http://10.0.2.2:11434", database.providerConfigDao().getProvider("provider-1")?.baseUrl)
+    }
+
+    @Test
+    fun backupImport_rollsBackProviderRowsWhenConversationWriteFails() = runTest {
+        val secretStore = FakeSecretStore()
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            secretStore,
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = FailingConversationRepository(),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        SaveProviderConfigUseCase(providerRepository)(
+            provider = providerConfig(ProviderId("provider-1")),
+            plaintextApiKey = "test-secret",
+            allowInsecureHttp = false,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "Imported Provider",
+                  "type": "openai",
+                  "baseUrl": "https://imported.example/v1",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                },
+                {
+                  "id": "provider-2",
+                  "name": "New Provider",
+                  "type": "openai",
+                  "baseUrl": "https://new.example/v1",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": [
+                {
+                  "id": "conversation-1",
+                  "title": "Imported chat",
+                  "messages": []
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalStateException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("conversation import failed"))
+        val existing = requireNotNull(database.providerConfigDao().getProvider("provider-1"))
+        assertEquals("https://api.openai.com/v1", existing.baseUrl)
+        assertEquals("provider:provider-1:api-key", existing.apiKeyRef)
+        assertEquals("test-secret", providerRepository.getApiKey(ProviderId("provider-1")))
+        assertNull(database.providerConfigDao().getProvider("provider-2"))
     }
 
     @Test
@@ -1228,6 +1298,34 @@ class AiChatDatabaseTest {
         override suspend fun deleteAllImages() {
             deleted = true
         }
+    }
+
+    private class FailingConversationRepository : ConversationRepository {
+        override fun observeConversations(includeArchived: Boolean): Flow<List<Conversation>> =
+            flowOf(emptyList())
+
+        override suspend fun getConversation(id: ConversationId): Conversation? =
+            null
+
+        override suspend fun saveConversation(conversation: Conversation) {
+            throw IllegalStateException("conversation import failed")
+        }
+
+        override suspend fun renameConversation(id: ConversationId, title: String) = Unit
+
+        override suspend fun archiveConversation(id: ConversationId) = Unit
+
+        override suspend fun deleteConversation(id: ConversationId) = Unit
+
+        override fun observeMessages(conversationId: ConversationId): Flow<List<Message>> =
+            flowOf(emptyList())
+
+        override suspend fun getMessages(conversationId: ConversationId): List<Message> =
+            emptyList()
+
+        override suspend fun saveMessage(message: Message) = Unit
+
+        override suspend fun deleteMessages(conversationId: ConversationId) = Unit
     }
 
     private fun chatProviderRequest(): ChatProviderRequest =

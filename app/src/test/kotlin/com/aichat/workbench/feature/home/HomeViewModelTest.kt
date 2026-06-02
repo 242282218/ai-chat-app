@@ -143,9 +143,12 @@ private class EmptyProviderConfigRepository : ProviderConfigRepository {
         provider: ProviderConfig,
         plaintextApiKey: String?,
         preserveExistingApiKey: Boolean,
+        deleteReplacedApiKey: Boolean,
     ) = Unit
 
     override suspend fun getApiKey(providerId: ProviderId): String? = null
+
+    override suspend fun deleteApiKeyRef(ref: String) = Unit
 
     override suspend fun deleteProvider(id: ProviderId) = Unit
 }

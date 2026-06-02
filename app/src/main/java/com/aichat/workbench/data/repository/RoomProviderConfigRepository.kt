@@ -30,6 +30,7 @@ class RoomProviderConfigRepository(
         provider: ProviderConfig,
         plaintextApiKey: String?,
         preserveExistingApiKey: Boolean,
+        deleteReplacedApiKey: Boolean,
     ) {
         val existing = providerDao.getProvider(provider.id.value)
         val secretRef = when {
@@ -55,7 +56,7 @@ class RoomProviderConfigRepository(
             ),
         )
 
-        if (existing?.apiKeyRef != null && existing.apiKeyRef != secretRef) {
+        if (deleteReplacedApiKey && existing?.apiKeyRef != null && existing.apiKeyRef != secretRef) {
             secretStore.deleteSecret(existing.apiKeyRef)
         }
 
@@ -68,6 +69,10 @@ class RoomProviderConfigRepository(
     override suspend fun getApiKey(providerId: ProviderId): String? {
         val ref = providerDao.getProvider(providerId.value)?.apiKeyRef ?: return null
         return secretStore.getSecret(ref)
+    }
+
+    override suspend fun deleteApiKeyRef(ref: String) {
+        secretStore.deleteSecret(ref)
     }
 
     override suspend fun deleteProvider(id: ProviderId) {

@@ -13,9 +13,12 @@ interface ProviderConfigRepository {
         provider: ProviderConfig,
         plaintextApiKey: String?,
         preserveExistingApiKey: Boolean = true,
+        deleteReplacedApiKey: Boolean = true,
     )
 
     suspend fun getApiKey(providerId: ProviderId): String?
+
+    suspend fun deleteApiKeyRef(ref: String)
 
     suspend fun deleteProvider(id: ProviderId)
 }
