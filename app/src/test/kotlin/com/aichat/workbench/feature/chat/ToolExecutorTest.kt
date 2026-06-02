@@ -323,6 +323,39 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun executeSearchReportsMissingGatewayTokenBeforeCreatingGatewayClient() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = ToolExecutor(
+            gatewaySettingsProvider = {
+                GatewaySettings(enabled = true, baseUrl = "http://127.0.0.1:8080", apiToken = " ")
+            },
+            gatewayClientProvider = { error("GatewayClient should not be created without API token") },
+            toolInvocationRepository = repository,
+            clock = clock,
+        )
+        val descriptor = ToolDescriptor(
+            name = "web_search",
+            displayName = "Web Search",
+            description = "Remote search",
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = 20,
+            source = ToolSource.Gateway,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_6"), "web_search", """{"query":"AI"}"""),
+            descriptor = descriptor,
+        )
+
+        assertEquals("gateway_token_required", execution.result.error?.code)
+        assertEquals("Gateway API token 未配置。", execution.result.error?.message)
+        assertEquals(1, repository.savedResults.value.size)
+    }
+
+    @Test
     fun executeSandboxRejectsInvalidTimeoutBeforeCreatingGatewayClient() = runTest {
         val repository = RecordingToolInvocationRepository()
         val executor = ToolExecutor(

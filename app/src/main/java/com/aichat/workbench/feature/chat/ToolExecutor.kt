@@ -185,6 +185,9 @@ class ToolExecutor(
         if (!settings.baseUrl.isValidGatewayUrl()) {
             throw GatewaySettingsException("invalid_gateway_url", "工具网关地址无效。")
         }
+        if (settings.apiToken.isBlank()) {
+            throw GatewaySettingsException("gateway_token_required", "Gateway API token 未配置。")
+        }
         return settings
     }
 
