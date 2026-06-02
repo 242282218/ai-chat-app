@@ -1073,17 +1073,16 @@ private fun ToolSource.displayLabel(): String =
     }
 
 private fun searchPanelStatus(state: ToolsUiState): Pair<String, StatusTone> =
-    when {
-        state.isLoading -> "处理中" to StatusTone.Accent
-        state.canSearch() -> "就绪" to StatusTone.Success
-        else -> "需要配置" to StatusTone.Warning
-    }
+    state.searchActionStatus().toStatusTone()
 
 private fun sandboxPanelStatus(state: ToolsUiState): Pair<String, StatusTone> =
+    state.sandboxActionStatus().toStatusTone()
+
+private fun GatewayActionStatus.toStatusTone(): Pair<String, StatusTone> =
     when {
-        state.isLoading -> "处理中" to StatusTone.Accent
-        state.canRunSandbox() -> "就绪" to StatusTone.Success
-        else -> "需要配置" to StatusTone.Warning
+        isBusy -> label to StatusTone.Accent
+        isReady -> label to StatusTone.Success
+        else -> label to StatusTone.Warning
     }
 
 private fun GatewayUrlStatus.tone(): StatusTone =

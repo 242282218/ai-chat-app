@@ -8,21 +8,41 @@ internal data class GatewayUrlStatus(
     val isWarning: Boolean,
 )
 
+internal data class GatewayActionStatus(
+    val label: String,
+    val isReady: Boolean,
+    val isBusy: Boolean = false,
+)
+
 internal fun ToolsUiState.canSearch(): Boolean =
-    !isLoading &&
-        searchQuery.isNotBlank() &&
-        gatewayEnabled &&
-        gatewayBaseUrlDraft.isValidGatewayBaseUrl() &&
-        gatewayApiTokenDraft.isNotBlank() &&
-        hasSearchTool()
+    searchActionStatus().isReady
 
 internal fun ToolsUiState.canRunSandbox(): Boolean =
-    !isLoading &&
-        sandboxCode.isNotBlank() &&
-        gatewayEnabled &&
-        gatewayBaseUrlDraft.isValidGatewayBaseUrl() &&
-        gatewayApiTokenDraft.isNotBlank() &&
-        hasSandboxTool()
+    sandboxActionStatus().isReady
+
+internal fun ToolsUiState.searchActionStatus(): GatewayActionStatus =
+    when {
+        isLoading -> GatewayActionStatus(label = "处理中", isReady = false, isBusy = true)
+        !gatewayEnabled -> GatewayActionStatus(label = "网关关闭", isReady = false)
+        !gatewayBaseUrlDraft.isValidGatewayBaseUrl() ->
+            GatewayActionStatus(label = gatewayBaseUrlDraft.gatewayUrlStatus().label, isReady = false)
+        gatewayApiTokenDraft.isBlank() -> GatewayActionStatus(label = "需要 Token", isReady = false)
+        !hasSearchTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
+        searchQuery.isBlank() -> GatewayActionStatus(label = "需要关键词", isReady = false)
+        else -> GatewayActionStatus(label = "就绪", isReady = true)
+    }
+
+internal fun ToolsUiState.sandboxActionStatus(): GatewayActionStatus =
+    when {
+        isLoading -> GatewayActionStatus(label = "处理中", isReady = false, isBusy = true)
+        !gatewayEnabled -> GatewayActionStatus(label = "网关关闭", isReady = false)
+        !gatewayBaseUrlDraft.isValidGatewayBaseUrl() ->
+            GatewayActionStatus(label = gatewayBaseUrlDraft.gatewayUrlStatus().label, isReady = false)
+        gatewayApiTokenDraft.isBlank() -> GatewayActionStatus(label = "需要 Token", isReady = false)
+        !hasSandboxTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
+        sandboxCode.isBlank() -> GatewayActionStatus(label = "需要代码", isReady = false)
+        else -> GatewayActionStatus(label = "就绪", isReady = true)
+    }
 
 internal fun ToolsUiState.hasSearchTool(): Boolean =
     remoteTools.any { it.name == "web_search" }
@@ -37,7 +57,7 @@ internal fun String.gatewayUrlStatus(): GatewayUrlStatus =
             isValid = false,
             isWarning = true,
         )
-        isValidGatewayBaseUrl() && trim().startsWith("http://") -> GatewayUrlStatus(
+        isValidGatewayBaseUrl() && trim().startsWith("http://", ignoreCase = true) -> GatewayUrlStatus(
             label = "HTTP 网关",
             isValid = true,
             isWarning = true,
