@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GenerateImageUseCaseTest {
@@ -32,14 +33,10 @@ class GenerateImageUseCaseTest {
     fun generateImage_savesImageBytesAndCompletedHistory() = runTest {
         val repository = FakeImageGenerationRepository()
         val storage = FakeImageStorage()
-        val useCase = GenerateImageUseCase(
-            repository = repository,
-            imageProvider = FakeImageProvider(
-                Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3)),
-            ),
-            imageStorage = storage,
-            clock = clock,
+        val imageProvider = FakeImageProvider(
+            images = listOf(base64Image(byteArrayOf(1, 2, 3))),
         )
+        val useCase = createUseCase(repository, imageProvider, storage)
 
         val result = useCase(
             GenerateImageRequest(
@@ -61,14 +58,128 @@ class GenerateImageUseCaseTest {
     }
 
     @Test
+    fun generateImage_trimsProviderRequestAndSavedHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val imageProvider = FakeImageProvider(
+            images = listOf(base64Image(byteArrayOf(4, 5, 6))),
+        )
+        val useCase = createUseCase(repository, imageProvider)
+
+        val result = useCase(
+            GenerateImageRequest(
+                conversationId = null,
+                provider = providerConfig(),
+                apiKey = "test-key",
+                model = " gpt-image-1 ",
+                prompt = " A small cabin ",
+                size = " ",
+                quality = " auto ",
+                count = 1,
+            ),
+        )
+
+        val providerRequest = imageProvider.requests.single()
+        assertEquals("gpt-image-1", providerRequest.model)
+        assertEquals("A small cabin", providerRequest.prompt)
+        assertNull(providerRequest.size)
+        assertEquals("auto", providerRequest.quality)
+        assertEquals("gpt-image-1", result.single().model)
+        assertEquals("A small cabin", result.single().prompt)
+        assertNull(result.single().size)
+        assertEquals("auto", result.single().quality)
+    }
+
+    @Test
+    fun generateImage_rejectsInvalidPromptBeforeSavingHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val imageProvider = FakeImageProvider(images = emptyList())
+        val useCase = createUseCase(repository, imageProvider)
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            useCase(validRequest(prompt = " "))
+        }
+
+        assertEquals("图片 Prompt 不能为空。", error.message)
+        assertEquals(emptyList<ImageGeneration>(), repository.saved.value)
+        assertEquals(0, imageProvider.requests.size)
+    }
+
+    @Test
+    fun generateImage_rejectsInvalidModelBeforeSavingHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val imageProvider = FakeImageProvider(images = emptyList())
+        val useCase = createUseCase(repository, imageProvider)
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            useCase(validRequest(model = " "))
+        }
+
+        assertEquals("图片 Model 不能为空。", error.message)
+        assertEquals(emptyList<ImageGeneration>(), repository.saved.value)
+        assertEquals(0, imageProvider.requests.size)
+    }
+
+    @Test
+    fun generateImage_rejectsInvalidCountBeforeSavingHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val imageProvider = FakeImageProvider(images = emptyList())
+        val useCase = createUseCase(repository, imageProvider)
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            useCase(validRequest(count = 0))
+        }
+
+        assertEquals("图片数量必须在 1 到 4 之间。", error.message)
+        assertEquals(emptyList<ImageGeneration>(), repository.saved.value)
+        assertEquals(0, imageProvider.requests.size)
+    }
+
+    @Test
+    fun generateImage_savesFailedHistoryWhenProviderReturnsNoImages() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val useCase = createUseCase(repository, FakeImageProvider(images = emptyList()))
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            useCase(validRequest())
+        }
+
+        assertEquals("Provider 未返回图片。", error.message)
+        assertEquals(ImageGenerationStatus.Failed, repository.saved.value.single().status)
+        assertEquals("Provider 未返回图片。", repository.saved.value.single().errorSummary)
+    }
+
+    @Test
+    fun generateImage_savesFailedHistoryWhenProviderReturnsUrlOnly() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val useCase = createUseCase(
+            repository = repository,
+            imageProvider = FakeImageProvider(
+                images = listOf(
+                    GeneratedImage(
+                        base64 = null,
+                        url = "https://example.test/image.png",
+                        revisedPrompt = null,
+                    ),
+                ),
+            ),
+        )
+
+        val error = assertFailsWith<IllegalStateException> {
+            useCase(validRequest())
+        }
+
+        assertEquals("Provider 返回的是图片 URL；本地保存需要 base64 图片数据。", error.message)
+        assertEquals(ImageGenerationStatus.Failed, repository.saved.value.single().status)
+        assertEquals(
+            "Provider 返回的是图片 URL；本地保存需要 base64 图片数据。",
+            repository.saved.value.single().errorSummary,
+        )
+    }
+
+    @Test
     fun generateImage_savesCancelledHistoryWhenProviderIsCancelled() = runTest {
         val repository = FakeImageGenerationRepository()
-        val useCase = GenerateImageUseCase(
-            repository = repository,
-            imageProvider = CancellingImageProvider(),
-            imageStorage = FakeImageStorage(),
-            clock = clock,
-        )
+        val useCase = createUseCase(repository, CancellingImageProvider())
 
         assertFailsWith<CancellationException> {
             useCase(
@@ -88,6 +199,41 @@ class GenerateImageUseCaseTest {
         assertEquals(ImageGenerationStatus.Cancelled, repository.saved.value.single().status)
         assertEquals("已停止，Prompt 和参数已保留。", repository.saved.value.single().errorSummary)
     }
+
+    private fun validRequest(
+        model: String = "gpt-image-1",
+        prompt: String = "A small cabin",
+        count: Int = 1,
+    ): GenerateImageRequest =
+        GenerateImageRequest(
+            conversationId = null,
+            provider = providerConfig(),
+            apiKey = "test-key",
+            model = model,
+            prompt = prompt,
+            size = "1024x1024",
+            quality = "auto",
+            count = count,
+        )
+
+    private fun createUseCase(
+        repository: FakeImageGenerationRepository,
+        imageProvider: ImageGenerationProvider,
+        imageStorage: ImageStorage = FakeImageStorage(),
+    ): GenerateImageUseCase =
+        GenerateImageUseCase(
+            repository = repository,
+            imageProvider = imageProvider,
+            imageStorage = imageStorage,
+            clock = clock,
+        )
+
+    private fun base64Image(bytes: ByteArray): GeneratedImage =
+        GeneratedImage(
+            base64 = Base64.getEncoder().encodeToString(bytes),
+            url = null,
+            revisedPrompt = null,
+        )
 
     private fun providerConfig(): ProviderConfig =
         ProviderConfig(
@@ -124,16 +270,16 @@ class GenerateImageUseCaseTest {
     }
 
     private class FakeImageProvider(
-        private val base64: String,
+        private val images: List<GeneratedImage>,
     ) : ImageGenerationProvider {
+        val requests = mutableListOf<ImageGenerationProviderRequest>()
+
         override suspend fun generate(
             request: ImageGenerationProviderRequest,
-        ): ImageGenerationProviderResponse =
-            ImageGenerationProviderResponse(
-                images = listOf(
-                    GeneratedImage(base64 = base64, url = null, revisedPrompt = null),
-                ),
-            )
+        ): ImageGenerationProviderResponse {
+            requests += request
+            return ImageGenerationProviderResponse(images = images)
+        }
     }
 
     private class FakeImageStorage : ImageStorage {
