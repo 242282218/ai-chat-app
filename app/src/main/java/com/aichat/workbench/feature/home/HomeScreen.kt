@@ -312,6 +312,12 @@ private fun ConversationListRow(
         icon = Icons.AutoMirrored.Filled.Chat,
         onClick = onClick,
         modifier = modifier,
+        trailing = {
+            StatusPill(
+                text = conversation.statusLabel(),
+                tone = conversation.statusTone(),
+            )
+        },
     )
 }
 
@@ -589,13 +595,24 @@ private fun HomeUiState.providerCountLabel(): String =
     }
 
 private fun conversationDescription(conversation: Conversation): String {
-    val details = buildList {
-        add(conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型")
-        if (conversation.isTemporary) add("临时")
-        if (conversation.isSensitive) add("敏感")
-    }
-    return details.joinToString(" · ")
+    val model = conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型"
+    return "模型：$model"
 }
+
+private fun Conversation.statusLabel(): String =
+    when {
+        isSensitive && isTemporary -> "敏感 · 临时"
+        isSensitive -> "敏感"
+        isTemporary -> "临时"
+        else -> "普通"
+    }
+
+private fun Conversation.statusTone(): StatusTone =
+    when {
+        isSensitive -> StatusTone.Critical
+        isTemporary -> StatusTone.Warning
+        else -> StatusTone.Neutral
+    }
 
 @Composable
 private fun highlightedSnippet(text: String, query: String): AnnotatedString {
