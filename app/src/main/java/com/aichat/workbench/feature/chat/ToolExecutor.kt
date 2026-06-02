@@ -146,21 +146,27 @@ class ToolExecutor(
 
     private suspend fun executeSearch(arguments: String): SearchResponse {
         val settings = requireGatewaySettings()
-        val args = toolJson.decodeFromString<SearchArguments>(arguments)
+        val args = decodeToolArguments<SearchArguments>(arguments)
         val query = args.query.trim()
-        require(query.isNotBlank()) { "搜索关键词不能为空。" }
+        if (query.isBlank()) {
+            throw InvalidToolArgumentsException("搜索关键词不能为空。")
+        }
         return gatewayClient.search(settings.baseUrl, query, settings.apiToken)
     }
 
     private suspend fun executeSandbox(arguments: String): SandboxRunResponse {
         val settings = requireGatewaySettings()
-        val args = toolJson.decodeFromString<SandboxArguments>(arguments)
-        require(args.code.isNotBlank()) { "沙箱代码不能为空。" }
+        val args = decodeToolArguments<SandboxArguments>(arguments)
+        if (args.code.isBlank()) {
+            throw InvalidToolArgumentsException("沙箱代码不能为空。")
+        }
         val language = args.language.trim().lowercase().ifBlank { DEFAULT_SANDBOX_LANGUAGE }
-        require(language == DEFAULT_SANDBOX_LANGUAGE) { "仅支持 python 沙箱运行。" }
+        if (language != DEFAULT_SANDBOX_LANGUAGE) {
+            throw InvalidToolArgumentsException("仅支持 python 沙箱运行。")
+        }
         val timeoutSeconds = args.timeoutSeconds ?: DEFAULT_SANDBOX_TIMEOUT_SECONDS
-        require(timeoutSeconds in MIN_SANDBOX_TIMEOUT_SECONDS..MAX_SANDBOX_TIMEOUT_SECONDS) {
-            "Sandbox timeoutSeconds 必须在 1 到 10 秒之间。"
+        if (timeoutSeconds !in MIN_SANDBOX_TIMEOUT_SECONDS..MAX_SANDBOX_TIMEOUT_SECONDS) {
+            throw InvalidToolArgumentsException("Sandbox timeoutSeconds 必须在 1 到 10 秒之间。")
         }
         return gatewayClient.runSandbox(
             baseUrl = settings.baseUrl,
@@ -177,6 +183,13 @@ class ToolExecutor(
         require(settings.baseUrl.isValidGatewayUrl()) { "工具网关地址无效。" }
         return settings
     }
+
+    private inline fun <reified T> decodeToolArguments(arguments: String): T =
+        try {
+            toolJson.decodeFromString(arguments)
+        } catch (error: SerializationException) {
+            throw InvalidToolArgumentsException("工具参数 JSON 无效。", error)
+        }
 
     private suspend fun saveFailure(
         conversationId: ConversationId,
@@ -251,9 +264,7 @@ class ToolExecutor(
     private fun Throwable.toToolErrorCode(): String =
         when (this) {
             is GatewayHttpException -> gatewayCode
-            is IllegalArgumentException,
-            is SerializationException,
-            -> "invalid_tool_arguments"
+            is InvalidToolArgumentsException -> "invalid_tool_arguments"
             else -> "tool_failed"
         }
 
@@ -284,6 +295,11 @@ private data class GatewaySettingsCacheKey(
     val baseUrl: String,
     val apiToken: String,
 )
+
+private class InvalidToolArgumentsException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
 private const val DEFAULT_SANDBOX_LANGUAGE = "python"
