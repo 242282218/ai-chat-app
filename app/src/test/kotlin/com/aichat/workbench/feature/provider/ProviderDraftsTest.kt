@@ -83,6 +83,36 @@ class ProviderDraftsTest {
     }
 
     @Test
+    fun countsOnlySupportedEnabledChatProvidersAsAvailable() {
+        val stats = listOf(
+            provider(
+                type = ProviderType.OpenAI,
+                name = "OpenAI",
+                apiKeyRef = "key-1",
+            ),
+            provider(
+                type = ProviderType.Anthropic,
+                name = "Anthropic",
+                headers = mapOf("X-Trace" to "enabled"),
+            ),
+            provider(
+                type = ProviderType.Ollama,
+                name = "Ollama",
+                baseUrl = "http://10.0.2.2:11434",
+                enabled = false,
+            ),
+        ).providerHealthStats()
+
+        assertEquals(3, stats.totalCount)
+        assertEquals(1, stats.enabledChatCount)
+        assertEquals("OpenAI", stats.defaultChatProviderName)
+        assertEquals(1, stats.encryptedKeyCount)
+        assertEquals(1, stats.httpCount)
+        assertEquals(1, stats.customHeaderCount)
+        assertEquals(1, stats.unsupportedEnabledCount)
+    }
+
+    @Test
     fun validatesHeaderLines() {
         assertEquals(
             HeaderStatus(label = "无请求头", tone = StatusTone.Neutral),
@@ -138,17 +168,22 @@ class ProviderDraftsTest {
 
     private fun provider(
         type: ProviderType = ProviderType.OpenAI,
+        name: String = "Provider",
+        baseUrl: String = "https://example.test/v1",
+        apiKeyRef: String? = null,
+        headers: Map<String, String> = emptyMap(),
         model: String? = "gpt-test",
+        enabled: Boolean = true,
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId("provider-1"),
-            name = "Provider",
+            name = name,
             type = type,
-            baseUrl = "https://example.test/v1",
-            apiKeyRef = null,
-            headers = emptyMap(),
+            baseUrl = baseUrl,
+            apiKeyRef = apiKeyRef,
+            headers = headers,
             models = emptyList(),
             defaultModel = model,
-            enabled = true,
+            enabled = enabled,
         )
 }

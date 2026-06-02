@@ -23,15 +23,38 @@ internal data class HeaderStatus(
     val tone: StatusTone,
 )
 
+internal data class ProviderHealthStats(
+    val totalCount: Int,
+    val enabledChatCount: Int,
+    val defaultChatProviderName: String?,
+    val encryptedKeyCount: Int,
+    val httpCount: Int,
+    val customHeaderCount: Int,
+    val unsupportedEnabledCount: Int,
+)
+
 internal val providerHeaderPolicyText: String =
     "仅保存 ${persistableProviderHeaderDisplayNames.joinToString("、")}。"
 
 internal fun ProviderType.providerTypeLabel(): String =
     ProviderRegistry.builtInDescriptor(this)?.displayName ?: value
 
+internal fun List<ProviderConfig>.providerHealthStats(): ProviderHealthStats {
+    val enabledChatProviders = filter { it.enabled && it.supportsChatProvider() }
+    return ProviderHealthStats(
+        totalCount = size,
+        enabledChatCount = enabledChatProviders.size,
+        defaultChatProviderName = enabledChatProviders.firstOrNull()?.name,
+        encryptedKeyCount = count { it.apiKeyRef != null },
+        httpCount = count { it.baseUrl.startsWith("http://") },
+        customHeaderCount = count { it.headers.isNotEmpty() },
+        unsupportedEnabledCount = count { it.enabled && !it.supportsChatProvider() },
+    )
+}
+
 internal fun ProviderConfig.connectionSummary(): String {
     val statusText = when {
-        !ProviderRegistry.isSupportedBuiltInChatProvider(type) -> "暂不可用"
+        !supportsChatProvider() -> "暂不可用"
         enabled -> "已启用"
         else -> "已停用"
     }
@@ -43,6 +66,9 @@ internal fun ProviderConfig.connectionSummary(): String {
     }
     return "$statusText · ${type.providerTypeLabel()} · $modelText · $keyText"
 }
+
+private fun ProviderConfig.supportsChatProvider(): Boolean =
+    ProviderRegistry.isSupportedBuiltInChatProvider(type)
 
 internal fun providerKeyStatus(
     apiKey: String,

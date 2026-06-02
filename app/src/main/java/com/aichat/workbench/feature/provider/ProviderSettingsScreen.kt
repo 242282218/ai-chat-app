@@ -435,11 +435,7 @@ private fun EmptyProviderState(
 private fun ProviderHealthHeader(
     providers: List<ProviderConfig>,
 ) {
-    val enabledCount = providers.count { it.enabled }
-    val defaultProvider = providers.firstOrNull { it.enabled } ?: providers.firstOrNull()
-    val encryptedKeyCount = providers.count { it.apiKeyRef != null }
-    val httpCount = providers.count { it.baseUrl.startsWith("http://") }
-    val customHeaderCount = providers.count { it.headers.isNotEmpty() }
+    val stats = providers.providerHealthStats()
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -454,35 +450,40 @@ private fun ProviderHealthHeader(
             },
             trailing = {
                 StatusPill(
-                    text = if (enabledCount > 0) "$enabledCount 可用" else "需要配置",
-                    tone = if (enabledCount > 0) StatusTone.Success else StatusTone.Warning,
+                    text = if (stats.enabledChatCount > 0) "${stats.enabledChatCount} 可用" else "需要配置",
+                    tone = if (stats.enabledChatCount > 0) StatusTone.Success else StatusTone.Warning,
                 )
             },
         )
         if (providers.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
-                    StatusPill(text = "${providers.size} 个连接", tone = StatusTone.Neutral)
+                    StatusPill(text = "${stats.totalCount} 个连接", tone = StatusTone.Neutral)
                 }
                 item {
                     StatusPill(
-                        text = defaultProvider?.name ?: "无默认路由",
-                        tone = if (defaultProvider == null) StatusTone.Warning else StatusTone.Success,
+                        text = stats.defaultChatProviderName ?: "无默认路由",
+                        tone = if (stats.defaultChatProviderName == null) StatusTone.Warning else StatusTone.Success,
                     )
                 }
-                if (encryptedKeyCount > 0) {
+                if (stats.unsupportedEnabledCount > 0) {
                     item {
-                        StatusPill(text = "$encryptedKeyCount 个密钥引用", tone = StatusTone.Success)
+                        StatusPill(text = "${stats.unsupportedEnabledCount} 个暂不可用", tone = StatusTone.Warning)
                     }
                 }
-                if (httpCount > 0) {
+                if (stats.encryptedKeyCount > 0) {
                     item {
-                        StatusPill(text = "$httpCount 个 HTTP 风险", tone = StatusTone.Warning)
+                        StatusPill(text = "${stats.encryptedKeyCount} 个密钥引用", tone = StatusTone.Success)
                     }
                 }
-                if (customHeaderCount > 0) {
+                if (stats.httpCount > 0) {
                     item {
-                        StatusPill(text = "$customHeaderCount 个自定义请求头", tone = StatusTone.Warning)
+                        StatusPill(text = "${stats.httpCount} 个 HTTP 风险", tone = StatusTone.Warning)
+                    }
+                }
+                if (stats.customHeaderCount > 0) {
+                    item {
+                        StatusPill(text = "${stats.customHeaderCount} 个自定义请求头", tone = StatusTone.Warning)
                     }
                 }
             }
@@ -491,7 +492,7 @@ private fun ProviderHealthHeader(
             label = "请求路径",
             value = "请求会从本机直接发送到配置的接口地址；API Key 不进入备份。",
         )
-        if (httpCount > 0 || customHeaderCount > 0) {
+        if (stats.httpCount > 0 || stats.customHeaderCount > 0) {
             InlineNotice(
                 text = "HTTP 接口或自定义请求头可能改变请求安全边界。",
                 icon = Icons.Filled.Lock,
