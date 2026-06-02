@@ -408,6 +408,57 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupImport_replacesExistingProviderWithoutReusingStoredApiKey() = runTest {
+        val secretStore = FakeSecretStore()
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            secretStore,
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val providerId = ProviderId("provider-1")
+        SaveProviderConfigUseCase(providerRepository)(
+            provider = providerConfig(providerId),
+            plaintextApiKey = "test-secret",
+            allowInsecureHttp = false,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "Imported Provider",
+                  "type": "openai",
+                  "baseUrl": "https://imported.example/v1",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        service.importJson(backupJson)
+
+        val imported = requireNotNull(database.providerConfigDao().getProvider("provider-1"))
+        assertEquals("https://imported.example/v1", imported.baseUrl)
+        assertNull(imported.apiKeyRef)
+        assertNull(providerRepository.getApiKey(providerId))
+        assertNull(secretStore.getSecret("provider:provider-1:api-key"))
+    }
+
+    @Test
     fun backupImport_rejectsOversizedProviderHeaderBeforeWritingRows() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),

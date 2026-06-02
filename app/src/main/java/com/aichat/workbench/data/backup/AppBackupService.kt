@@ -89,7 +89,11 @@ class AppBackupService(
             val root = decodeAndValidateBackup(value)
 
             root.providers.forEach { provider ->
-                providerRepository.saveProvider(provider.toProvider(), plaintextApiKey = null)
+                providerRepository.saveProvider(
+                    provider = provider.toProvider(),
+                    plaintextApiKey = null,
+                    preserveExistingApiKey = false,
+                )
             }
             root.prompts.forEach { prompt ->
                 database.promptPresetDao().upsertPromptPreset(prompt.toPrompt().toEntity())

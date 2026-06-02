@@ -9,7 +9,11 @@ interface ProviderConfigRepository {
 
     suspend fun getProvider(id: ProviderId): ProviderConfig?
 
-    suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?)
+    suspend fun saveProvider(
+        provider: ProviderConfig,
+        plaintextApiKey: String?,
+        preserveExistingApiKey: Boolean = true,
+    )
 
     suspend fun getApiKey(providerId: ProviderId): String?
 

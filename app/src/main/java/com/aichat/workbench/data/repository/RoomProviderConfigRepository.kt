@@ -26,12 +26,17 @@ class RoomProviderConfigRepository(
     override suspend fun getProvider(id: ProviderId): ProviderConfig? =
         providerDao.getProvider(id.value)?.toDomain()
 
-    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) {
+    override suspend fun saveProvider(
+        provider: ProviderConfig,
+        plaintextApiKey: String?,
+        preserveExistingApiKey: Boolean,
+    ) {
         val existing = providerDao.getProvider(provider.id.value)
         val secretRef = when {
             plaintextApiKey != null -> apiKeyRef(provider.id)
-            existing?.apiKeyRef != null -> existing.apiKeyRef
-            else -> provider.apiKeyRef
+            preserveExistingApiKey && existing?.apiKeyRef != null -> existing.apiKeyRef
+            preserveExistingApiKey -> provider.apiKeyRef
+            else -> null
         }
 
         if (plaintextApiKey != null) {
@@ -49,6 +54,10 @@ class RoomProviderConfigRepository(
                 updatedAt = now,
             ),
         )
+
+        if (existing?.apiKeyRef != null && existing.apiKeyRef != secretRef) {
+            secretStore.deleteSecret(existing.apiKeyRef)
+        }
 
         val defaultModel = sanitizedProvider.defaultModel
         if (!defaultModel.isNullOrBlank()) {

@@ -139,7 +139,11 @@ private class EmptyProviderConfigRepository : ProviderConfigRepository {
 
     override suspend fun getProvider(id: ProviderId): ProviderConfig? = null
 
-    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) = Unit
+    override suspend fun saveProvider(
+        provider: ProviderConfig,
+        plaintextApiKey: String?,
+        preserveExistingApiKey: Boolean,
+    ) = Unit
 
     override suspend fun getApiKey(providerId: ProviderId): String? = null
 

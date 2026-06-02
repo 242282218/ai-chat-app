@@ -478,7 +478,11 @@ private class FakeProviderConfigRepository(
     override suspend fun getProvider(id: ProviderId): ProviderConfig? =
         providers.value.firstOrNull { it.id == id }
 
-    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) {
+    override suspend fun saveProvider(
+        provider: ProviderConfig,
+        plaintextApiKey: String?,
+        preserveExistingApiKey: Boolean,
+    ) {
         providers.value = providers.value.filterNot { it.id == provider.id } + provider
     }
 
