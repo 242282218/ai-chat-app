@@ -301,6 +301,37 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun providerConfigs_normalizeWhitespaceBeforePersisting() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val providerId = ProviderId("provider-1")
+        val saveProvider = SaveProviderConfigUseCase(providerRepository)
+
+        saveProvider(
+            provider = providerConfig(providerId).copy(
+                name = "  OpenAI  ",
+                baseUrl = " https://api.openai.com/v1/ ",
+                models = listOf(ModelConfig(" gpt-4.1-mini ", " GPT-4.1 mini ", capability = null)),
+                defaultModel = " gpt-4.1-mini ",
+            ),
+            plaintextApiKey = " test-secret ",
+            allowInsecureHttp = false,
+        )
+
+        val savedProvider = requireNotNull(providerRepository.getProvider(providerId))
+        assertEquals("OpenAI", savedProvider.name)
+        assertEquals("https://api.openai.com/v1", savedProvider.baseUrl)
+        assertEquals(listOf("gpt-4.1-mini"), savedProvider.models.map { it.id })
+        assertEquals(listOf("GPT-4.1 mini"), savedProvider.models.map { it.displayName })
+        assertEquals("gpt-4.1-mini", savedProvider.defaultModel)
+        assertEquals("test-secret", providerRepository.getApiKey(providerId))
+    }
+
+    @Test
     fun toolResults_areStoredWithoutConversation() = runTest {
         val repository = RoomToolInvocationRepository(database.toolInvocationDao())
         val result = ToolResult(

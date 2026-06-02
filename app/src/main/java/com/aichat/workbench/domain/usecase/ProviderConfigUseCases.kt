@@ -21,13 +21,31 @@ class SaveProviderConfigUseCase(
         plaintextApiKey: String?,
         allowInsecureHttp: Boolean,
     ) {
-        require(provider.name.isNotBlank()) { "Provider name must not be blank." }
-        require(provider.baseUrl.isValidBaseUrl(allowInsecureHttp)) {
+        val normalizedProvider = provider.normalizedForSave()
+        val normalizedApiKey = plaintextApiKey?.trim()?.takeIf { it.isNotBlank() }
+        require(normalizedProvider.name.isNotBlank()) { "Provider name must not be blank." }
+        require(normalizedProvider.baseUrl.isValidBaseUrl(allowInsecureHttp)) {
             "Provider base URL must be HTTPS unless HTTP is explicitly allowed."
         }
-        require(provider.models.all { it.id.isNotBlank() }) { "Model names must not be blank." }
-        repository.saveProvider(provider, plaintextApiKey?.takeIf { it.isNotBlank() })
+        require(normalizedProvider.models.all { it.id.isNotBlank() }) { "Model names must not be blank." }
+        repository.saveProvider(normalizedProvider, normalizedApiKey)
     }
+
+    private fun ProviderConfig.normalizedForSave(): ProviderConfig =
+        copy(
+            name = name.trim(),
+            baseUrl = baseUrl.trim().trimEnd('/'),
+            models = models.map { model ->
+                val capability = model.capability
+                val modelId = model.id.trim()
+                model.copy(
+                    id = modelId,
+                    displayName = model.displayName.trim().ifBlank { modelId },
+                    capability = capability?.copy(model = capability.model.trim()),
+                )
+            },
+            defaultModel = defaultModel?.trim()?.takeIf { it.isNotBlank() },
+        )
 
     private fun String.isValidBaseUrl(allowInsecureHttp: Boolean): Boolean {
         val uri = runCatching { URI(this) }.getOrNull() ?: return false
