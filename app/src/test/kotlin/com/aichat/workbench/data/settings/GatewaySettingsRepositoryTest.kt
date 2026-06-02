@@ -72,6 +72,19 @@ class GatewaySettingsRepositoryTest {
     }
 
     @Test
+    fun currentSettingsNormalizesStoredBaseUrl() = runTest {
+        preferences.edit()
+            .putBoolean("enabled", true)
+            .putString("base_url", " http://127.0.0.1:8080/// ")
+            .commit()
+        val repository = GatewaySettingsRepository(context, FakeSecretStore())
+
+        val settings = repository.currentSettings()
+
+        assertEquals("http://127.0.0.1:8080", settings.baseUrl)
+    }
+
+    @Test
     fun saveSettingsWithBlankApiTokenDeletesStoredSecret() = runTest {
         val secretStore = FakeSecretStore()
         val repository = GatewaySettingsRepository(context, secretStore)

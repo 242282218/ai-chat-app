@@ -82,6 +82,32 @@ class GatewayClientTest {
     }
 
     @Test
+    fun health_trimsBaseUrlBeforeRequest() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "status": "ok",
+                      "service": "ai-chat-gateway",
+                      "version": "test",
+                      "time": "2026-06-01T00:00:00Z"
+                    }
+                    """.trimIndent(),
+                ),
+        )
+        val client = GatewayClient()
+
+        val health = client.health(" ${server.url("/")} ")
+        val recorded = server.takeRequest()
+
+        assertEquals("/health", recorded.path)
+        assertEquals("ok", health.status)
+        assertEquals("test", health.version)
+    }
+
+    @Test
     fun search_postsQueryAndParsesResults() = runTest {
         server.enqueue(
             MockResponse()
@@ -113,7 +139,7 @@ class GatewayClientTest {
         )
         val client = GatewayClient()
 
-        val response = client.search(server.url("/").toString(), "AI news", apiToken = "token-1")
+        val response = client.search(" ${server.url("/")} ", "AI news", apiToken = "token-1")
         val recorded = server.takeRequest()
 
         assertEquals("/v1/search", recorded.path)

@@ -55,7 +55,7 @@ class GatewayClient(
 ) {
     suspend fun health(baseUrl: String): GatewayHealth =
         withContext(Dispatchers.IO) {
-            client.newCall(get("${baseUrl.trimEnd('/')}/health")).execute().use { response ->
+            client.newCall(get(gatewayUrl(baseUrl, "/health"))).execute().use { response ->
                 response.requireSuccessful()
                 parseHealth(response.bodyText())
             }
@@ -63,7 +63,7 @@ class GatewayClient(
 
     suspend fun toolManifest(baseUrl: String): ToolManifest =
         withContext(Dispatchers.IO) {
-            client.newCall(get("${baseUrl.trimEnd('/')}/v1/tools/manifest")).execute().use { response ->
+            client.newCall(get(gatewayUrl(baseUrl, "/v1/tools/manifest"))).execute().use { response ->
                 response.requireSuccessful()
                 parseToolManifest(response.bodyText())
             }
@@ -72,7 +72,7 @@ class GatewayClient(
     suspend fun search(baseUrl: String, query: String, apiToken: String = ""): SearchResponse =
         withContext(Dispatchers.IO) {
             val body = gatewayJson.encodeToString(SearchRequestJson(query))
-            client.newCall(postJson("${baseUrl.trimEnd('/')}/v1/search", body, apiToken)).execute().use { response ->
+            client.newCall(postJson(gatewayUrl(baseUrl, "/v1/search"), body, apiToken)).execute().use { response ->
                 response.requireSuccessful()
                 parseSearchResponse(response.bodyText())
             }
@@ -96,7 +96,7 @@ class GatewayClient(
                     timeoutSeconds = timeoutSeconds,
                 ),
             )
-            client.newCall(postJson("${baseUrl.trimEnd('/')}/v1/sandbox/run", body, apiToken)).execute().use { response ->
+            client.newCall(postJson(gatewayUrl(baseUrl, "/v1/sandbox/run"), body, apiToken)).execute().use { response ->
                 response.requireSuccessful()
                 parseSandboxRunResponse(response.bodyText())
             }
@@ -172,6 +172,9 @@ class GatewayClient(
             .get()
             .header("Accept", "application/json")
             .build()
+
+    private fun gatewayUrl(baseUrl: String, path: String): String =
+        baseUrl.trim().trimEnd('/') + path
 
     private fun postJson(url: String, body: String, apiToken: String): Request {
         val builder = Request.Builder()

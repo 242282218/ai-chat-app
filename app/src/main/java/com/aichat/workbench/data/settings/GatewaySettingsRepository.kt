@@ -38,7 +38,7 @@ class GatewaySettingsRepository(
         }
         preferences.edit()
             .putBoolean(KEY_ENABLED, enabled)
-            .putString(KEY_BASE_URL, baseUrl.trim().trimEnd('/'))
+            .putString(KEY_BASE_URL, baseUrl.normalizedGatewayBaseUrl())
             .remove(KEY_API_TOKEN)
             .apply {
                 if (trimmedToken.isBlank()) {
@@ -57,7 +57,7 @@ class GatewaySettingsRepository(
     private fun readSettingsWithoutToken(): GatewaySettings =
         GatewaySettings(
             enabled = preferences.getBoolean(KEY_ENABLED, false),
-            baseUrl = preferences.getString(KEY_BASE_URL, DEFAULT_BASE_URL).orEmpty(),
+            baseUrl = preferences.getString(KEY_BASE_URL, DEFAULT_BASE_URL).orEmpty().normalizedGatewayBaseUrl(),
             apiToken = "",
         )
 
@@ -91,6 +91,9 @@ class GatewaySettingsRepository(
             preferences.edit().remove(KEY_API_TOKEN).apply()
         }
     }
+
+    private fun String.normalizedGatewayBaseUrl(): String =
+        trim().trimEnd('/')
 
     private companion object {
         const val PREFS_NAME = "gateway_settings"
