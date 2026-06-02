@@ -4,9 +4,11 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.ProviderRegistry
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -53,7 +55,7 @@ class ProviderConnectionTesterTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(401)
-                .setBody("""{"error":"unauthorized"}"""),
+                .setBody("""{"error":{"message":"Invalid API key"}}"""),
         )
         val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
@@ -61,7 +63,24 @@ class ProviderConnectionTesterTest {
 
         assertFalse(result.ok)
         assertEquals(401, result.statusCode)
-        assertEquals("Provider 返回 HTTP 401", result.message)
+        assertEquals("Provider HTTP 401：Invalid API key", result.message)
+    }
+
+    @Test
+    fun test_returnsReadableMessageForConnectionFailures() = runTest {
+        val client = OkHttpClient.Builder()
+            .addInterceptor { throw IOException("socket closed") }
+            .build()
+        val tester = ProviderConnectionTester(
+            client = client,
+            providerRegistry = registeredRegistry(),
+        )
+
+        val result = tester.test(provider(), "test-key")
+
+        assertFalse(result.ok)
+        assertEquals(null, result.statusCode)
+        assertEquals("Provider 连接失败：socket closed", result.message)
     }
 
     @Test

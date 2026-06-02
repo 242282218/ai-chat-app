@@ -7,8 +7,10 @@ import com.aichat.workbench.provider.ProviderRegistry
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 
 data class ProviderConnectionResult(
     val ok: Boolean,
@@ -58,7 +60,7 @@ class ProviderConnectionTester(
                         ProviderConnectionResult(
                             ok = false,
                             statusCode = response.code,
-                            message = "Provider 返回 HTTP ${response.code}",
+                            message = providerHttpFailureMessage(response.code, response.bodyText()),
                         )
                     }
                 }
@@ -66,14 +68,41 @@ class ProviderConnectionTester(
                 ProviderConnectionResult(
                     ok = false,
                     statusCode = null,
-                    message = when (error) {
-                        is IllegalArgumentException -> "Provider URL 无效。"
-                        is IOException -> error.message ?: "Provider 连接失败。"
-                        else -> error.message ?: "Provider 连接失败。"
-                    },
+                    message = providerConnectionFailureMessage(error),
                 )
             }
         }
+
+    private fun Response.bodyText(): String =
+        body?.string().orEmpty()
+
+    private fun providerHttpFailureMessage(statusCode: Int, body: String): String {
+        val providerMessage = body.toProviderErrorMessageOrNull() ?: return "Provider 返回 HTTP $statusCode"
+        return "Provider HTTP $statusCode：$providerMessage"
+    }
+
+    private fun providerConnectionFailureMessage(error: Throwable): String =
+        when (error) {
+            is IllegalArgumentException -> "Provider URL 无效。"
+            is IOException -> error.message.toProviderFailureMessage("Provider 连接失败")
+            else -> error.message.toProviderFailureMessage("Provider 连接测试失败")
+        }
+
+    private fun String?.toProviderFailureMessage(prefix: String): String {
+        val preview = this?.toProviderErrorPreview().orEmpty()
+        return if (preview.isBlank()) "$prefix。" else "$prefix：$preview"
+    }
+
+    private fun String.toProviderErrorMessageOrNull(): String? =
+        runCatching {
+            providerJson.decodeFromString<ProviderErrorEnvelope>(this).error?.message
+        }.getOrNull()?.toProviderErrorPreview()?.takeIf { it.isNotBlank() }
+
+    private fun String.toProviderErrorPreview(): String {
+        val preview = trim().replace(providerErrorWhitespace, " ")
+        val suffix = if (preview.length > MAX_PROVIDER_ERROR_PREVIEW_LENGTH) "..." else ""
+        return preview.take(MAX_PROVIDER_ERROR_PREVIEW_LENGTH) + suffix
+    }
 
     private fun ProviderConfig.toModelsRequest(
         apiKey: String?,
@@ -108,3 +137,6 @@ class ProviderConnectionTester(
         }
     }
 }
+
+private const val MAX_PROVIDER_ERROR_PREVIEW_LENGTH = 240
+private val providerErrorWhitespace = Regex("\\s+")
