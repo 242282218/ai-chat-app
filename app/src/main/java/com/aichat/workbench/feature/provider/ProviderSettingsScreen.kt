@@ -135,7 +135,7 @@ fun ProviderSettingsScreen(
         apiKey = ""
         headers = provider.headers.entries.joinToString("\n") { (key, value) -> "$key: $value" }
         enabled = provider.enabled
-        allowHttp = provider.baseUrl.startsWith("http://")
+        allowHttp = provider.baseUrl.startsWith("http://", ignoreCase = true)
         storedApiKeyRef = provider.apiKeyRef
         message = null
     }
@@ -206,10 +206,24 @@ fun ProviderSettingsScreen(
             enabled = enabled,
         )
     }
-    val canSubmitProvider =
-        name.isNotBlank() &&
-            baseUrl.isValidProviderBaseUrl(allowHttp) &&
-            headers.hasValidHeaderLines()
+    val saveStatus = providerSaveStatus(
+        name = name,
+        type = type,
+        baseUrl = baseUrl,
+        apiKey = apiKey,
+        hasStoredKey = storedApiKeyRef != null,
+        headers = headers,
+        enabled = enabled,
+        allowHttp = allowHttp,
+    )
+    val testStatus = providerTestStatus(
+        type = type,
+        baseUrl = baseUrl,
+        apiKey = apiKey,
+        hasStoredKey = storedApiKeyRef != null,
+        headers = headers,
+        allowHttp = allowHttp,
+    )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -304,8 +318,8 @@ fun ProviderSettingsScreen(
                         onAllowHttpChange = { allowHttp = it },
                         formKey = editingId ?: "new",
                         message = message,
-                        canSave = canSubmitProvider,
-                        canTest = canSubmitProvider,
+                        canSave = saveStatus.isReady,
+                        canTest = testStatus.isReady,
                         onSave = {
                             val provider = currentProvider()
 
@@ -322,7 +336,7 @@ fun ProviderSettingsScreen(
                         },
                         onTest = {
                             val provider = currentProvider()
-                            if (provider.baseUrl.startsWith("http://") && !allowHttp) {
+                            if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !allowHttp) {
                                 message = "测试此 URL 前请先允许 HTTP。"
                                 return@ProviderForm
                             }

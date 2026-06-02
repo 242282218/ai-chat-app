@@ -45,8 +45,16 @@ class ProviderDraftsTest {
             "http://localhost:11434/v1".providerUrlStatus(allowHttp = false),
         )
         assertEquals(
+            ProviderUrlStatus(label = "HTTP 已阻止", tone = StatusTone.Critical),
+            "HTTP://localhost:11434/v1".providerUrlStatus(allowHttp = false),
+        )
+        assertEquals(
             ProviderUrlStatus(label = "已允许 HTTP", tone = StatusTone.Warning),
             "http://localhost:11434/v1".providerUrlStatus(allowHttp = true),
+        )
+        assertEquals(
+            ProviderUrlStatus(label = "已允许 HTTP", tone = StatusTone.Warning),
+            "HTTP://localhost:11434/v1".providerUrlStatus(allowHttp = true),
         )
         assertEquals(
             ProviderUrlStatus(label = "接口地址无效", tone = StatusTone.Critical),
@@ -75,6 +83,105 @@ class ProviderDraftsTest {
     }
 
     @Test
+    fun saveStatusRequiresApiKeyOnlyForEnabledKeyProviders() {
+        assertEquals(
+            ProviderActionStatus(label = "需要 API Key", isReady = false),
+            providerSaveStatus(
+                name = "OpenAI",
+                type = ProviderType.OpenAI,
+                baseUrl = "https://api.openai.com/v1",
+                apiKey = "",
+                hasStoredKey = false,
+                headers = "",
+                enabled = true,
+                allowHttp = false,
+            ),
+        )
+        assertEquals(
+            ProviderActionStatus(label = "可保存", isReady = true),
+            providerSaveStatus(
+                name = "OpenAI",
+                type = ProviderType.OpenAI,
+                baseUrl = "https://api.openai.com/v1",
+                apiKey = "",
+                hasStoredKey = false,
+                headers = "",
+                enabled = false,
+                allowHttp = false,
+            ),
+        )
+        assertEquals(
+            ProviderActionStatus(label = "可保存", isReady = true),
+            providerSaveStatus(
+                name = "Ollama",
+                type = ProviderType.Ollama,
+                baseUrl = "http://10.0.2.2:11434",
+                apiKey = "",
+                hasStoredKey = false,
+                headers = "",
+                enabled = true,
+                allowHttp = true,
+            ),
+        )
+    }
+
+    @Test
+    fun saveStatusAllowsDisabledProviderWithInvalidUrlButTestDoesNot() {
+        assertEquals(
+            ProviderActionStatus(label = "可保存", isReady = true),
+            providerSaveStatus(
+                name = "Broken",
+                type = ProviderType.OpenAICompatible,
+                baseUrl = "broken.local",
+                apiKey = "",
+                hasStoredKey = false,
+                headers = "",
+                enabled = false,
+                allowHttp = false,
+            ),
+        )
+        assertEquals(
+            ProviderActionStatus(label = "接口地址无效", isReady = false),
+            providerTestStatus(
+                type = ProviderType.OpenAICompatible,
+                baseUrl = "broken.local",
+                apiKey = "sk-test",
+                hasStoredKey = false,
+                headers = "",
+                allowHttp = false,
+            ),
+        )
+    }
+
+    @Test
+    fun providerActionsRejectInvalidHeaders() {
+        assertEquals(
+            ProviderActionStatus(label = "1 个不允许保存", isReady = false),
+            providerSaveStatus(
+                name = "OpenAI",
+                type = ProviderType.OpenAI,
+                baseUrl = "https://api.openai.com/v1",
+                apiKey = "sk-test",
+                hasStoredKey = false,
+                headers = "Authorization: Bearer test",
+                enabled = true,
+                allowHttp = false,
+            ),
+        )
+        assertEquals(
+            ProviderActionStatus(label = "1 个无效请求头", isReady = false),
+            providerTestStatus(
+                type = ProviderType.OpenAI,
+                baseUrl = "https://api.openai.com/v1",
+                apiKey = "sk-test",
+                hasStoredKey = false,
+                headers = "Missing separator",
+                allowHttp = false,
+            ),
+        )
+    }
+
+    @Test
     fun summarizesUnsupportedStoredProviderAsUnavailable() {
         assertEquals(
             "暂不可用 · Anthropic · claude-test · 缺少密钥",
@@ -98,7 +205,7 @@ class ProviderDraftsTest {
             provider(
                 type = ProviderType.Ollama,
                 name = "Ollama",
-                baseUrl = "http://10.0.2.2:11434",
+                baseUrl = "HTTP://10.0.2.2:11434",
                 enabled = false,
             ),
         ).providerHealthStats()

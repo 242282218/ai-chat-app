@@ -24,7 +24,7 @@ class SaveProviderConfigUseCase(
         val normalizedProvider = provider.normalizedForSave()
         val normalizedApiKey = plaintextApiKey?.trim()?.takeIf { it.isNotBlank() }
         require(normalizedProvider.name.isNotBlank()) { "Provider name must not be blank." }
-        require(normalizedProvider.baseUrl.isValidBaseUrl(allowInsecureHttp)) {
+        require(!normalizedProvider.enabled || normalizedProvider.baseUrl.isValidBaseUrl(allowInsecureHttp)) {
             "Provider base URL must be HTTPS unless HTTP is explicitly allowed."
         }
         require(normalizedProvider.models.all { it.id.isNotBlank() }) { "Model names must not be blank." }

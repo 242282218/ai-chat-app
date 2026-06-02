@@ -23,6 +23,11 @@ internal data class HeaderStatus(
     val tone: StatusTone,
 )
 
+internal data class ProviderActionStatus(
+    val label: String,
+    val isReady: Boolean,
+)
+
 internal data class ProviderHealthStats(
     val totalCount: Int,
     val enabledChatCount: Int,
@@ -46,7 +51,7 @@ internal fun List<ProviderConfig>.providerHealthStats(): ProviderHealthStats {
         enabledChatCount = enabledChatProviders.size,
         defaultChatProviderName = enabledChatProviders.firstOrNull()?.name,
         encryptedKeyCount = count { it.apiKeyRef != null },
-        httpCount = count { it.baseUrl.startsWith("http://") },
+        httpCount = count { it.baseUrl.startsWith("http://", ignoreCase = true) },
         customHeaderCount = count { it.headers.isNotEmpty() },
         unsupportedEnabledCount = count { it.enabled && !it.supportsChatProvider() },
     )
@@ -70,6 +75,9 @@ internal fun ProviderConfig.connectionSummary(): String {
 private fun ProviderConfig.supportsChatProvider(): Boolean =
     ProviderRegistry.isSupportedBuiltInChatProvider(type)
 
+private fun ProviderType.requiresApiKey(): Boolean =
+    ProviderRegistry.builtInDescriptor(this)?.requiresApiKey ?: true
+
 internal fun providerKeyStatus(
     apiKey: String,
     hasStoredKey: Boolean,
@@ -82,13 +90,55 @@ internal fun providerKeyStatus(
         else -> ProviderKeyStatus("无 API Key", StatusTone.Warning)
     }
 
+internal fun providerSaveStatus(
+    name: String,
+    type: ProviderType,
+    baseUrl: String,
+    apiKey: String,
+    hasStoredKey: Boolean,
+    headers: String,
+    enabled: Boolean,
+    allowHttp: Boolean,
+): ProviderActionStatus {
+    val requiresApiKey = type.requiresApiKey()
+    return when {
+        name.isBlank() -> ProviderActionStatus("需要名称", isReady = false)
+        enabled && !baseUrl.isValidProviderBaseUrl(allowHttp) ->
+            ProviderActionStatus(baseUrl.providerUrlStatus(allowHttp).label, isReady = false)
+        !headers.hasValidHeaderLines() -> ProviderActionStatus(headers.headerStatus().label, isReady = false)
+        enabled && requiresApiKey && apiKey.isBlank() && !hasStoredKey ->
+            ProviderActionStatus("需要 API Key", isReady = false)
+        else -> ProviderActionStatus("可保存", isReady = true)
+    }
+}
+
+internal fun providerTestStatus(
+    type: ProviderType,
+    baseUrl: String,
+    apiKey: String,
+    hasStoredKey: Boolean,
+    headers: String,
+    allowHttp: Boolean,
+): ProviderActionStatus {
+    val requiresApiKey = type.requiresApiKey()
+    return when {
+        !baseUrl.isValidProviderBaseUrl(allowHttp) ->
+            ProviderActionStatus(baseUrl.providerUrlStatus(allowHttp).label, isReady = false)
+        !headers.hasValidHeaderLines() -> ProviderActionStatus(headers.headerStatus().label, isReady = false)
+        requiresApiKey && apiKey.isBlank() && !hasStoredKey ->
+            ProviderActionStatus("需要 API Key", isReady = false)
+        else -> ProviderActionStatus("可测试", isReady = true)
+    }
+}
+
 internal fun String.providerUrlStatus(allowHttp: Boolean): ProviderUrlStatus =
     when {
         isBlank() -> ProviderUrlStatus("需要接口地址", StatusTone.Warning)
-        isValidProviderBaseUrl(allowHttp) && trim().startsWith("http://") ->
+        isValidProviderBaseUrl(allowHttp) && trim().startsWith("http://", ignoreCase = true) ->
             ProviderUrlStatus("已允许 HTTP", StatusTone.Warning)
         isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("接口地址有效", StatusTone.Success)
-        trim().startsWith("http://") && !allowHttp -> ProviderUrlStatus("HTTP 已阻止", StatusTone.Critical)
+        trim().startsWith("http://", ignoreCase = true) && !allowHttp ->
+            ProviderUrlStatus("HTTP 已阻止", StatusTone.Critical)
         else -> ProviderUrlStatus("接口地址无效", StatusTone.Critical)
     }
 
