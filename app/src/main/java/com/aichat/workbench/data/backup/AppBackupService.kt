@@ -32,6 +32,7 @@ import com.aichat.workbench.domain.model.persistableProviderHeaders
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import java.net.URI
 import java.time.Clock
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -236,7 +237,7 @@ class AppBackupService(
             id = ProviderId(id),
             name = name,
             type = ProviderType.fromStorage(type),
-            baseUrl = baseUrl,
+            baseUrl = baseUrl.trim().trimEnd('/'),
             apiKeyRef = null,
             headers = stringMapFromJson(headers.jsonStringOrBlank()),
             models = modelConfigsFromJson(models.jsonStringOrBlank()),
@@ -382,6 +383,9 @@ class AppBackupService(
         name.requireMaxLength("模型连接名称", MAX_BACKUP_NAME_CHARS)
         type.requireMaxLength("模型连接类型", MAX_BACKUP_TYPE_CHARS)
         baseUrl.requireMaxLength("模型连接 URL", MAX_BACKUP_URL_CHARS)
+        require(baseUrl.isValidProviderImportUrl()) {
+            "模型连接 URL 无效。"
+        }
         defaultModel?.requireMaxLength("默认模型", MAX_BACKUP_MODEL_CHARS)
         models.requireJsonMaxLength("模型列表", MAX_BACKUP_JSON_FIELD_CHARS)
         validateProviderHeaders(headers)
@@ -446,6 +450,11 @@ class AppBackupService(
         require(length <= maxLength) {
             "$label 超过 $maxLength 字符限制。"
         }
+    }
+
+    private fun String.isValidProviderImportUrl(): Boolean {
+        val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
+        return uri.host != null && uri.scheme?.lowercase() in setOf("http", "https")
     }
 
     private fun List<String>.requireUniqueValues(label: String) {

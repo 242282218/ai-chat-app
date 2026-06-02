@@ -459,6 +459,90 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupImport_rejectsInvalidProviderBaseUrlBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "Invalid Provider",
+                  "type": "openai",
+                  "baseUrl": "file:///tmp/provider",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("模型连接 URL 无效"))
+        assertNull(database.providerConfigDao().getProvider("provider-1"))
+        assertEquals(emptyList<ProviderConfig>(), providerRepository.observeProviders().first())
+    }
+
+    @Test
+    fun backupImport_normalizesProviderBaseUrl() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "Ollama",
+                  "type": "ollama",
+                  "baseUrl": " http://10.0.2.2:11434/ ",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        service.importJson(backupJson)
+
+        assertEquals("http://10.0.2.2:11434", database.providerConfigDao().getProvider("provider-1")?.baseUrl)
+    }
+
+    @Test
     fun backupImport_rejectsOversizedProviderHeaderBeforeWritingRows() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),
