@@ -540,7 +540,7 @@ private fun PromptPresetRow(
 ) {
     QuietListRow(
         title = preset.name.preview(72),
-        description = preset.description ?: preset.systemPrompt.preview(96),
+        description = preset.summaryText(),
         icon = Icons.Filled.AutoAwesome,
         onClick = onClick,
         trailing = {
@@ -558,6 +558,16 @@ private fun parseToolNames(value: String): List<String> =
     value.split(',')
         .map { it.trim() }
         .filter { it.isNotBlank() }
+
+private fun PromptPreset.summaryText(): String {
+    val descriptionText = if (description.isNullOrBlank()) "无描述" else "已描述"
+    val modelText = defaultModel?.takeIf { it.isNotBlank() } ?: "无默认模型"
+    val toolsText = when (val toolCount = defaultToolNames.size) {
+        0 -> "无默认工具"
+        else -> "${toolCount} 个工具"
+    }
+    return listOf(descriptionText, modelText, toolsText).joinToString(" · ")
+}
 
 private fun List<PromptPreset>.filterByQuery(query: String): List<PromptPreset> {
     val needle = query.trim().lowercase()
