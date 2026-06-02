@@ -1,6 +1,7 @@
 package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -12,6 +13,7 @@ internal fun CoroutineScope.observeChatStateSources(
     providerRepository: ProviderConfigRepository,
     promptPresetRepository: PromptPresetRepository,
     conversationManager: ConversationManager,
+    providerRegistry: ProviderRegistry,
     currentState: () -> ChatUiState,
     updateState: (((ChatUiState) -> ChatUiState) -> Unit),
     observeMessages: (ConversationId) -> Unit,
@@ -33,14 +35,20 @@ internal fun CoroutineScope.observeChatStateSources(
     launch {
         providerRepository.observeProviders().collect { providers ->
             updateState { current ->
+                val chatProviders = providers.filter { providerRegistry.isRegistered(it.type) }
                 val selected = current.selectedProviderId
-                    ?.let { id -> providers.firstOrNull { it.id.value == id && it.enabled } }
-                val fallback = selected ?: providers.firstOrNull { it.enabled }
+                    ?.let { id -> chatProviders.firstOrNull { it.id.value == id && it.enabled } }
+                val fallback = selected ?: chatProviders.firstOrNull { it.enabled }
+                val selectedProviderChanged = current.selectedProviderId != fallback?.id?.value
                 current.copy(
-                    providers = providers,
+                    providers = chatProviders,
                     selectedProviderId = fallback?.id?.value,
                     draft = current.draft.copy(
-                        model = current.modelDraft.ifBlank { fallback?.defaultModel.orEmpty() },
+                        model = when {
+                            fallback == null -> current.modelDraft
+                            selectedProviderChanged -> fallback.defaultModel.orEmpty()
+                            else -> current.modelDraft.ifBlank { fallback.defaultModel.orEmpty() }
+                        },
                     ),
                 )
             }

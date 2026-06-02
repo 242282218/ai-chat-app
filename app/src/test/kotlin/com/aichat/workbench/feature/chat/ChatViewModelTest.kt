@@ -113,6 +113,47 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun observesOnlyRegisteredChatProviders() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val anthropic = provider("anthropic", ProviderType.Anthropic)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(
+                providers = listOf(anthropic, openAi),
+                apiKeys = mapOf(openAi.id to "openai-key", anthropic.id to "anthropic-key"),
+            ),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(openAi), viewModel.state.value.providers)
+        assertEquals(openAi.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("openai-model", viewModel.state.value.modelDraft)
+    }
+
+    @Test
+    fun selectProviderResetsModelToSelectedProviderDefault() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val compatible = provider("compatible", ProviderType.OpenAICompatible)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(
+                providers = listOf(openAi, compatible),
+                apiKeys = mapOf(openAi.id to "openai-key", compatible.id to "compatible-key"),
+            ),
+            openAiProvider = RecordingChatProvider(),
+            compatibleProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateModelDraft("manual-openai-model")
+        viewModel.selectProvider(compatible.id.value)
+
+        assertEquals(compatible.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("compatible-model", viewModel.state.value.modelDraft)
+    }
+
+    @Test
     fun editMessageSendsRewrittenHistory() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)
@@ -313,6 +354,7 @@ class ChatViewModelTest : KoinTest {
                             promptPresetRepository = get(),
                             conversationManager = get(),
                             generationController = get(),
+                            providerRegistry = get(),
                         )
                     }
                 },

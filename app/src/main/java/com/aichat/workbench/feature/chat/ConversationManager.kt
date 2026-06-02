@@ -108,8 +108,8 @@ class ConversationManager(
         conversation: Conversation,
         retryFailedMessage: Message?,
     ): String =
-        retryFailedMessage?.model
-            ?: conversation.defaultModel
+        retryFailedMessage?.model?.takeIf { retryFailedMessage.providerId == provider.id }
+            ?: conversation.defaultModel?.takeIf { conversation.defaultProviderId == provider.id }
             ?: current.modelDraft.trim().ifBlank { null }
             ?: provider.defaultModel
             ?: provider.models.firstOrNull()?.id

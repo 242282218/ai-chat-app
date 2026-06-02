@@ -158,6 +158,7 @@ val appModule: Module = module {
             promptPresetRepository = get(),
             conversationManager = get(),
             generationController = get(),
+            providerRegistry = get(),
         )
     }
     viewModel {

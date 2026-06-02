@@ -87,6 +87,46 @@ class ConversationManagerTest {
         assertEquals(retry, result)
     }
 
+    @Test
+    fun modelForIgnoresConversationModelWhenProviderFallsBack() {
+        val provider = provider("openai", ProviderType.OpenAI, defaultModel = "gpt-default")
+        val manager = ConversationManager(ConversationManagerRepository(clock), clock)
+        val conversation = conversation(
+            defaultProviderId = ProviderId("anthropic"),
+            defaultModel = "claude-model",
+        )
+        val state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "gpt-draft"),
+        )
+
+        val result = manager.modelFor(
+            current = state,
+            provider = provider,
+            conversation = conversation,
+            retryFailedMessage = null,
+        )
+
+        assertEquals("gpt-draft", result)
+    }
+
+    @Test
+    fun modelForIgnoresRetryModelWhenProviderFallsBack() {
+        val provider = provider("openai", ProviderType.OpenAI, defaultModel = "gpt-default")
+        val manager = ConversationManager(ConversationManagerRepository(clock), clock)
+        val retryMessage = message(providerId = ProviderId("anthropic"), model = "claude-model")
+
+        val result = manager.modelFor(
+            current = ChatUiState(providers = listOf(provider), selectedProviderId = provider.id.value),
+            provider = provider,
+            conversation = conversation(defaultProviderId = provider.id),
+            retryFailedMessage = retryMessage,
+        )
+
+        assertEquals("gpt-default", result)
+    }
+
     private fun provider(
         id: String,
         type: ProviderType = ProviderType.OpenAI,

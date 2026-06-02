@@ -13,6 +13,7 @@ import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.provider.ProviderRegistry
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ class ChatViewModel(
     private val promptPresetRepository: PromptPresetRepository,
     private val conversationManager: ConversationManager,
     private val generationController: GenerationController,
+    private val providerRegistry: ProviderRegistry,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatUiState(draft = DraftState.fromSavedState(savedStateHandle)))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -39,6 +41,7 @@ class ChatViewModel(
             providerRepository,
             promptPresetRepository,
             conversationManager,
+            providerRegistry,
             currentState = { _state.value },
             updateState = ::updateState,
             observeMessages = ::observeMessages,
@@ -75,11 +78,18 @@ class ChatViewModel(
     fun toggleSettingsExpanded() = updateState { it.copy(settingsExpanded = !it.settingsExpanded) }
     fun togglePromptsExpanded() = updateState { it.copy(promptsExpanded = !it.promptsExpanded) }
     fun selectProvider(id: String) {
-        val provider = _state.value.providers.firstOrNull { it.id.value == id }
+        val provider = _state.value.providers.firstOrNull { it.id.value == id && it.enabled } ?: return
         updateState {
+            val providerChanged = it.selectedProviderId != provider.id.value
             it.copy(
                 selectedProviderId = id,
-                draft = it.draft.copy(model = it.modelDraft.ifBlank { provider?.defaultModel.orEmpty() }),
+                draft = it.draft.copy(
+                    model = if (providerChanged) {
+                        provider.defaultModel.orEmpty()
+                    } else {
+                        it.modelDraft.ifBlank { provider.defaultModel.orEmpty() }
+                    },
+                ),
             )
         }
     }
