@@ -1,8 +1,12 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -15,6 +19,11 @@ const (
 	defaultReadTimeoutSecs       = 15
 	defaultWriteTimeoutSecs      = 30
 	defaultIdleTimeoutSecs       = 60
+)
+
+var (
+	errNonPositiveInteger = errors.New("must be a positive integer")
+	errPortOutOfRange     = errors.New("port must be between 1 and 65535")
 )
 
 type Config struct {
@@ -31,20 +40,92 @@ type Config struct {
 	IdleTimeout         int
 }
 
-func FromEnv() Config {
+type positiveIntConfig struct {
+	MaxRequestBodyBytes int
+	MaxSandboxCodeBytes int
+	ReadHeaderTimeout   int
+	ReadTimeout         int
+	WriteTimeout        int
+	IdleTimeout         int
+}
+
+func FromEnv() (Config, error) {
+	addr, err := getEnvAddr("GATEWAY_ADDR", defaultAddr)
+	if err != nil {
+		return Config{}, err
+	}
+	positiveInts, err := getEnvPositiveInts()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		Addr:                getEnv("GATEWAY_ADDR", defaultAddr),
+		Addr:                addr,
 		Version:             getEnv("GATEWAY_VERSION", defaultVersion),
 		SearchProvider:      getEnv("SEARCH_PROVIDER", defaultSearchProvider),
 		SearXNGBaseURL:      os.Getenv("SEARXNG_BASE_URL"),
 		APIToken:            os.Getenv("GATEWAY_API_TOKEN"),
-		MaxRequestBodyBytes: int64(getEnvInt("GATEWAY_MAX_BODY_BYTES", defaultMaxRequestBodyBytes)),
-		MaxSandboxCodeBytes: getEnvInt("GATEWAY_MAX_SANDBOX_CODE_BYTES", defaultMaxSandboxCodeBytes),
-		ReadHeaderTimeout:   getEnvInt("GATEWAY_READ_HEADER_TIMEOUT_SECONDS", defaultReadHeaderTimeoutSecs),
-		ReadTimeout:         getEnvInt("GATEWAY_READ_TIMEOUT_SECONDS", defaultReadTimeoutSecs),
-		WriteTimeout:        getEnvInt("GATEWAY_WRITE_TIMEOUT_SECONDS", defaultWriteTimeoutSecs),
-		IdleTimeout:         getEnvInt("GATEWAY_IDLE_TIMEOUT_SECONDS", defaultIdleTimeoutSecs),
+		MaxRequestBodyBytes: int64(positiveInts.MaxRequestBodyBytes),
+		MaxSandboxCodeBytes: positiveInts.MaxSandboxCodeBytes,
+		ReadHeaderTimeout:   positiveInts.ReadHeaderTimeout,
+		ReadTimeout:         positiveInts.ReadTimeout,
+		WriteTimeout:        positiveInts.WriteTimeout,
+		IdleTimeout:         positiveInts.IdleTimeout,
+	}, nil
+}
+
+func getEnvPositiveInts() (positiveIntConfig, error) {
+	maxRequestBodyBytes, err := getEnvPositiveInt("GATEWAY_MAX_BODY_BYTES", defaultMaxRequestBodyBytes)
+	if err != nil {
+		return positiveIntConfig{}, err
 	}
+	maxSandboxCodeBytes, err := getEnvPositiveInt("GATEWAY_MAX_SANDBOX_CODE_BYTES", defaultMaxSandboxCodeBytes)
+	if err != nil {
+		return positiveIntConfig{}, err
+	}
+	readHeaderTimeout, err := getEnvPositiveInt("GATEWAY_READ_HEADER_TIMEOUT_SECONDS", defaultReadHeaderTimeoutSecs)
+	if err != nil {
+		return positiveIntConfig{}, err
+	}
+	readTimeout, err := getEnvPositiveInt("GATEWAY_READ_TIMEOUT_SECONDS", defaultReadTimeoutSecs)
+	if err != nil {
+		return positiveIntConfig{}, err
+	}
+	writeTimeout, err := getEnvPositiveInt("GATEWAY_WRITE_TIMEOUT_SECONDS", defaultWriteTimeoutSecs)
+	if err != nil {
+		return positiveIntConfig{}, err
+	}
+	idleTimeout, err := getEnvPositiveInt("GATEWAY_IDLE_TIMEOUT_SECONDS", defaultIdleTimeoutSecs)
+	if err != nil {
+		return positiveIntConfig{}, err
+	}
+	return positiveIntConfig{
+		MaxRequestBodyBytes: maxRequestBodyBytes,
+		MaxSandboxCodeBytes: maxSandboxCodeBytes,
+		ReadHeaderTimeout:   readHeaderTimeout,
+		ReadTimeout:         readTimeout,
+		WriteTimeout:        writeTimeout,
+		IdleTimeout:         idleTimeout,
+	}, nil
+}
+
+func getEnvAddr(key string, fallback string) (string, error) {
+	value := strings.TrimSpace(getEnv(key, fallback))
+	if value == "" {
+		return fallback, nil
+	}
+	_, port, err := net.SplitHostPort(value)
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", key, err)
+	}
+	parsedPort, err := strconv.Atoi(port)
+	if err != nil {
+		return "", fmt.Errorf("parse %s port: %w", key, err)
+	}
+	if parsedPort < 1 || parsedPort > 65535 {
+		return "", fmt.Errorf("parse %s port: %w", key, errPortOutOfRange)
+	}
+	return value, nil
 }
 
 func getEnv(key string, fallback string) string {
@@ -55,14 +136,17 @@ func getEnv(key string, fallback string) string {
 	return value
 }
 
-func getEnvInt(key string, fallback int) int {
-	value := os.Getenv(key)
+func getEnvPositiveInt(key string, fallback int) (int, error) {
+	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return fallback
+		return fallback, nil
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed <= 0 {
-		return fallback
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", key, err)
 	}
-	return parsed
+	if parsed <= 0 {
+		return 0, fmt.Errorf("parse %s: %w", key, errNonPositiveInteger)
+	}
+	return parsed, nil
 }

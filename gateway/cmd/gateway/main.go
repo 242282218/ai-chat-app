@@ -19,8 +19,12 @@ import (
 )
 
 func main() {
-	cfg := config.FromEnv()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.FromEnv()
+	if err != nil {
+		logger.Error("gateway config invalid", "error", err)
+		os.Exit(1)
+	}
 	searchAdapter, err := searchAdapterFromConfig(cfg)
 	if err != nil {
 		logger.Error("gateway config invalid", "error", err)
