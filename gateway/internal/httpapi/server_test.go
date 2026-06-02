@@ -7,6 +7,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +78,40 @@ func TestToolManifest(t *testing.T) {
 	}
 	if body.Tools[1].PermissionLevel != "Execute" {
 		t.Fatalf("second permission = %q, want Execute", body.Tools[1].PermissionLevel)
+	}
+}
+
+func TestToolManifestMatchesContractFixture(t *testing.T) {
+	server := httptest.NewServer(NewMux("test"))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/v1/tools/manifest")
+	if err != nil {
+		t.Fatalf("get manifest: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var actual ToolManifestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&actual); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, err := time.Parse(time.RFC3339, actual.GeneratedAt); err != nil {
+		t.Fatalf("generatedAt = %q, want RFC3339: %v", actual.GeneratedAt, err)
+	}
+
+	var expected ToolManifestResponse
+	fixture := readContractFixture(t, "tool-manifest.json")
+	if err := json.Unmarshal(fixture, &expected); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	expected.GeneratedAt = actual.GeneratedAt
+
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("manifest does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
 }
 
@@ -557,6 +594,28 @@ func postJSONWithRequestID(url string, body string, token string, requestID stri
 		request.Header.Set("X-Request-Id", requestID)
 	}
 	return http.DefaultClient.Do(request)
+}
+
+func readContractFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get wd: %v", err)
+	}
+	for dir := wd; ; dir = filepath.Dir(dir) {
+		path := filepath.Join(dir, "contracts", "gateway", "fixtures", name)
+		content, err := os.ReadFile(path)
+		if err == nil {
+			return content
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("read fixture %s: %v", path, err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("fixture %s not found from %s", name, wd)
+		}
+	}
 }
 
 type fakeSandboxRunner struct {
