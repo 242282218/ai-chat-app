@@ -46,9 +46,61 @@ class ProviderConfigUseCasesTest {
         assertNull(repository.savedProvider)
     }
 
+    @Test
+    fun saveProviderNormalizesModelsAndApiKey() = runTest {
+        val repository = RecordingProviderConfigRepository()
+        val saveProvider = SaveProviderConfigUseCase(repository)
+
+        saveProvider(
+            provider(
+                enabled = true,
+                baseUrl = " https://api.example.com/v1/ ",
+                models = listOf(ModelConfig(" model-a ", "", capability = null)),
+                defaultModel = " model-a ",
+            ),
+            plaintextApiKey = " sk-test ",
+            allowInsecureHttp = false,
+        )
+
+        assertEquals("https://api.example.com/v1", repository.savedProvider?.baseUrl)
+        assertEquals(listOf("model-a"), repository.savedProvider?.models?.map { it.id })
+        assertEquals(listOf("model-a"), repository.savedProvider?.models?.map { it.displayName })
+        assertEquals("model-a", repository.savedProvider?.defaultModel)
+        assertEquals("sk-test", repository.savedApiKey)
+    }
+
+    @Test
+    fun saveProviderRejectsDuplicateModelIdsAfterNormalization() = runTest {
+        val repository = RecordingProviderConfigRepository()
+        val saveProvider = SaveProviderConfigUseCase(repository)
+
+        try {
+            saveProvider(
+                provider(
+                    enabled = true,
+                    baseUrl = "https://api.example.com/v1",
+                    models = listOf(
+                        ModelConfig(" gpt-test ", "GPT test", capability = null),
+                        ModelConfig("gpt-test", "GPT test duplicate", capability = null),
+                    ),
+                    defaultModel = "gpt-test",
+                ),
+                plaintextApiKey = null,
+                allowInsecureHttp = false,
+            )
+            fail("Expected duplicate models to be rejected.")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Model names must be unique.", error.message)
+        }
+
+        assertNull(repository.savedProvider)
+    }
+
     private fun provider(
         enabled: Boolean,
         baseUrl: String,
+        models: List<ModelConfig> = listOf(ModelConfig(" model-a ", " Model A ", capability = null)),
+        defaultModel: String? = " model-a ",
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId("provider-1"),
@@ -57,8 +109,8 @@ class ProviderConfigUseCasesTest {
             baseUrl = baseUrl,
             apiKeyRef = null,
             headers = emptyMap(),
-            models = listOf(ModelConfig(" model-a ", " Model A ", capability = null)),
-            defaultModel = " model-a ",
+            models = models,
+            defaultModel = defaultModel,
             enabled = enabled,
         )
 }

@@ -28,6 +28,9 @@ class SaveProviderConfigUseCase(
             "Provider base URL must be HTTPS unless HTTP is explicitly allowed."
         }
         require(normalizedProvider.models.all { it.id.isNotBlank() }) { "Model names must not be blank." }
+        require(normalizedProvider.models.map { it.id }.distinct().size == normalizedProvider.models.size) {
+            "Model names must be unique."
+        }
         repository.saveProvider(normalizedProvider, normalizedApiKey)
     }
 
