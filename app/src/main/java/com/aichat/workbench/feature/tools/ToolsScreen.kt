@@ -3,6 +3,7 @@ package com.aichat.workbench.feature.tools
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,6 +25,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
@@ -34,14 +39,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +74,6 @@ import com.aichat.workbench.tool.gateway.SandboxRunResponse
 import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
-import com.aichat.workbench.tool.model.requiresConfirmation
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
@@ -87,6 +95,20 @@ fun ToolsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var selectedWorkbenchTab by rememberSaveable { mutableIntStateOf(0) }
+    var showGatewayEditor by rememberSaveable { mutableStateOf(false) }
+    var toolWorkbenchExpanded by rememberSaveable { mutableStateOf(false) }
+    val gatewayEditorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(
+        state.searchFetchedAt,
+        state.searchError,
+        state.sandboxResult,
+        state.sandboxError,
+    ) {
+        if (state.hasToolWorkbenchOutput()) {
+            toolWorkbenchExpanded = true
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -114,27 +136,60 @@ fun ToolsScreen(
                 GatewayStatusHeader(state = state)
             }
             item {
-                GatewaySettingsPanel(state, viewModel)
-            }
-            item {
-                ToolTestWorkbench(
-                    selectedTab = selectedWorkbenchTab,
-                    onTabSelected = { selectedWorkbenchTab = it },
+                GatewayActionStrip(
                     state = state,
-                    viewModel = viewModel,
+                    onEditGateway = { showGatewayEditor = true },
+                    onCheckHealth = viewModel::checkHealth,
+                    onFetchManifest = viewModel::fetchManifest,
                 )
             }
             item {
-                QuietSectionHeader(
-                    title = "工具清单",
-                    description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
-                )
+                ToolCatalogHeader(state = state)
             }
             items(state.tools, key = { "${it.source}:${it.name}" }) { tool ->
                 ToolRow(
                     tool = tool,
                     onConfirm = { viewModel.requestPermission(tool) },
                 )
+            }
+            item {
+                ToolWorkbenchDisclosure(
+                    state = state,
+                    expanded = toolWorkbenchExpanded,
+                    onToggleExpanded = { toolWorkbenchExpanded = !toolWorkbenchExpanded },
+                )
+            }
+            if (toolWorkbenchExpanded) {
+                item {
+                    ToolTestWorkbench(
+                        selectedTab = selectedWorkbenchTab,
+                        onTabSelected = { selectedWorkbenchTab = it },
+                        state = state,
+                        viewModel = viewModel,
+                    )
+                }
+            }
+        }
+    }
+
+    if (showGatewayEditor) {
+        ModalBottomSheet(
+            onDismissRequest = { showGatewayEditor = false },
+            sheetState = gatewayEditorSheetState,
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    GatewaySettingsPanel(
+                        state = state,
+                        viewModel = viewModel,
+                    )
+                }
             }
         }
     }
@@ -145,6 +200,136 @@ fun ToolsScreen(
             onConfirm = viewModel::confirmPermission,
             onDismiss = viewModel::dismissPermission,
         )
+    }
+}
+
+@Composable
+private fun GatewayActionStrip(
+    state: ToolsUiState,
+    onEditGateway: () -> Unit,
+    onCheckHealth: () -> Unit,
+    onFetchManifest: () -> Unit,
+) {
+    val gatewayUrlValid = state.gatewayBaseUrlDraft.isValidGatewayBaseUrl()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "网关操作",
+            description = "默认只保留编辑、健康检查和清单加载。",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                Button(
+                    onClick = onEditGateway,
+                ) {
+                    Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = if (state.gatewayEnabled) "编辑网关" else "配置网关")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onCheckHealth,
+                    enabled = gatewayUrlValid && !state.isLoading,
+                ) {
+                    Text(text = "健康检查")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onFetchManifest,
+                    enabled = state.gatewayEnabled && gatewayUrlValid && !state.isLoading,
+                ) {
+                    Icon(imageVector = Icons.Filled.CloudSync, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "加载清单")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolCatalogHeader(state: ToolsUiState) {
+    val networkCount = state.tools.count { it.permissionLevel == ToolPermissionLevel.Network }
+    val executeCount = state.tools.count {
+        it.permissionLevel == ToolPermissionLevel.Execute ||
+            it.permissionLevel == ToolPermissionLevel.HighRisk
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "工具清单",
+            description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = "${state.tools.size} 个工具", tone = StatusTone.Accent)
+            }
+            if (networkCount > 0) {
+                item {
+                    StatusPill(text = "$networkCount 个联网", tone = StatusTone.Warning)
+                }
+            }
+            if (executeCount > 0) {
+                item {
+                    StatusPill(text = "$executeCount 个执行类", tone = StatusTone.Critical)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolWorkbenchDisclosure(
+    state: ToolsUiState,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "工具试运行",
+            description = if (expanded) {
+                "调试网络搜索和代码沙箱；结果会保留来源、退出码和输出。"
+            } else {
+                "按需展开调试工具，默认页面优先展示权限清单。"
+            },
+            trailing = {
+                StatusPill(
+                    text = toolWorkbenchStatusLabel(state),
+                    tone = toolWorkbenchStatusTone(state),
+                )
+            },
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                OutlinedButton(onClick = onToggleExpanded) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = if (expanded) "收起试运行" else "展开试运行")
+                }
+            }
+            if (state.hasSearchTool()) {
+                item {
+                    StatusPill(text = "搜索工具已加载", tone = StatusTone.Success)
+                }
+            }
+            if (state.hasSandboxTool()) {
+                item {
+                    StatusPill(text = "沙箱工具已加载", tone = StatusTone.Success)
+                }
+            }
+        }
     }
 }
 
@@ -176,20 +361,26 @@ private fun GatewayStatusHeader(state: ToolsUiState) {
             item {
                 StatusPill(
                     text = if (state.remoteTools.isEmpty()) "工具清单未加载" else "${state.remoteTools.size} 个网关工具",
-                    tone = if (state.remoteTools.isEmpty()) StatusTone.Warning else StatusTone.Success,
+                    tone = when {
+                        state.remoteTools.isNotEmpty() -> StatusTone.Success
+                        state.gatewayEnabled -> StatusTone.Warning
+                        else -> StatusTone.Neutral
+                    },
                 )
             }
-            item {
-                StatusPill(
-                    text = if (state.hasSearchTool()) "网络搜索可用" else "网络搜索不可用",
-                    tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Neutral,
-                )
-            }
-            item {
-                StatusPill(
-                    text = if (state.hasSandboxTool()) "代码沙箱可用" else "代码沙箱不可用",
-                    tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Neutral,
-                )
+            if (state.remoteTools.isNotEmpty()) {
+                item {
+                    StatusPill(
+                        text = if (state.hasSearchTool()) "网络搜索可用" else "网络搜索未提供",
+                        tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Neutral,
+                    )
+                }
+                item {
+                    StatusPill(
+                        text = if (state.hasSandboxTool()) "代码沙箱可用" else "代码沙箱未提供",
+                        tone = if (state.hasSandboxTool()) StatusTone.Success else StatusTone.Neutral,
+                    )
+                }
             }
             if (state.isLoading) {
                 item {
@@ -218,10 +409,6 @@ private fun ToolTestWorkbench(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QuietSectionHeader(
-            title = "工具试运行",
-            description = "网络搜索和代码沙箱用于调试，不抢占工具清单主轴。",
-        )
         ToolWorkbenchTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
         when (selectedTab) {
             0 -> SearchWorkbenchContent(state, viewModel)
@@ -395,7 +582,7 @@ private fun SandboxResultRow(
     result: SandboxRunResponse,
     modifier: Modifier = Modifier,
 ) {
-    WorkbenchPanel(
+    ToolResultContainer(
         title = "代码沙箱结果",
         icon = Icons.Filled.Code,
         modifier = modifier,
@@ -556,7 +743,7 @@ private fun SearchErrorRow(
 @Composable
 private fun SearchResultRow(result: SearchResult) {
     val context = LocalContext.current
-    WorkbenchPanel(
+    ToolResultContainer(
         title = result.title,
         icon = Icons.Filled.Public,
         trailing = {
@@ -581,6 +768,50 @@ private fun SearchResultRow(result: SearchResult) {
                 style = MaterialTheme.typography.bodySmall,
                 textDecoration = TextDecoration.Underline,
             )
+        }
+    }
+}
+
+@Composable
+private fun ToolResultContainer(
+    title: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.small,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                trailing()
+            }
+            content()
         }
     }
 }
@@ -730,6 +961,11 @@ private fun GatewaySettingsSummary(
         item {
             StatusPill(text = urlStatus.label, tone = urlStatus.tone())
         }
+        if (state.gatewayApiTokenDraft.isNotBlank()) {
+            item {
+                StatusPill(text = "Token 已输入", tone = StatusTone.Success)
+            }
+        }
         if (state.remoteTools.isNotEmpty()) {
             item {
                 StatusPill(text = "${state.remoteTools.size} 个工具", tone = StatusTone.Accent)
@@ -771,10 +1007,9 @@ private fun ToolRow(
         icon = tool.permissionIcon(),
         onClick = onConfirm,
         trailing = {
-            WorkbenchIconButton(
-                icon = tool.permissionIcon(),
-                label = tool.permissionActionDescription(),
-                onClick = onConfirm,
+            StatusPill(
+                text = tool.permissionLevel.displayLabel(),
+                tone = tool.permissionTone(),
             )
         },
     )
@@ -786,13 +1021,6 @@ private fun ToolDescriptor.permissionIcon(): ImageVector =
         ToolPermissionLevel.Network -> Icons.Filled.Public
         ToolPermissionLevel.Execute -> Icons.Filled.Code
         ToolPermissionLevel.HighRisk -> Icons.Filled.Security
-    }
-
-private fun ToolDescriptor.permissionActionDescription(): String =
-    if (permissionLevel.requiresConfirmation()) {
-        "查看 ${displayName} 的${permissionLevel.displayLabel()}权限"
-    } else {
-        "$displayName 无需确认"
     }
 
 @Composable
@@ -890,3 +1118,25 @@ private fun toolStatusTone(message: String): StatusTone {
         else -> StatusTone.Accent
     }
 }
+
+private fun ToolsUiState.hasToolWorkbenchOutput(): Boolean =
+    searchResults.isNotEmpty() ||
+        searchError != null ||
+        sandboxResult != null ||
+        sandboxError != null
+
+private fun toolWorkbenchStatusLabel(state: ToolsUiState): String =
+    when {
+        state.isLoading -> "处理中"
+        state.hasToolWorkbenchOutput() -> "已有结果"
+        state.hasSearchTool() || state.hasSandboxTool() -> "可试运行"
+        else -> "需要清单"
+    }
+
+private fun toolWorkbenchStatusTone(state: ToolsUiState): StatusTone =
+    when {
+        state.isLoading -> StatusTone.Accent
+        state.hasToolWorkbenchOutput() -> StatusTone.Success
+        state.hasSearchTool() || state.hasSandboxTool() -> StatusTone.Neutral
+        else -> StatusTone.Warning
+    }

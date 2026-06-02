@@ -14,6 +14,7 @@ import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -185,8 +186,18 @@ class ChatViewModel(
         observedConversationId = id
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
-            conversationRepository.observeMessages(id).collect { messages ->
-                updateState { it.copy(messages = messages) }
+            combine(
+                conversationRepository.observeRecentMessages(id, CHAT_MESSAGE_WINDOW_SIZE),
+                conversationRepository.observeMessageCount(id),
+            ) { messages, count ->
+                messages to count
+            }.collect { (messages, count) ->
+                updateState {
+                    it.copy(
+                        messages = messages,
+                        selectedConversationMessageCount = count,
+                    )
+                }
             }
         }
     }
@@ -207,3 +218,5 @@ class ChatViewModel(
         nextState?.draft?.toSavedState(savedStateHandle)
     }
 }
+
+private const val CHAT_MESSAGE_WINDOW_SIZE = 200

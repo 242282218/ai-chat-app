@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +16,8 @@ import (
 
 const serviceName = "ai-chat-gateway"
 const bearerPrefix = "Bearer "
+const minSandboxTimeoutSeconds = 1
+const maxSandboxTimeoutSeconds = 10
 
 type Options struct {
 	APIToken            string
@@ -189,6 +193,10 @@ func sandboxRunHandler(runner sandbox.Runner, options Options) http.HandlerFunc 
 			writeGatewayError(w, http.StatusRequestEntityTooLarge, "code_too_large", "Sandbox code 超出大小限制。", r.Header.Get("X-Request-Id"))
 			return
 		}
+		if request.TimeoutSeconds != 0 && (request.TimeoutSeconds < minSandboxTimeoutSeconds || request.TimeoutSeconds > maxSandboxTimeoutSeconds) {
+			writeGatewayError(w, http.StatusBadRequest, "invalid_timeout", "Sandbox timeoutSeconds 必须在 1 到 10 秒之间。", r.Header.Get("X-Request-Id"))
+			return
+		}
 		timeout := time.Duration(request.TimeoutSeconds) * time.Second
 		response, err := runner.Run(r.Context(), sandbox.Request{
 			Language: request.Language,
@@ -226,11 +234,23 @@ func protectedHandler(next http.HandlerFunc, options Options) http.Handler {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
-	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(target); err != nil {
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {
 			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request_too_large", "请求 body 超出大小限制。", r.Header.Get("X-Request-Id"))
 			return http.ErrBodyReadAfterClose
+		}
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request_too_large", "请求 body 超出大小限制。", r.Header.Get("X-Request-Id"))
+			return http.ErrBodyReadAfterClose
+		}
+		if err == nil {
+			return errors.New("request body must contain only one JSON document")
 		}
 		return err
 	}
@@ -241,7 +261,15 @@ func hasValidToken(header string, token string) bool {
 	if !strings.HasPrefix(header, bearerPrefix) {
 		return false
 	}
-	return strings.TrimSpace(strings.TrimPrefix(header, bearerPrefix)) == token
+	actual := strings.TrimSpace(strings.TrimPrefix(header, bearerPrefix))
+	expected := strings.TrimSpace(token)
+	if actual == "" || expected == "" {
+		return false
+	}
+	if len(actual) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

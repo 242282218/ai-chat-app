@@ -14,7 +14,9 @@ class ProviderRegistry {
     private val descriptors = mutableMapOf<String, ProviderDescriptor>()
 
     fun register(type: String, provider: ChatProvider) {
-        providers[type] = provider
+        val providerType = ProviderType.fromStorage(type)
+        providers[providerType.value] = provider
+        descriptors[providerType.value] = builtInDescriptor(providerType) ?: customDescriptor(providerType)
     }
 
     fun register(descriptor: ProviderDescriptor, provider: ChatProvider) {
@@ -32,6 +34,9 @@ class ProviderRegistry {
         descriptors.values.sortedBy { it.displayName }
 
     fun registeredTypes(): Set<String> = providers.keys.toSet()
+
+    fun isRegistered(type: ProviderType): Boolean =
+        providers.containsKey(type.value)
 
     private fun customDescriptor(type: ProviderType): ProviderDescriptor =
         ProviderDescriptor(
@@ -57,6 +62,19 @@ class ProviderRegistry {
             builtInDescriptorList.firstOrNull { it.type == type }
 
         fun builtInDescriptors(): List<ProviderDescriptor> = builtInDescriptorList
+
+        fun supportedBuiltInChatDescriptors(): List<ProviderDescriptor> =
+            builtInDescriptorList.filter { it.type in supportedBuiltInChatProviderTypes }
+
+        fun isSupportedBuiltInChatProvider(type: ProviderType): Boolean =
+            type in supportedBuiltInChatProviderTypes
+
+        private val supportedBuiltInChatProviderTypes = setOf(
+            ProviderType.OpenAI,
+            ProviderType.OpenAICompatible,
+            ProviderType.OpenRouter,
+            ProviderType.Ollama,
+        )
 
         private val openAiCapabilities = ProviderCapabilities(
             text = true,

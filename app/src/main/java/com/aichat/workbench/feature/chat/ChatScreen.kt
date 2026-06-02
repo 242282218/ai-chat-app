@@ -75,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -175,11 +176,9 @@ fun ChatScreen(
                 .padding(innerPadding),
         ) {
             MessageList(
-                state = state,
                 messages = state.messages,
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
-                onOpenControls = { showControls = true },
                 onUseStarterPrompt = { prompt ->
                     starterPromptLabel = prompt.label
                     viewModel.updateInput(prompt.text)
@@ -204,7 +203,6 @@ fun ChatScreen(
                 isGenerating = state.isGenerating,
                 isEditing = state.editingMessageId != null,
                 starterPromptLabel = starterPromptLabel,
-                providerLabel = selectedChatProvider(state)?.name,
                 canSend = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onInputChange = {
@@ -276,7 +274,7 @@ fun ChatScreen(
     if (confirmClearContext && selectedConversation != null) {
         WorkbenchConfirmDialog(
             title = "清空上下文？",
-            message = "删除「${selectedConversation.title}」中的 ${state.messages.size} 条消息。会话本身会保留。",
+            message = "删除「${selectedConversation.title}」中的 ${state.selectedConversationMessageCount} 条消息。会话本身会保留。",
             confirmLabel = "清空",
             onConfirm = {
                 confirmClearContext = false
@@ -451,8 +449,8 @@ private fun ChatControlSheet(
         }
         item {
             DangerActions(
-                messageCount = state.messages.size,
-                canClearContext = state.messages.isNotEmpty() && !state.isGenerating,
+                messageCount = state.selectedConversationMessageCount,
+                canClearContext = state.selectedConversationMessageCount > 0 && !state.isGenerating,
                 hasConversation = selectedConversation != null,
                 onRequestClearContext = onRequestClearContext,
                 onRequestArchiveConversation = onRequestArchiveConversation,
@@ -491,10 +489,12 @@ private fun ConversationStrip(
             }
         }
         val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
-        if (selectedConversation != null) {
+        if (selectedConversation != null && state.shouldShowConversationMetadata(selectedConversation)) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    StatusPill(text = "${state.messages.size} 条消息", tone = StatusTone.Neutral)
+                if (state.selectedConversationMessageCount > 0) {
+                    item {
+                        StatusPill(text = "${state.selectedConversationMessageCount} 条消息", tone = StatusTone.Neutral)
+                    }
                 }
                 if (selectedConversation.isTemporary) {
                     item {
@@ -616,13 +616,15 @@ private fun ConversationChip(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = conversation.chipStatusText(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                conversation.chipStatusText()?.let { statusText ->
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
     )
@@ -669,25 +671,39 @@ private fun ChatSettingsPanel(
     viewModel: ChatViewModel,
     modifier: Modifier = Modifier,
 ) {
-    WorkbenchPanel(
-        title = "模型控制",
-        description = state.modelDraft.ifBlank { "使用默认模型" },
-        icon = Icons.Filled.Tune,
-        modifier = modifier,
-        trailing = {
-            WorkbenchIconButton(
-                icon = if (state.settingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (state.settingsExpanded) "收起模型控制" else "展开模型控制",
-                onClick = viewModel::toggleSettingsExpanded,
-            )
-        },
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        QuietSectionHeader(
+            title = "模型控制",
+            description = state.modelDraft.ifBlank { "使用默认模型" },
+            trailing = {
+                if (state.settingsExpanded) {
+                    StatusPill(text = "编辑中", tone = StatusTone.Accent)
+                }
+            },
+        )
         ChatSettingsSummary(state)
-        if (!state.settingsExpanded && state.systemPromptDraft.isBlank()) {
-            TextButton(onClick = viewModel::toggleSettingsExpanded) {
-                Icon(imageVector = Icons.Filled.Edit, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "设置系统指令")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                OutlinedButton(onClick = viewModel::toggleSettingsExpanded) {
+                    Icon(
+                        imageVector = if (state.settingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = if (state.settingsExpanded) "收起模型控制" else "展开模型控制")
+                }
+            }
+            if (!state.settingsExpanded && state.systemPromptDraft.isBlank()) {
+                item {
+                    OutlinedButton(onClick = viewModel::toggleSettingsExpanded) {
+                        Icon(imageVector = Icons.Filled.Edit, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "设置系统指令")
+                    }
+                }
             }
         }
 
@@ -791,31 +807,38 @@ private fun ChatSettingsSummary(state: ChatUiState) {
         value = state.maxTokensDraft,
         kind = ModelParameterDraftKind.MaxTokens,
     )
+    val visibleParameterStatuses = listOf(
+        state.temperatureDraft to temperatureStatus,
+        state.topPDraft to topPStatus,
+        state.maxTokensDraft to maxTokensStatus,
+    ).filter { (value, status) -> value.isNotBlank() || !status.isValid }
+    val hasAnySummaryPill = state.systemPromptDraft.isNotBlank() ||
+        visibleParameterStatuses.isNotEmpty() ||
+        state.temporaryDraft ||
+        state.sensitiveDraft
+
+    if (!hasAnySummaryPill) {
+        Text(
+            text = "使用默认上下文和模型参数。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
 
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(
-                text = if (state.systemPromptDraft.isBlank()) "未设置指令" else "系统指令已启用",
-                tone = if (state.systemPromptDraft.isBlank()) StatusTone.Neutral else StatusTone.Accent,
-            )
+        if (state.systemPromptDraft.isNotBlank()) {
+            item {
+                StatusPill(text = "系统指令已启用", tone = StatusTone.Accent)
+            }
         }
-        item {
-            StatusPill(
-                text = temperatureStatus.label,
-                tone = temperatureStatus.tone(),
-            )
-        }
-        item {
-            StatusPill(
-                text = topPStatus.label,
-                tone = topPStatus.tone(),
-            )
-        }
-        item {
-            StatusPill(
-                text = maxTokensStatus.label,
-                tone = maxTokensStatus.tone(),
-            )
+        visibleParameterStatuses.forEach { (_, status) ->
+            item {
+                StatusPill(
+                    text = status.label,
+                    tone = status.tone(),
+                )
+            }
         }
         if (state.temporaryDraft) {
             item {
@@ -838,28 +861,35 @@ private fun PromptPresetStrip(
 ) {
     if (state.promptPresets.isEmpty()) return
 
-    WorkbenchPanel(
-        title = "提示词库",
-        description = "${state.promptPresets.size} 个已保存快捷项",
-        icon = Icons.Filled.Edit,
-        modifier = modifier,
-        trailing = {
-            WorkbenchIconButton(
-                icon = if (state.promptsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (state.promptsExpanded) "收起提示词库" else "展开提示词库",
-                onClick = viewModel::togglePromptsExpanded,
-            )
-        },
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        QuietSectionHeader(
+            title = "提示词库",
+            description = "${state.promptPresets.size} 个已保存快捷项",
+            trailing = {
+                if (state.promptsExpanded) {
+                    StatusPill(text = "选择中", tone = StatusTone.Accent)
+                }
+            },
+        )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-                StatusPill(text = "${state.promptPresets.size} 个预设", tone = StatusTone.Accent)
+                OutlinedButton(onClick = viewModel::togglePromptsExpanded) {
+                    Icon(
+                        imageVector = if (state.promptsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = if (state.promptsExpanded) "收起提示词" else "展开提示词")
+                }
             }
         }
         if (state.promptsExpanded) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 items(state.promptPresets, key = { it.id.value }) { preset ->
                     AssistChip(
@@ -881,11 +911,9 @@ private fun PromptPresetStrip(
 
 @Composable
 private fun MessageList(
-    state: ChatUiState,
     messages: List<Message>,
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
-    onOpenControls: () -> Unit,
     onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
@@ -896,13 +924,6 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            ChatContextBar(
-                state = state,
-                hasEnabledProvider = hasEnabledProvider,
-                onOpenControls = onOpenControls,
-            )
-        }
         if (messages.isEmpty()) {
             item {
                 EmptyConversationPanel(
@@ -928,80 +949,36 @@ private fun MessageList(
 }
 
 @Composable
-private fun ChatContextBar(
-    state: ChatUiState,
-    hasEnabledProvider: Boolean,
-    onOpenControls: () -> Unit,
-) {
-    val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
-    val selectedProvider = selectedChatProvider(state)
-    val model = state.modelDraft.ifBlank { selectedProvider?.defaultModel.orEmpty() }
-    val mode = when {
-        state.isGenerating -> "生成中"
-        selectedConversation?.isTemporary == true || state.temporaryDraft -> "临时"
-        selectedConversation?.isSensitive == true || state.sensitiveDraft -> "敏感"
-        else -> "${state.messages.size} 条消息"
-    }
-
+private fun CompressedMessagesCard(message: Message) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.medium,
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.small,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = selectedProvider?.name ?: "未配置模型连接",
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = if (hasEnabledProvider) model.ifBlank { "使用服务商默认模型" } else "配置后即可开始聊天",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = "上下文已压缩",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                 )
             }
-            StatusPill(
-                text = mode,
-                tone = when {
-                    state.isGenerating -> StatusTone.Accent
-                    selectedConversation?.isSensitive == true || state.sensitiveDraft -> StatusTone.Critical
-                    selectedConversation?.isTemporary == true || state.temporaryDraft -> StatusTone.Warning
-                    else -> StatusTone.Neutral
-                },
-            )
-            WorkbenchIconButton(
-                icon = Icons.Filled.Tune,
-                label = "打开聊天控制",
-                onClick = onOpenControls,
-            )
+            MarkdownMessageContent(text = message.content)
         }
-    }
-}
-
-@Composable
-private fun CompressedMessagesCard(message: Message) {
-    WorkbenchPanel(
-        title = "上下文已压缩",
-        description = "早期消息已摘要替代",
-        icon = Icons.Filled.AutoAwesome,
-        trailing = {
-            StatusPill(text = "摘要", tone = StatusTone.Accent)
-        },
-    ) {
-        MarkdownMessageContent(text = message.content)
     }
 }
 
@@ -1106,14 +1083,16 @@ private fun MessageBubble(
     ) {
         Surface(
             color = messageContainerColor(message),
+            contentColor = messageContentColor(message),
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth(
-                if (message.role == MessageRole.User) 0.88f else 0.96f,
+                message.containerWidthFraction(),
             ),
-            tonalElevation = if (message.role == MessageRole.User) 0.dp else 1.dp,
+            tonalElevation = messageContainerElevation(message),
+            border = messageContainerBorder(message),
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(message.contentPadding()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (message.shouldShowHeader()) {
@@ -1255,50 +1234,35 @@ private fun MessageActionRow(
     onRetry: () -> Unit,
 ) {
     LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        contentPadding = PaddingValues(top = 0.dp),
     ) {
         item {
-            MessageActionButton(
+            WorkbenchIconButton(
                 icon = Icons.Filled.ContentCopy,
-                label = "复制",
+                label = "复制消息",
                 onClick = onCopy,
             )
         }
         if (message.role == MessageRole.User) {
             item {
-                MessageActionButton(
+                WorkbenchIconButton(
                     icon = Icons.Filled.Edit,
-                    label = "编辑",
+                    label = "编辑消息",
                     onClick = onEdit,
                 )
             }
         }
         if (message.role == MessageRole.Assistant && message.status == MessageStatus.Failed) {
             item {
-                MessageActionButton(
+                WorkbenchIconButton(
                     icon = Icons.Filled.Replay,
-                    label = "重试",
+                    label = "重试回复",
                     onClick = onRetry,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun MessageActionButton(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    TextButton(
-        onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Icon(imageVector = icon, contentDescription = null)
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = label)
     }
 }
 
@@ -1306,9 +1270,56 @@ private fun MessageActionButton(
 private fun messageContainerColor(message: Message) =
     when (message.role) {
         MessageRole.User -> MaterialTheme.colorScheme.primaryContainer
-        MessageRole.Assistant -> MaterialTheme.colorScheme.surface
+        MessageRole.Assistant -> Color.Transparent
         MessageRole.Tool -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.42f)
         MessageRole.System -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
+    }
+
+@Composable
+private fun messageContentColor(message: Message) =
+    when (message.role) {
+        MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer
+        MessageRole.Assistant -> MaterialTheme.colorScheme.onSurface
+        MessageRole.Tool -> MaterialTheme.colorScheme.onTertiaryContainer
+        MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+@Composable
+private fun messageContainerBorder(message: Message): BorderStroke? =
+    when (message.role) {
+        MessageRole.Tool -> BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f))
+        MessageRole.System -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
+        MessageRole.User,
+        MessageRole.Assistant,
+        -> null
+    }
+
+private fun messageContainerElevation(message: Message) =
+    when (message.role) {
+        MessageRole.User,
+        MessageRole.Assistant,
+        -> 0.dp
+        MessageRole.Tool,
+        MessageRole.System,
+        -> 1.dp
+    }
+
+private fun Message.containerWidthFraction(): Float =
+    when (role) {
+        MessageRole.User -> 0.88f
+        MessageRole.Assistant -> 1f
+        MessageRole.Tool,
+        MessageRole.System,
+        -> 0.96f
+    }
+
+private fun Message.contentPadding(): PaddingValues =
+    when (role) {
+        MessageRole.Assistant -> PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+        MessageRole.User,
+        MessageRole.Tool,
+        MessageRole.System,
+        -> PaddingValues(14.dp)
     }
 
 private fun Message.roleTone(): StatusTone =
@@ -1338,7 +1349,6 @@ private fun InputBar(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
-    providerLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onInputChange: (String) -> Unit,
@@ -1365,7 +1375,6 @@ private fun InputBar(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
                 starterPromptLabel = starterPromptLabel,
-                providerLabel = providerLabel,
                 canSend = canSend,
                 onOpenProviders = onOpenProviders,
                 onCancelEdit = onCancelEdit,
@@ -1381,17 +1390,17 @@ private fun InputBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                OutlinedButton(
+                WorkbenchIconButton(
+                    icon = Icons.Filled.Image,
+                    label = "添加图片",
                     onClick = onPickImage,
                     enabled = !isGenerating,
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Icon(imageVector = Icons.Filled.Image, contentDescription = null)
-                }
+                )
                 OutlinedTextField(
                     value = input,
                     onValueChange = onInputChange,
                     modifier = Modifier.weight(1f),
+                    label = { Text(text = if (isEditing) "编辑消息" else "消息") },
                     placeholder = { Text(text = if (isEditing) "修改消息" else "输入消息") },
                     minLines = 1,
                     maxLines = 5,
@@ -1427,7 +1436,7 @@ private fun ImageDraftRow(
                     label = "移除图片",
                     onClick = { onRemoveImage(index) },
                     modifier = Modifier.align(Alignment.TopEnd),
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1439,7 +1448,6 @@ private fun InputStatusRow(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
-    providerLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onCancelEdit: () -> Unit,
@@ -1448,9 +1456,8 @@ private fun InputStatusRow(
         isGenerating = isGenerating,
         isEditing = isEditing,
         starterPromptLabel = starterPromptLabel,
-        providerLabel = providerLabel,
         canSend = canSend,
-    )
+    ) ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = status.label,
@@ -1482,9 +1489,8 @@ private fun inputStatus(
     isGenerating: Boolean,
     isEditing: Boolean,
     starterPromptLabel: String?,
-    providerLabel: String?,
     canSend: Boolean,
-): InputStatus =
+): InputStatus? =
     when {
         isGenerating -> InputStatus(
             label = "生成中",
@@ -1502,10 +1508,7 @@ private fun inputStatus(
             label = "需要模型连接",
             tone = StatusTone.Critical,
         )
-        else -> InputStatus(
-            label = "发送到 ${providerLabel ?: "当前模型连接"}",
-            tone = StatusTone.Success,
-        )
+        else -> null
     }
 
 private fun Message.shouldShowHeader(): Boolean =
@@ -1541,12 +1544,15 @@ private fun chatSubtitle(
     return listOfNotNull(stateText, providerText).joinToString(" · ")
 }
 
-private fun Conversation.chipStatusText(): String =
+private fun ChatUiState.shouldShowConversationMetadata(conversation: Conversation): Boolean =
+    selectedConversationMessageCount > 0 || conversation.isTemporary || conversation.isSensitive
+
+private fun Conversation.chipStatusText(): String? =
     when {
         isSensitive && isTemporary -> "敏感 · 临时"
         isSensitive -> "敏感"
         isTemporary -> "临时"
-        else -> "普通会话"
+        else -> null
     }
 
 private fun selectedChatProvider(state: ChatUiState) =

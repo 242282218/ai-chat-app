@@ -63,6 +63,7 @@ class ToolsViewModel(
 
     init {
         viewModelScope.launch {
+            settingsRepository.loadSettings()
             settingsRepository.observeSettings().collect { settings ->
                 _state.update {
                     it.copy(
@@ -97,12 +98,26 @@ class ToolsViewModel(
 
     fun saveGatewaySettings() {
         val current = _state.value
-        settingsRepository.saveSettings(
-            enabled = current.gatewayEnabled,
-            baseUrl = current.gatewayBaseUrlDraft,
-            apiToken = current.gatewayApiTokenDraft,
-        )
-        _state.update { it.copy(status = "已保存") }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, status = null) }
+            runCatching {
+                settingsRepository.saveSettings(
+                    enabled = current.gatewayEnabled,
+                    baseUrl = current.gatewayBaseUrlDraft,
+                    apiToken = current.gatewayApiTokenDraft,
+                )
+            }.onSuccess {
+                _state.update {
+                    it.copy(
+                        remoteTools = emptyList(),
+                        status = "已保存",
+                    )
+                }
+            }.onFailure { error ->
+                _state.update { it.copy(status = error.message ?: "保存网关设置失败。") }
+            }
+            _state.update { it.copy(isLoading = false) }
+        }
     }
 
     fun checkHealth() {

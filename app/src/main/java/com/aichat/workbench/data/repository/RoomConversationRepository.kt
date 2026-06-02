@@ -46,6 +46,14 @@ class RoomConversationRepository(
             entities.map { it.toDomain() }
         }
 
+    override fun observeRecentMessages(conversationId: ConversationId, limit: Int): Flow<List<Message>> =
+        dao.observeRecentMessages(conversationId.value, limit).map { entities ->
+            entities.map { it.toDomain() }
+        }
+
+    override fun observeMessageCount(conversationId: ConversationId): Flow<Int> =
+        dao.observeMessageCount(conversationId.value)
+
     override suspend fun getMessages(conversationId: ConversationId): List<Message> =
         dao.getMessages(conversationId.value).map { it.toDomain() }
 

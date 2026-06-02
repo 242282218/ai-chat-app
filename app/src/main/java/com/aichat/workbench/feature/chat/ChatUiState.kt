@@ -14,6 +14,7 @@ data class ChatUiState(
     val conversations: List<Conversation> = emptyList(),
     val selectedConversationId: ConversationId? = null,
     val messages: List<Message> = emptyList(),
+    val selectedConversationMessageCount: Int = 0,
     val providers: List<ProviderConfig> = emptyList(),
     val promptPresets: List<PromptPreset> = emptyList(),
     val selectedProviderId: String? = null,

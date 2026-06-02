@@ -169,6 +169,53 @@ class GenerationControllerTest {
     }
 
     @Test
+    fun startShowsClearErrorForUnregisteredProvider() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("anthropic", ProviderType.Anthropic)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(flowOf(ProviderStreamEvent.TextDelta("Should not send"), ProviderStreamEvent.Completed)),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAI.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "claude-test", input = "Question"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Question",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        assertFalse(state.isGenerating)
+        assertEquals("当前 Provider 暂未接入聊天发送：anthropic。", state.error)
+        assertEquals(0, chatProvider.requests.size)
+        assertEquals(emptyList<Message>(), conversationRepository.allMessages())
+    }
+
+    @Test
     fun startCompressesLongHistoryBeforeProviderRequest() = runTest(mainDispatcherRule.testDispatcher) {
         val provider = provider("openai", ProviderType.OpenAI, maxContextTokens = 90)
         val conversationRepository = GenerationControllerConversationRepository(clock)

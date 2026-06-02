@@ -92,6 +92,7 @@ fun DataSettingsScreen(
             } else {
                 val json = importJson
                 viewModel.updateImportJson(json)
+                viewModel.previewImportJson(json)
                 pendingImportJson = json
             }
         }
@@ -150,7 +151,10 @@ fun DataSettingsScreen(
                     showRawJson = showImportJson,
                     onToggleRawJson = { showImportJson = !showImportJson },
                     onImportJsonChange = viewModel::updateImportJson,
-                    onImportCurrentJson = { pendingImportJson = state.importJson },
+                    onImportCurrentJson = {
+                        viewModel.previewImportJson(state.importJson)
+                        pendingImportJson = state.importJson
+                    },
                     onOpenImport = {
                         importLauncher.launch(arrayOf("application/json", "text/*"))
                     },
@@ -181,7 +185,11 @@ fun DataSettingsScreen(
     pendingImportJson?.let { json ->
         WorkbenchConfirmDialog(
             title = "导入备份？",
-            message = "将 ${json.length} 个字符的 JSON 合并到本地存储。服务商 API Key 不会恢复。",
+            message = importConfirmationMessage(
+                json = json,
+                preview = state.importPreviewSummary,
+                status = state.status,
+            ),
             confirmLabel = "导入",
             onConfirm = {
                 pendingImportJson = null
@@ -203,26 +211,12 @@ private fun PrivacySummaryHeader(state: DataSettingsUiState) {
             title = "隐私摘要",
             description = "先确认数据边界，再做导入、导出或清空。",
             trailing = {
-                StatusPill(text = "本地优先", tone = StatusTone.Success)
-            },
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
                 StatusPill(
                     text = if (state.includeChats) "备份含聊天" else "仅备份配置",
                     tone = if (state.includeChats) StatusTone.Warning else StatusTone.Success,
                 )
-            }
-            item {
-                StatusPill(text = "聊天保存在本机", tone = StatusTone.Success)
-            }
-            item {
-                StatusPill(text = "API Key 不进备份", tone = StatusTone.Success)
-            }
-            item {
-                StatusPill(text = "网关可选", tone = StatusTone.Neutral)
-            }
-        }
+            },
+        )
         MetadataRow(
             label = "模型服务请求",
             value = "聊天、图片和工具请求会直接发送到你配置的接口地址或网关。",
@@ -342,10 +336,9 @@ private fun ImportPanel(
         description = "将 JSON 数据导入本地存储；服务商 API Key 不会恢复。",
         icon = Icons.Filled.FileUpload,
         trailing = {
-            StatusPill(
-                text = if (state.importJson.isBlank()) "等待中" else "就绪",
-                tone = if (state.importJson.isBlank()) StatusTone.Neutral else StatusTone.Accent,
-            )
+            if (state.importJson.isNotBlank()) {
+                StatusPill(text = "就绪", tone = StatusTone.Accent)
+            }
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -486,6 +479,8 @@ private fun ClearPanel(
     state: DataSettingsUiState,
     onClear: (ClearAction) -> Unit,
 ) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -494,26 +489,68 @@ private fun ClearPanel(
             title = "危险操作",
             description = "每项都会先说明影响范围并二次确认。",
             trailing = {
-                StatusPill(text = "破坏性", tone = StatusTone.Critical)
+                if (expanded) {
+                    StatusPill(text = "破坏性", tone = StatusTone.Critical)
+                }
             },
         )
-        ClearAction.entries.forEach { action ->
-            QuietListRow(
-                title = action.buttonText,
-                description = action.message,
-                icon = Icons.Filled.Delete,
-                onClick = { onClear(action) },
-                enabled = !state.isBusy,
-                trailing = {
-                    StatusPill(text = "确认", tone = StatusTone.Critical)
-                },
+        OutlinedButton(
+            onClick = { expanded = !expanded },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
             )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (expanded) "收起危险操作" else "展开危险操作",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (expanded) {
+            ClearAction.entries.forEach { action ->
+                QuietListRow(
+                    title = action.buttonText,
+                    description = action.message,
+                    icon = Icons.Filled.Delete,
+                    onClick = { onClear(action) },
+                    enabled = !state.isBusy,
+                    trailing = {
+                        StatusPill(text = "确认", tone = StatusTone.Critical)
+                    },
+                )
+            }
         }
     }
 }
 
 private fun BackupImportSummary.importedObjectsLabel(): String =
-    "${providers + prompts + conversations + messages} 项"
+    "${providers + prompts + modelPreferences + conversations + messages} 项"
+
+private fun BackupImportSummary.importedObjectsDetail(): String =
+    listOf(
+        "$providers 个模型连接",
+        "$prompts 个提示词",
+        "$modelPreferences 个模型偏好",
+        "$conversations 个会话",
+        "$messages 条消息",
+    ).joinToString(" · ")
+
+private fun importConfirmationMessage(
+    json: String,
+    preview: BackupImportSummary?,
+    status: String?,
+): String =
+    when {
+        preview != null ->
+            "将合并 ${preview.importedObjectsLabel()} 到本地存储：${preview.importedObjectsDetail()}。\n服务商 API Key 不会恢复。"
+        status?.isErrorStatus() == true ->
+            "导入摘要读取失败：$status\n仍可尝试导入，失败时会保留当前本地数据状态。服务商 API Key 不会恢复。"
+        else ->
+            "正在读取导入摘要。将 ${json.length} 个字符的 JSON 合并到本地存储；服务商 API Key 不会恢复。"
+    }
 
 private enum class ClearAction(
     val buttonText: String,

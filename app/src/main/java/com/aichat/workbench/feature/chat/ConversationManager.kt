@@ -119,18 +119,23 @@ class ConversationManager(
         state: ChatUiState,
         conversations: List<Conversation>,
         conversation: Conversation,
-    ): ChatUiState =
-        state.copy(
+    ): ChatUiState {
+        val selectionChanged = state.selectedConversationId != conversation.id
+        return state.copy(
             conversations = conversations,
             selectedConversationId = conversation.id,
+            messages = if (selectionChanged) emptyList() else state.messages,
+            selectedConversationMessageCount = if (selectionChanged) 0 else state.selectedConversationMessageCount,
             draft = draftFor(state, conversation),
             error = null,
         )
+    }
 
     fun clearSelection(state: ChatUiState): ChatUiState =
         state.copy(
             selectedConversationId = null,
             messages = emptyList(),
+            selectedConversationMessageCount = 0,
             draft = DraftState(),
         )
 

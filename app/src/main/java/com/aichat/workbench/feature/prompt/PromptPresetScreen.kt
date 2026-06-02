@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
@@ -41,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.PromptPreset
@@ -176,15 +179,7 @@ fun PromptPresetScreen(
 
             if (presets.isEmpty()) {
                 item {
-                    InlineNotice(
-                        text = "创建提示词后可固定系统指令、默认模型和工具组合。",
-                        icon = Icons.Filled.AutoAwesome,
-                        tone = StatusTone.Neutral,
-                    ) {
-                        TextButton(onClick = { openNewPromptEditor() }) {
-                            Text(text = "创建")
-                        }
-                    }
+                    EmptyPromptLibraryState(onCreate = { openNewPromptEditor() })
                 }
             } else if (filteredPresets.isEmpty()) {
                 item {
@@ -235,6 +230,7 @@ fun PromptPresetScreen(
                         onDefaultModelChange = { defaultModel = it },
                         defaultTools = defaultTools,
                         onDefaultToolsChange = { defaultTools = it },
+                        formKey = editingId ?: "new",
                         message = message,
                         canSave = name.isNotBlank() && systemPrompt.isNotBlank(),
                         canClear = hasPromptDraft,
@@ -305,6 +301,38 @@ fun PromptPresetScreen(
 }
 
 @Composable
+private fun EmptyPromptLibraryState(
+    onCreate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "还没有提示词",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = "保存常用系统指令，聊天时按需套用。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onCreate) {
+            Text(text = "创建提示词")
+        }
+    }
+}
+
+@Composable
 private fun PromptLibraryHeader(
     presets: List<PromptPreset>,
 ) {
@@ -326,24 +354,23 @@ private fun PromptLibraryHeader(
                 )
             },
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(
-                    text = "$withModelCount 个带默认模型",
-                    tone = if (withModelCount == 0) StatusTone.Neutral else StatusTone.Accent,
-                )
-            }
-            item {
-                StatusPill(
-                    text = "$withToolsCount 个带工具",
-                    tone = if (withToolsCount == 0) StatusTone.Neutral else StatusTone.Accent,
-                )
-            }
-            item {
-                StatusPill(
-                    text = "$describedCount 个已描述",
-                    tone = if (describedCount == 0) StatusTone.Neutral else StatusTone.Success,
-                )
+        if (withModelCount > 0 || withToolsCount > 0 || describedCount > 0) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (withModelCount > 0) {
+                    item {
+                        StatusPill(text = "$withModelCount 个带默认模型", tone = StatusTone.Accent)
+                    }
+                }
+                if (withToolsCount > 0) {
+                    item {
+                        StatusPill(text = "$withToolsCount 个带工具", tone = StatusTone.Accent)
+                    }
+                }
+                if (describedCount > 0) {
+                    item {
+                        StatusPill(text = "$describedCount 个已描述", tone = StatusTone.Success)
+                    }
+                }
             }
         }
         Text(
@@ -372,6 +399,7 @@ private fun PromptSearchPanel(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "搜索提示词") },
             placeholder = { Text(text = "搜索提示词") },
             singleLine = true,
         )
@@ -391,6 +419,7 @@ private fun PromptPresetForm(
     onDefaultModelChange: (String) -> Unit,
     defaultTools: String,
     onDefaultToolsChange: (String) -> Unit,
+    formKey: String,
     message: String?,
     canSave: Boolean,
     canClear: Boolean,
@@ -398,6 +427,9 @@ private fun PromptPresetForm(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hasDefaultsDraft = defaultModel.isNotBlank() || defaultTools.isNotBlank()
+    var defaultsExpanded by rememberSaveable(formKey) { mutableStateOf(hasDefaultsDraft) }
+
     WorkbenchPanel(
         title = if (editing) "编辑提示词" else "新建提示词",
         description = "重复使用的指令保存在本地，可在聊天中应用。",
@@ -420,7 +452,7 @@ private fun PromptPresetForm(
             value = name,
             onValueChange = onNameChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "名称") },
+            label = { Text(text = "名称 *") },
             singleLine = true,
         )
         OutlinedTextField(
@@ -436,21 +468,15 @@ private fun PromptPresetForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp),
-            label = { Text(text = "系统指令") },
+            label = { Text(text = "系统指令 *") },
         )
-        OutlinedTextField(
-            value = defaultModel,
-            onValueChange = onDefaultModelChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认模型") },
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = defaultTools,
-            onValueChange = onDefaultToolsChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认工具") },
-            singleLine = true,
+        PromptDefaultsFields(
+            expanded = defaultsExpanded,
+            defaultModel = defaultModel,
+            defaultTools = defaultTools,
+            onToggleExpanded = { defaultsExpanded = !defaultsExpanded },
+            onDefaultModelChange = onDefaultModelChange,
+            onDefaultToolsChange = onDefaultToolsChange,
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -480,12 +506,80 @@ private fun PromptPresetForm(
 }
 
 @Composable
+private fun PromptDefaultsFields(
+    expanded: Boolean,
+    defaultModel: String,
+    defaultTools: String,
+    onToggleExpanded: () -> Unit,
+    onDefaultModelChange: (String) -> Unit,
+    onDefaultToolsChange: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = onToggleExpanded,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (expanded) "收起默认上下文" else "默认上下文",
+                modifier = Modifier.weight(1f),
+            )
+            if (defaultModel.isNotBlank() || defaultTools.isNotBlank()) {
+                StatusPill(
+                    text = promptDefaultsLabel(defaultModel, defaultTools),
+                    tone = promptDefaultsTone(defaultModel, defaultTools),
+                )
+            }
+        }
+        if (expanded) {
+            OutlinedTextField(
+                value = defaultModel,
+                onValueChange = onDefaultModelChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "默认模型") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = defaultTools,
+                onValueChange = onDefaultToolsChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = "默认工具") },
+                singleLine = true,
+            )
+        }
+    }
+}
+
+private fun promptDefaultsLabel(defaultModel: String, defaultTools: String): String {
+    val hasModel = defaultModel.isNotBlank()
+    val toolCount = parseToolNames(defaultTools).size
+    return when {
+        hasModel && toolCount > 0 -> "模型 + 工具"
+        hasModel -> "模型"
+        toolCount > 0 -> "$toolCount 个工具"
+        else -> "未绑定"
+    }
+}
+
+private fun promptDefaultsTone(defaultModel: String, defaultTools: String): StatusTone =
+    if (defaultModel.isNotBlank() || defaultTools.isNotBlank()) {
+        StatusTone.Accent
+    } else {
+        StatusTone.Neutral
+    }
+
+@Composable
 private fun PromptFormSummary(
     name: String,
     systemPrompt: String,
     defaultModel: String,
     defaultTools: String,
 ) {
+    val toolCount = parseToolNames(defaultTools).size
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
@@ -499,17 +593,15 @@ private fun PromptFormSummary(
                 tone = if (systemPrompt.isBlank()) StatusTone.Warning else StatusTone.Success,
             )
         }
-        item {
-            StatusPill(
-                text = defaultModel.ifBlank { "无默认模型" },
-                tone = StatusTone.Neutral,
-            )
+        if (defaultModel.isNotBlank()) {
+            item {
+                StatusPill(text = defaultModel, tone = StatusTone.Accent)
+            }
         }
-        item {
-            StatusPill(
-                text = "${parseToolNames(defaultTools).size} 个工具",
-                tone = if (defaultTools.isBlank()) StatusTone.Neutral else StatusTone.Accent,
-            )
+        if (toolCount > 0) {
+            item {
+                StatusPill(text = "$toolCount 个工具", tone = StatusTone.Accent)
+            }
         }
     }
 }
@@ -548,7 +640,7 @@ private fun PromptPresetRow(
                 icon = Icons.Filled.Delete,
                 label = "删除提示词 ${preset.name}",
                 onClick = onDelete,
-                tint = MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
     )

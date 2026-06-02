@@ -1,6 +1,8 @@
 package com.aichat.workbench.feature.provider
 
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.model.isPersistableProviderHeader
+import com.aichat.workbench.domain.model.persistableProviderHeaderDisplayNames
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.ui.component.StatusTone
 import java.net.URI
@@ -19,6 +21,9 @@ internal data class HeaderStatus(
     val label: String,
     val tone: StatusTone,
 )
+
+internal val providerHeaderPolicyText: String =
+    "仅保存 ${persistableProviderHeaderDisplayNames.joinToString("、")}。"
 
 internal fun ProviderType.providerTypeLabel(): String =
     ProviderRegistry.builtInDescriptor(this)?.displayName ?: value
@@ -62,10 +67,13 @@ internal fun String.headerStatus(): HeaderStatus {
     if (headerLines.isEmpty()) return HeaderStatus("无请求头", StatusTone.Neutral)
 
     val invalidCount = headerLines.count { !it.isValidHeaderLine() }
-    return if (invalidCount == 0) {
-        HeaderStatus("${headerLines.size} 个请求头", StatusTone.Accent)
-    } else {
-        HeaderStatus("$invalidCount 个无效请求头", StatusTone.Critical)
+    if (invalidCount > 0) {
+        return HeaderStatus("$invalidCount 个无效请求头", StatusTone.Critical)
+    }
+    val blockedCount = headerLines.count { !it.isPersistableHeaderLine() }
+    return when {
+        blockedCount > 0 -> HeaderStatus("$blockedCount 个不允许保存", StatusTone.Critical)
+        else -> HeaderStatus("${headerLines.size} 个请求头", StatusTone.Accent)
     }
 }
 
@@ -73,13 +81,15 @@ internal fun String.hasValidHeaderLines(): Boolean =
     lineSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() }
-        .all { it.isValidHeaderLine() }
+        .all { it.isValidHeaderLine() && it.isPersistableHeaderLine() }
 
 internal fun parseHeaderLines(value: String): Map<String, String> =
     value.lineSequence()
         .mapNotNull { line ->
             val trimmedLine = line.trim()
-            if (trimmedLine.isBlank() || !trimmedLine.isValidHeaderLine()) return@mapNotNull null
+            if (trimmedLine.isBlank() || !trimmedLine.isValidHeaderLine() || !trimmedLine.isPersistableHeaderLine()) {
+                return@mapNotNull null
+            }
 
             val separator = trimmedLine.indexOf(':')
             val name = trimmedLine.substring(0, separator).trim()
@@ -95,4 +105,10 @@ private fun String.isValidHeaderLine(): Boolean {
     val name = substring(0, separator).trim()
     val headerValue = substring(separator + 1).trim()
     return name.isNotBlank() && headerValue.isNotBlank()
+}
+
+private fun String.isPersistableHeaderLine(): Boolean {
+    val separator = indexOf(':')
+    if (separator <= 0) return false
+    return isPersistableProviderHeader(substring(0, separator))
 }

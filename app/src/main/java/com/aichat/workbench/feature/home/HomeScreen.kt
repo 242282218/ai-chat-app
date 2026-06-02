@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -106,7 +105,6 @@ fun HomeScreen(
         } else {
             ConversationHomeContent(
                 state = state,
-                destinations = destinations,
                 onSearch = { searchActive = true },
                 onSettings = { showManagementSheet = true },
                 onOpenProviders = { onDestinationClick(AppDestination.Providers) },
@@ -166,7 +164,6 @@ fun HomeScreen(
 @Composable
 private fun ConversationHomeContent(
     state: HomeUiState,
-    destinations: List<AppDestination>,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onOpenProviders: () -> Unit,
@@ -186,10 +183,7 @@ private fun ConversationHomeContent(
             )
         }
         item {
-            HomeTitle(state = state)
-        }
-        item {
-            HomeStatusStrip(state = state)
+            HomeTitle()
         }
         if (!state.hasEnabledProvider) {
             item {
@@ -217,64 +211,20 @@ private fun ConversationHomeContent(
                 )
             }
         }
-        if (destinations.any { it == AppDestination.Providers }) {
-            item {
-                Text(
-                    text = "模型连接、提示词、工具和数据设置已移到右上角设置入口。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        }
     }
 }
 
 @Composable
 private fun HomeTitle(
-    state: HomeUiState,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Text(
+        text = "会话",
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = "会话",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Text(
-            text = homeSubtitle(state),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun HomeStatusStrip(
-    state: HomeUiState,
-    modifier: Modifier = Modifier,
-) {
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        StatusPill(
-            text = state.conversationCountLabel(),
-            tone = if (state.recentConversations.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
-        )
-        StatusPill(
-            text = state.providerCountLabel(),
-            tone = if (state.hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
-        )
-        StatusPill(text = "本地优先", tone = StatusTone.Success)
-    }
+        style = MaterialTheme.typography.headlineLarge,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onBackground,
+    )
 }
 
 @Composable
@@ -313,10 +263,7 @@ private fun ConversationListRow(
         onClick = onClick,
         modifier = modifier,
         trailing = {
-            StatusPill(
-                text = conversation.statusLabel(),
-                tone = conversation.statusTone(),
-            )
+            ConversationStatusPill(conversation)
         },
     )
 }
@@ -381,6 +328,7 @@ private fun SearchHomeContent(
                     value = state.searchQuery,
                     onValueChange = onQueryChange,
                     modifier = Modifier.weight(1f),
+                    label = { Text(text = "搜索消息") },
                     placeholder = { Text(text = "搜索消息") },
                     singleLine = true,
                 )
@@ -467,10 +415,7 @@ private fun SearchResultListRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                StatusPill(
-                    text = result.conversation.statusLabel(),
-                    tone = result.conversation.statusTone(),
-                )
+                ConversationStatusPill(result.conversation)
             }
             Text(
                 text = conversationDescription(result.conversation),
@@ -510,21 +455,6 @@ private fun CreateConversationSheet(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         )
-        Text(
-            text = "选择一个入口开始新的 AI 工作流。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
-        FlowRow(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            StatusPill(text = "本地会话", tone = StatusTone.Success)
-            StatusPill(text = "临时模式", tone = StatusTone.Warning)
-            StatusPill(text = "素材创作", tone = StatusTone.Accent)
-        }
         CreationActionRow(
             icon = Icons.AutoMirrored.Filled.Chat,
             title = "新建会话",
@@ -609,27 +539,19 @@ private fun CreationActionRow(
     )
 }
 
-private fun homeSubtitle(state: HomeUiState): String {
-    return "${state.conversationCountLabel()} · ${state.providerCountLabel()}"
-}
-
-private fun HomeUiState.conversationCountLabel(): String =
-    when (recentConversations.size) {
-        0 -> "暂无最近会话"
-        1 -> "1 个最近会话"
-        else -> "${recentConversations.size} 个最近会话"
-    }
-
-private fun HomeUiState.providerCountLabel(): String =
-    when (enabledProviderCount) {
-        0 -> "模型连接未配置"
-        1 -> "1 个模型连接可用"
-        else -> "${enabledProviderCount} 个模型连接可用"
-    }
-
 private fun conversationDescription(conversation: Conversation): String {
     val model = conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型"
     return "模型：$model"
+}
+
+@Composable
+private fun ConversationStatusPill(conversation: Conversation) {
+    if (!conversation.isTemporary && !conversation.isSensitive) return
+
+    StatusPill(
+        text = conversation.statusLabel(),
+        tone = conversation.statusTone(),
+    )
 }
 
 private fun Conversation.statusLabel(): String =

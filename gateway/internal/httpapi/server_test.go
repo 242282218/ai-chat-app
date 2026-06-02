@@ -137,6 +137,52 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 	}
 }
 
+func TestSearchRejectsTrailingJSONDocument(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMux())
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"} {"query":"extra"}`, testToken)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	var body GatewayError
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "invalid_request" {
+		t.Fatalf("code = %q, want invalid_request", body.Code)
+	}
+}
+
+func TestSearchRejectsTrailingGarbage(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMux())
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"} garbage`, testToken)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	var body GatewayError
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != "invalid_request" {
+		t.Fatalf("code = %q, want invalid_request", body.Code)
+	}
+}
+
 func TestSandboxRunReturnsStdout(t *testing.T) {
 	runner := &fakeSandboxRunner{
 		response: sandbox.Response{
@@ -248,6 +294,51 @@ func TestSandboxRunReturnsTimeoutResult(t *testing.T) {
 	}
 }
 
+func TestSandboxRunRejectsInvalidTimeout(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "negative",
+			body: `{"language":"python","code":"print(1)","timeoutSeconds":-1}`,
+		},
+		{
+			name: "too_large",
+			body: `{"language":"python","code":"print(1)","timeoutSeconds":11}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &fakeSandboxRunner{}
+			server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
+			defer server.Close()
+
+			resp, err := postJSON(server.URL+"/v1/sandbox/run", tt.body, testToken)
+			if err != nil {
+				t.Fatalf("post sandbox: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+			}
+
+			var body GatewayError
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body.Code != "invalid_timeout" {
+				t.Fatalf("code = %q, want invalid_timeout", body.Code)
+			}
+			if runner.called {
+				t.Fatal("runner was called for invalid timeout")
+			}
+		})
+	}
+}
+
 func TestSandboxRunReturnsUnavailableWhenDockerUnavailable(t *testing.T) {
 	runner := &fakeSandboxRunner{err: sandbox.ErrUnavailable}
 	server := httptest.NewServer(newAuthenticatedSandboxTestMux(runner, Options{APIToken: testToken}))
@@ -318,6 +409,28 @@ func TestSensitiveEndpointsRejectWhenTokenNotConfigured(t *testing.T) {
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+}
+
+func TestSensitiveEndpointsAcceptConfiguredTokenWithSurroundingWhitespace(t *testing.T) {
+	server := httptest.NewServer(
+		NewMuxWithDependencies(
+			"test",
+			&fakeSandboxRunner{},
+			search.MockAdapter{},
+			Options{APIToken: "  " + testToken + "  "},
+		),
+	)
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, testToken)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
 

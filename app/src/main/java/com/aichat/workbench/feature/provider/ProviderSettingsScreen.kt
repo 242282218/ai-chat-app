@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
@@ -111,16 +113,7 @@ fun ProviderSettingsScreen(
     var pendingLoadProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var pendingDeleteProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val selectableDescriptors = remember {
-        ProviderRegistry.builtInDescriptors().filter { descriptor ->
-            descriptor.type in setOf(
-                ProviderType.OpenAI,
-                ProviderType.OpenAICompatible,
-                ProviderType.OpenRouter,
-                ProviderType.Ollama,
-            )
-        }
-    }
+    val selectableDescriptors = remember { ProviderRegistry.supportedBuiltInChatDescriptors() }
 
     val hasProviderDraft = editingId != null ||
         name != "OpenAI" ||
@@ -262,15 +255,7 @@ fun ProviderSettingsScreen(
 
             if (providers.isEmpty()) {
                 item {
-                    InlineNotice(
-                        text = "添加模型连接后才能使用聊天、图片和模型路由。",
-                        icon = Icons.Filled.Tune,
-                        tone = StatusTone.Warning,
-                    ) {
-                        TextButton(onClick = { openNewProviderEditor() }) {
-                            Text(text = "添加")
-                        }
-                    }
+                    EmptyProviderState(onCreate = { openNewProviderEditor() })
                 }
             } else {
                 items(providers, key = { it.id.value }) { provider ->
@@ -317,6 +302,7 @@ fun ProviderSettingsScreen(
                         onEnabledChange = { enabled = it },
                         allowHttp = allowHttp,
                         onAllowHttpChange = { allowHttp = it },
+                        formKey = editingId ?: "new",
                         message = message,
                         canSave = canSubmitProvider,
                         canTest = canSubmitProvider,
@@ -414,6 +400,38 @@ fun ProviderSettingsScreen(
 }
 
 @Composable
+private fun EmptyProviderState(
+    onCreate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Tune,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "还没有模型连接",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = "添加连接后即可用于聊天、图片和模型路由。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onCreate) {
+            Text(text = "添加模型连接")
+        }
+    }
+}
+
+@Composable
 private fun ProviderHealthHeader(
     providers: List<ProviderConfig>,
 ) {
@@ -441,33 +459,31 @@ private fun ProviderHealthHeader(
                 )
             },
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(
-                    text = "${providers.size} 个连接",
-                    tone = if (providers.isEmpty()) StatusTone.Warning else StatusTone.Neutral,
-                )
-            }
-            item {
-                StatusPill(
-                    text = if (defaultProvider == null) "无默认路由" else defaultProvider.name,
-                    tone = if (defaultProvider == null) StatusTone.Warning else StatusTone.Success,
-                )
-            }
-            item {
-                StatusPill(
-                    text = "$encryptedKeyCount 个密钥引用",
-                    tone = if (encryptedKeyCount > 0) StatusTone.Success else StatusTone.Neutral,
-                )
-            }
-            if (httpCount > 0) {
+        if (providers.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
-                    StatusPill(text = "$httpCount 个 HTTP 风险", tone = StatusTone.Warning)
+                    StatusPill(text = "${providers.size} 个连接", tone = StatusTone.Neutral)
                 }
-            }
-            if (customHeaderCount > 0) {
                 item {
-                    StatusPill(text = "$customHeaderCount 个自定义请求头", tone = StatusTone.Warning)
+                    StatusPill(
+                        text = defaultProvider?.name ?: "无默认路由",
+                        tone = if (defaultProvider == null) StatusTone.Warning else StatusTone.Success,
+                    )
+                }
+                if (encryptedKeyCount > 0) {
+                    item {
+                        StatusPill(text = "$encryptedKeyCount 个密钥引用", tone = StatusTone.Success)
+                    }
+                }
+                if (httpCount > 0) {
+                    item {
+                        StatusPill(text = "$httpCount 个 HTTP 风险", tone = StatusTone.Warning)
+                    }
+                }
+                if (customHeaderCount > 0) {
+                    item {
+                        StatusPill(text = "$customHeaderCount 个自定义请求头", tone = StatusTone.Warning)
+                    }
                 }
             }
         }
@@ -508,6 +524,7 @@ private fun ProviderForm(
     onEnabledChange: (Boolean) -> Unit,
     allowHttp: Boolean,
     onAllowHttpChange: (Boolean) -> Unit,
+    formKey: String,
     message: String?,
     canSave: Boolean,
     canTest: Boolean,
@@ -516,6 +533,8 @@ private fun ProviderForm(
     modifier: Modifier = Modifier,
 ) {
     var showApiKey by rememberSaveable { mutableStateOf(false) }
+    val hasAdvancedDraft = headers.isNotBlank() || allowHttp
+    var advancedExpanded by rememberSaveable(formKey) { mutableStateOf(hasAdvancedDraft) }
 
     WorkbenchPanel(
         title = if (editing) "编辑模型连接" else "新建模型连接",
@@ -523,10 +542,9 @@ private fun ProviderForm(
         icon = Icons.Filled.Tune,
         modifier = modifier,
         trailing = {
-            StatusPill(
-                text = if (enabled) "已启用" else "已禁用",
-                tone = if (enabled) StatusTone.Success else StatusTone.Neutral,
-            )
+            if (!enabled) {
+                StatusPill(text = "已禁用", tone = StatusTone.Neutral)
+            }
         },
     ) {
         ProviderFormSummary(
@@ -557,14 +575,14 @@ private fun ProviderForm(
             value = name,
             onValueChange = onNameChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "名称") },
+            label = { Text(text = "名称 *") },
             singleLine = true,
         )
         OutlinedTextField(
             value = baseUrl,
             onValueChange = onBaseUrlChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "接口地址") },
+            label = { Text(text = "接口地址 *") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
         )
@@ -595,15 +613,6 @@ private fun ProviderForm(
                 )
             },
         )
-        OutlinedTextField(
-            value = headers,
-            onValueChange = onHeadersChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(112.dp),
-            label = { Text(text = "请求头") },
-            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-        )
 
         Row(
             modifier = Modifier
@@ -624,20 +633,14 @@ private fun ProviderForm(
             Switch(checked = enabled, onCheckedChange = null)
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .toggleable(
-                    value = allowHttp,
-                    role = Role.Checkbox,
-                    onValueChange = onAllowHttpChange,
-                )
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(checked = allowHttp, onCheckedChange = null)
-            Text(text = "允许 HTTP")
-        }
+        ProviderAdvancedFields(
+            expanded = advancedExpanded,
+            headers = headers,
+            allowHttp = allowHttp,
+            onToggleExpanded = { advancedExpanded = !advancedExpanded },
+            onHeadersChange = onHeadersChange,
+            onAllowHttpChange = onAllowHttpChange,
+        )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -667,6 +670,92 @@ private fun ProviderForm(
 }
 
 @Composable
+private fun ProviderAdvancedFields(
+    expanded: Boolean,
+    headers: String,
+    allowHttp: Boolean,
+    onToggleExpanded: () -> Unit,
+    onHeadersChange: (String) -> Unit,
+    onAllowHttpChange: (Boolean) -> Unit,
+) {
+    val headerStatus = headers.headerStatus()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = onToggleExpanded,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (expanded) "收起高级网络设置" else "高级网络设置",
+                modifier = Modifier.weight(1f),
+            )
+            if (headers.isNotBlank() || allowHttp) {
+                StatusPill(
+                    text = advancedProviderLabel(headers, allowHttp, headerStatus),
+                    tone = advancedProviderTone(headers, allowHttp, headerStatus),
+                )
+            }
+        }
+        if (expanded) {
+            OutlinedTextField(
+                value = headers,
+                onValueChange = onHeadersChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(112.dp),
+                label = { Text(text = "请求头") },
+                supportingText = { Text(text = providerHeaderPolicyText) },
+                isError = headerStatus.tone == StatusTone.Critical,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = allowHttp,
+                        role = Role.Checkbox,
+                        onValueChange = onAllowHttpChange,
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = allowHttp, onCheckedChange = null)
+                Text(text = "允许 HTTP")
+            }
+        }
+    }
+}
+
+private fun advancedProviderLabel(
+    headers: String,
+    allowHttp: Boolean,
+    headerStatus: HeaderStatus,
+): String =
+    when {
+        headerStatus.tone == StatusTone.Critical -> headerStatus.label
+        headers.isNotBlank() && allowHttp -> "有风险"
+        allowHttp -> "HTTP"
+        headers.isNotBlank() -> "请求头"
+        else -> "默认"
+    }
+
+private fun advancedProviderTone(
+    headers: String,
+    allowHttp: Boolean,
+    headerStatus: HeaderStatus,
+): StatusTone =
+    when {
+        headerStatus.tone == StatusTone.Critical -> StatusTone.Critical
+        allowHttp -> StatusTone.Warning
+        headers.isNotBlank() -> StatusTone.Accent
+        else -> StatusTone.Neutral
+    }
+
+@Composable
 private fun ProviderFormSummary(
     name: String,
     type: ProviderType,
@@ -691,11 +780,10 @@ private fun ProviderFormSummary(
         item {
             StatusPill(text = urlStatus.label, tone = urlStatus.tone)
         }
-        item {
-            StatusPill(
-                text = model.ifBlank { "无默认模型" },
-                tone = if (model.isBlank()) StatusTone.Neutral else StatusTone.Success,
-            )
+        if (model.isNotBlank()) {
+            item {
+                StatusPill(text = model, tone = StatusTone.Success)
+            }
         }
         item {
             StatusPill(
@@ -703,11 +791,13 @@ private fun ProviderFormSummary(
                 tone = keyStatus.tone,
             )
         }
-        item {
-            StatusPill(
-                text = headerStatus.label,
-                tone = headerStatus.tone,
-            )
+        if (headers.isNotBlank()) {
+            item {
+                StatusPill(
+                    text = headerStatus.label,
+                    tone = headerStatus.tone,
+                )
+            }
         }
     }
 }
@@ -772,7 +862,7 @@ private fun ProviderRow(
                 icon = Icons.Filled.Delete,
                 label = "删除模型连接 ${provider.name}",
                 onClick = onDelete,
-                tint = MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
     )

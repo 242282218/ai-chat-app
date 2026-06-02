@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -23,6 +24,7 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
@@ -54,7 +56,7 @@ fun WorkbenchIconButton(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(text = label) } },
         state = rememberTooltipState(),
     ) {
@@ -260,6 +262,7 @@ fun QuietListRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -345,10 +348,10 @@ fun StatusPill(
         modifier = modifier
             .border(1.dp, colors.border, MaterialTheme.shapes.small)
             .background(colors.container, MaterialTheme.shapes.small)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         color = colors.content,
         style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = if (tone == StatusTone.Critical) FontWeight.SemiBold else FontWeight.Medium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -456,24 +459,24 @@ private fun statusColors(tone: StatusTone): StatusColors {
     val scheme = MaterialTheme.colorScheme
     return when (tone) {
         StatusTone.Neutral -> StatusColors(
-            container = scheme.surfaceVariant.copy(alpha = 0.38f),
+            container = scheme.surfaceVariant.copy(alpha = 0.24f),
             content = scheme.onSurfaceVariant,
-            border = scheme.outlineVariant.copy(alpha = 0.48f),
+            border = scheme.outlineVariant.copy(alpha = 0.32f),
         )
         StatusTone.Accent -> StatusColors(
-            container = scheme.primary.copy(alpha = 0.10f),
+            container = scheme.primary.copy(alpha = 0.07f),
             content = scheme.primary,
-            border = scheme.primary.copy(alpha = 0.16f),
+            border = scheme.primary.copy(alpha = 0.12f),
         )
         StatusTone.Success -> StatusColors(
-            container = scheme.secondary.copy(alpha = 0.11f),
+            container = scheme.secondary.copy(alpha = 0.08f),
             content = scheme.secondary,
-            border = scheme.secondary.copy(alpha = 0.18f),
+            border = scheme.secondary.copy(alpha = 0.13f),
         )
         StatusTone.Warning -> StatusColors(
-            container = scheme.tertiary.copy(alpha = 0.12f),
+            container = scheme.tertiary.copy(alpha = 0.10f),
             content = scheme.tertiary,
-            border = scheme.tertiary.copy(alpha = 0.19f),
+            border = scheme.tertiary.copy(alpha = 0.16f),
         )
         StatusTone.Critical -> StatusColors(
             container = scheme.error.copy(alpha = 0.10f),

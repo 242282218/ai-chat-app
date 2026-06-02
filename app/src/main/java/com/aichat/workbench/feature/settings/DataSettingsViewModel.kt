@@ -14,6 +14,7 @@ data class DataSettingsUiState(
     val includeChats: Boolean = false,
     val exportJson: String = "",
     val importJson: String = "",
+    val importPreviewSummary: BackupImportSummary? = null,
     val importSummary: BackupImportSummary? = null,
     val isBusy: Boolean = false,
     val status: String? = null,
@@ -30,7 +31,35 @@ class DataSettingsViewModel(
     }
 
     fun updateImportJson(value: String) {
-        _state.update { it.copy(importJson = value, importSummary = null, status = null) }
+        _state.update {
+            it.copy(
+                importJson = value,
+                importPreviewSummary = null,
+                importSummary = null,
+                status = null,
+            )
+        }
+    }
+
+    fun previewImportJson(value: String) {
+        if (value.isBlank()) {
+            _state.update { it.copy(importPreviewSummary = null, status = "导入 JSON 不能为空。") }
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                backupService.previewImportJson(value)
+            }.onSuccess { summary ->
+                _state.update { it.copy(importPreviewSummary = summary, status = null) }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        importPreviewSummary = null,
+                        status = error.message ?: "导入预览失败。",
+                    )
+                }
+            }
+        }
     }
 
     fun updateStatus(message: String) {
@@ -74,6 +103,7 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         importSummary = summary,
+                        importPreviewSummary = null,
                         status = "导入完成",
                     )
                 }
@@ -120,6 +150,7 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         exportJson = "",
+                        importPreviewSummary = null,
                         importSummary = null,
                         status = successMessage,
                     )

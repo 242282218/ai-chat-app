@@ -7,6 +7,7 @@ import com.aichat.workbench.data.mapper.toDomain
 import com.aichat.workbench.data.mapper.toEntity
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
+import com.aichat.workbench.domain.model.persistableProviderHeaders
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import java.time.Clock
 import java.time.Instant

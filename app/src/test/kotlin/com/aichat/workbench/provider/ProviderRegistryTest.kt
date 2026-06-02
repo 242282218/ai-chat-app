@@ -9,7 +9,9 @@ import com.aichat.workbench.provider.api.ProviderTextResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProviderRegistryTest {
@@ -22,6 +24,18 @@ class ProviderRegistryTest {
 
         assertSame(provider, registry.get("custom"))
         assertEquals(setOf("custom"), registry.registeredTypes())
+        assertTrue(registry.isRegistered(ProviderType("custom")))
+    }
+
+    @Test
+    fun normalizesLegacyProviderTypeNamesWhenRegistering() {
+        val provider = ProviderRegistryTestChatProvider()
+        val registry = ProviderRegistry().apply {
+            register("OpenAI", provider)
+        }
+
+        assertSame(provider, registry.get(ProviderType.OpenAI.value))
+        assertEquals(setOf(ProviderType.OpenAI.value), registry.registeredTypes())
     }
 
     @Test
@@ -36,6 +50,24 @@ class ProviderRegistryTest {
         assertEquals(ProviderAuthMode.None, ollama?.authMode)
         assertEquals("http://10.0.2.2:11434", ollama?.defaultBaseUrl)
         assertEquals("/api/tags", ollama?.modelDiscovery?.path)
+    }
+
+    @Test
+    fun listsOnlyBuiltInProvidersWithChatImplementationsForSelection() {
+        val supportedTypes = ProviderRegistry.supportedBuiltInChatDescriptors().map { it.type }
+
+        assertEquals(
+            listOf(
+                ProviderType.OpenAI,
+                ProviderType.OpenAICompatible,
+                ProviderType.OpenRouter,
+                ProviderType.Ollama,
+            ),
+            supportedTypes,
+        )
+        assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.OpenAI))
+        assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Anthropic))
+        assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Gemini))
     }
 
     @Test

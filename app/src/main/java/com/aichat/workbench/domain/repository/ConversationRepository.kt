@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 data class MessageSearchResult(
     val conversation: Conversation,
@@ -25,6 +26,12 @@ interface ConversationRepository {
     suspend fun deleteConversation(id: ConversationId)
 
     fun observeMessages(conversationId: ConversationId): Flow<List<Message>>
+
+    fun observeRecentMessages(conversationId: ConversationId, limit: Int): Flow<List<Message>> =
+        observeMessages(conversationId).map { messages -> messages.takeLast(limit) }
+
+    fun observeMessageCount(conversationId: ConversationId): Flow<Int> =
+        observeMessages(conversationId).map { it.size }
 
     suspend fun getMessages(conversationId: ConversationId): List<Message>
 

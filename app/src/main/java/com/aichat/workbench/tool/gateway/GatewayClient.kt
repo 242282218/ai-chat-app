@@ -84,8 +84,11 @@ class GatewayClient(
         code: String,
         timeoutSeconds: Int,
         apiToken: String = "",
-    ): SandboxRunResponse =
-        withContext(Dispatchers.IO) {
+    ): SandboxRunResponse {
+        require(timeoutSeconds in MIN_SANDBOX_TIMEOUT_SECONDS..MAX_SANDBOX_TIMEOUT_SECONDS) {
+            "Sandbox timeoutSeconds 必须在 1 到 10 秒之间。"
+        }
+        return withContext(Dispatchers.IO) {
             val body = gatewayJson.encodeToString(
                 SandboxRunRequestJson(
                     language = language,
@@ -98,6 +101,7 @@ class GatewayClient(
                 parseSandboxRunResponse(response.bodyText())
             }
         }
+    }
 
     fun parseToolManifest(body: String): ToolManifest {
         val json = gatewayJson.decodeFromString<ToolManifestJson>(body)
@@ -109,7 +113,7 @@ class GatewayClient(
                     name = tool.name,
                     displayName = tool.name.toDisplayName(),
                     description = tool.description.orEmpty(),
-                    permissionLevel = ToolPermissionLevel.valueOf(tool.permissionLevel),
+                    permissionLevel = tool.permissionLevel.toToolPermissionLevel(),
                     inputSchemaJson = gatewayJson.encodeToString(tool.inputSchema),
                     outputSchemaJson = tool.outputSchema?.let { gatewayJson.encodeToString(it) },
                     timeoutSeconds = tool.timeoutSeconds?.takeIf { it > 0 },
@@ -205,6 +209,11 @@ class GatewayClient(
                 .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
         }
 
+    private fun String.toToolPermissionLevel(): ToolPermissionLevel =
+        ToolPermissionLevel.values()
+            .firstOrNull { it.name.equals(trim(), ignoreCase = true) }
+            ?: ToolPermissionLevel.HighRisk
+
     private fun String.toGatewayErrorOrNull(): GatewayErrorResponse? =
         runCatching {
             val json = gatewayJson.decodeFromString<GatewayErrorJson>(this)
@@ -235,6 +244,8 @@ private data class GatewayErrorResponse(
 )
 
 private val JSON = "application/json; charset=utf-8".toMediaType()
+private const val MIN_SANDBOX_TIMEOUT_SECONDS = 1
+private const val MAX_SANDBOX_TIMEOUT_SECONDS = 10
 
 private val gatewayJson = Json {
     ignoreUnknownKeys = true

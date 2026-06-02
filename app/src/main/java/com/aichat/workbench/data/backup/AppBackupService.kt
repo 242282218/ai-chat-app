@@ -14,7 +14,6 @@ import com.aichat.workbench.data.mapper.toJsonArrayString
 import com.aichat.workbench.data.mapper.toJsonObjectString
 import com.aichat.workbench.data.mapper.toModelConfigsJson
 import com.aichat.workbench.data.mapper.toToolCallsJson
-import com.aichat.workbench.data.repository.persistableProviderHeaders
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
@@ -29,6 +28,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolCallId
+import com.aichat.workbench.domain.model.persistableProviderHeaders
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -86,8 +86,7 @@ class AppBackupService(
 
     suspend fun importJson(value: String): BackupImportSummary =
         withContext(Dispatchers.IO) {
-            val root = backupJson.decodeFromString<BackupJson>(value)
-            var messageCount = 0
+            val root = decodeAndValidateBackup(value)
 
             root.providers.forEach { provider ->
                 providerRepository.saveProvider(provider.toProvider(), plaintextApiKey = null)
@@ -103,17 +102,15 @@ class AppBackupService(
                 conversationRepository.saveConversation(conversation)
                 conversationJson.messages.forEach { messageJson ->
                     conversationRepository.saveMessage(messageJson.toMessage(conversation.id))
-                    messageCount += 1
                 }
             }
 
-            BackupImportSummary(
-                providers = root.providers.size,
-                prompts = root.prompts.size,
-                modelPreferences = root.modelPreferences.size,
-                conversations = root.conversations.size,
-                messages = messageCount,
-            )
+            root.toImportSummary()
+        }
+
+    suspend fun previewImportJson(value: String): BackupImportSummary =
+        withContext(Dispatchers.IO) {
+            decodeAndValidateBackup(value).toImportSummary()
         }
 
     suspend fun clearChatHistory() {
@@ -292,7 +289,67 @@ class AppBackupService(
 
     private fun JsonElement?.jsonStringOrBlank(): String =
         if (this == null || this is JsonNull) "" else toString()
+
+    private fun decodeAndValidateBackup(value: String): BackupJson {
+        val sizeBytes = value.toByteArray(Charsets.UTF_8).size
+        require(sizeBytes <= MAX_BACKUP_JSON_BYTES) {
+            "导入 JSON 超过 ${MAX_BACKUP_JSON_BYTES / 1024 / 1024} MB 限制。"
+        }
+        val root = backupJson.decodeFromString<BackupJson>(value)
+        root.validateForImport()
+        return root
+    }
+
+    private fun BackupJson.validateForImport() {
+        require(version == BACKUP_SCHEMA_VERSION) {
+            "不支持的备份版本：$version。"
+        }
+        require(providers.size <= MAX_BACKUP_PROVIDERS) {
+            "导入模型连接数量超过 $MAX_BACKUP_PROVIDERS 个限制。"
+        }
+        require(prompts.size <= MAX_BACKUP_PROMPTS) {
+            "导入提示词数量超过 $MAX_BACKUP_PROMPTS 个限制。"
+        }
+        require(modelPreferences.size <= MAX_BACKUP_MODEL_PREFERENCES) {
+            "导入模型偏好数量超过 $MAX_BACKUP_MODEL_PREFERENCES 个限制。"
+        }
+        require(conversations.size <= MAX_BACKUP_CONVERSATIONS) {
+            "导入会话数量超过 $MAX_BACKUP_CONVERSATIONS 个限制。"
+        }
+        val messageCount = conversations.sumOf { it.messages.size }
+        require(messageCount <= MAX_BACKUP_MESSAGES) {
+            "导入消息数量超过 $MAX_BACKUP_MESSAGES 条限制。"
+        }
+        validateBackupPayloads()
+    }
+
+    private fun BackupJson.validateBackupPayloads() {
+        providers.forEach { it.toProvider() }
+        prompts.forEach { it.toPrompt() }
+        modelPreferences.forEach { it.toModelPreference() }
+        conversations.forEach { conversationJson ->
+            val conversation = conversationJson.toConversation()
+            conversationJson.messages.forEach { it.toMessage(conversation.id) }
+        }
+    }
+
+    private fun BackupJson.toImportSummary(): BackupImportSummary =
+        BackupImportSummary(
+            providers = providers.size,
+            prompts = prompts.size,
+            modelPreferences = modelPreferences.size,
+            conversations = conversations.size,
+            messages = conversations.sumOf { it.messages.size },
+        )
 }
+
+private const val BACKUP_SCHEMA_VERSION = 1
+private const val MAX_BACKUP_JSON_BYTES = 16 * 1024 * 1024
+private const val MAX_BACKUP_PROVIDERS = 50
+private const val MAX_BACKUP_PROMPTS = 500
+private const val MAX_BACKUP_MODEL_PREFERENCES = 1_000
+private const val MAX_BACKUP_CONVERSATIONS = 2_000
+private const val MAX_BACKUP_MESSAGES = 20_000
 
 private val backupJson = Json {
     ignoreUnknownKeys = true

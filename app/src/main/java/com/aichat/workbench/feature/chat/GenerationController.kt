@@ -106,6 +106,9 @@ class GenerationController(
             val provider = conversationManager.providerFor(current, conversation, retryFailedMessage)
             val apiKey = providerRepository.getApiKey(provider.id)
             val descriptor = providerRegistry.descriptor(provider.type)
+            require(providerRegistry.isRegistered(provider.type)) {
+                "当前 Provider 暂未接入聊天发送：${provider.type.value}。"
+            }
             require(!descriptor.requiresApiKey || !apiKey.isNullOrBlank()) { "API Key 缺失。" }
 
             val model = conversationManager.modelFor(current, provider, conversation, retryFailedMessage)
@@ -188,6 +191,7 @@ class GenerationController(
                         model = model,
                         assistant = assistant,
                         toolCall = toolCall,
+                        tools = tools,
                         onStateChanged = onStateChanged,
                     )
                 }
@@ -254,18 +258,19 @@ class GenerationController(
         model: String,
         assistant: Message,
         toolCall: ToolCall,
+        tools: List<ToolDescriptor>,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
-        val descriptor = toolExecutor.descriptorFor(toolCall.name)
+        val descriptor = tools.firstOrNull { it.name == toolCall.name }
         val approved = if (descriptor?.permissionLevel?.requiresConfirmation() == true) {
             awaitToolApproval(toolCall, descriptor, onStateChanged)
         } else {
             true
         }
         val execution = if (approved) {
-            toolExecutor.execute(conversation.id, toolCall)
+            toolExecutor.execute(conversation.id, toolCall, descriptor)
         } else {
-            toolExecutor.deny(conversation.id, toolCall)
+            toolExecutor.deny(conversation.id, toolCall, descriptor)
         }
         val status = if (execution.result.status == com.aichat.workbench.domain.model.ToolStatus.Completed) {
             MessageStatus.Completed

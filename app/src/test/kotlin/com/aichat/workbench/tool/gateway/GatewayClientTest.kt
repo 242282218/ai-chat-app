@@ -58,6 +58,30 @@ class GatewayClientTest {
     }
 
     @Test
+    fun toolManifest_mapsUnknownPermissionLevelToHighRisk() {
+        val client = GatewayClient()
+
+        val manifest = client.parseToolManifest(
+            """
+            {
+              "version": 1,
+              "generatedAt": "2026-06-01T00:00:00Z",
+              "tools": [
+                {
+                  "name": "future_tool",
+                  "description": "Future Gateway tool",
+                  "permissionLevel": "FuturePermission",
+                  "inputSchema": {}
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(ToolPermissionLevel.HighRisk, manifest.tools.single().permissionLevel)
+    }
+
+    @Test
     fun search_postsQueryAndParsesResults() = runTest {
         server.enqueue(
             MockResponse()
@@ -177,6 +201,25 @@ class GatewayClientTest {
         assertEquals(12L, response.durationMs)
         assertFalse(response.timedOut)
         assertFalse(response.truncated)
+    }
+
+    @Test
+    fun sandboxRun_rejectsInvalidTimeoutWithoutRequest() = runTest {
+        val client = GatewayClient()
+
+        try {
+            client.runSandbox(
+                baseUrl = server.url("/").toString(),
+                language = "python",
+                code = "print(1)",
+                timeoutSeconds = 11,
+            )
+            fail("Expected IllegalArgumentException")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Sandbox timeoutSeconds 必须在 1 到 10 秒之间。", error.message)
+        }
+
+        assertEquals(0, server.requestCount)
     }
 
     @Test

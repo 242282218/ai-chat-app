@@ -158,6 +158,31 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun recentMessages_returnWindowWhileCountTracksFullConversation() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        val conversation = CreateConversationUseCase(repository, clock)(title = "Long chat")
+
+        (1..5).forEach { index ->
+            repository.saveMessage(
+                message(conversation.id).copy(
+                    id = MessageId("message-$index"),
+                    content = "Message $index",
+                    contentParts = listOf(MessagePart.Text("Message $index")),
+                    createdAt = clock.instant().plusMillis(index.toLong()),
+                    updatedAt = clock.instant().plusMillis(index.toLong()),
+                ),
+            )
+        }
+
+        val recent = repository.observeRecentMessages(conversation.id, limit = 2).first()
+        val count = repository.observeMessageCount(conversation.id).first()
+
+        assertEquals(listOf("message-4", "message-5"), recent.map { it.id.value })
+        assertEquals(listOf("Message 4", "Message 5"), recent.map { it.content })
+        assertEquals(5, count)
+    }
+
+    @Test
     fun compressedMessages_roundTripThroughRoom() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
@@ -379,6 +404,77 @@ class AiChatDatabaseTest {
 
         assertNull(database.providerConfigDao().getProvider("provider-1")?.apiKeyRef)
         assertNull(providerRepository.getApiKey(ProviderId("provider-1")))
+    }
+
+    @Test
+    fun backupImportPreview_reportsCountsWithoutWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "OpenAI",
+                  "type": "OpenAI",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "headers": {},
+                  "models": [],
+                  "defaultModel": null,
+                  "enabled": true
+                }
+              ],
+              "prompts": [
+                {
+                  "id": "prompt-1",
+                  "name": "Writer",
+                  "systemPrompt": "Improve clarity."
+                }
+              ],
+              "modelPreferences": [],
+              "conversations": [
+                {
+                  "id": "conversation-1",
+                  "title": "Imported chat",
+                  "messages": [
+                    {
+                      "id": "message-1",
+                      "role": "User",
+                      "content": "Hello",
+                      "status": "Completed"
+                    },
+                    {
+                      "id": "message-2",
+                      "role": "Assistant",
+                      "content": "Hi",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val summary = service.previewImportJson(backupJson)
+
+        assertEquals(1, summary.providers)
+        assertEquals(1, summary.prompts)
+        assertEquals(0, summary.modelPreferences)
+        assertEquals(1, summary.conversations)
+        assertEquals(2, summary.messages)
+        assertEquals(emptyList<ProviderConfig>(), providerRepository.observeProviders().first())
     }
 
     @Test

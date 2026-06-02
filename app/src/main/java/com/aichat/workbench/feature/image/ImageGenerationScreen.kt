@@ -32,8 +32,8 @@ import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AssistChip
@@ -101,14 +101,6 @@ fun ImageGenerationScreen(
                         onClick = onBack,
                     )
                 },
-                actions = {
-                    WorkbenchIconButton(
-                        icon = Icons.Filled.ClearAll,
-                        label = "清空历史",
-                        onClick = { confirmClearHistory = true },
-                        enabled = state.generations.isNotEmpty() && !state.isGenerating,
-                    )
-                },
             )
         },
     ) { innerPadding ->
@@ -129,17 +121,14 @@ fun ImageGenerationScreen(
                 )
             }
             item {
-                ImageLibraryHeader(state = state)
+                ImageLibraryHeader(
+                    state = state,
+                    onClearHistory = { confirmClearHistory = true },
+                )
             }
             if (state.generations.isEmpty()) {
                 item {
-                    InlineNotice(
-                        text = "先写提示词并生成图片。失败后会保留输入，便于修改后重试。",
-                        icon = Icons.Filled.Image,
-                        tone = StatusTone.Neutral,
-                    ) {
-                        StatusPill(text = "本地缩略图", tone = StatusTone.Success)
-                    }
+                    EmptyImageLibraryState()
                 }
             } else {
                 items(state.generations, key = { it.id.value }) { generation ->
@@ -170,10 +159,42 @@ fun ImageGenerationScreen(
 }
 
 @Composable
-private fun ImageLibraryHeader(
-    state: ImageGenerationUiState,
+private fun EmptyImageLibraryState(
     modifier: Modifier = Modifier,
 ) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Image,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(28.dp),
+        )
+        Text(
+            text = "还没有图片",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = "生成后的结果会在这里按时间保存。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ImageLibraryHeader(
+    state: ImageGenerationUiState,
+    onClearHistory: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val failedCount = state.generations.count { it.status == ImageGenerationStatus.Failed }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -181,24 +202,27 @@ private fun ImageLibraryHeader(
         QuietSectionHeader(
             title = "作品库",
             description = "最近结果优先展示；可复用提示词、重新生成、保存或分享。",
+            trailing = {
+                WorkbenchIconButton(
+                    icon = Icons.Filled.ClearAll,
+                    label = "清空图片历史",
+                    onClick = onClearHistory,
+                    enabled = state.generations.isNotEmpty() && !state.isGenerating,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(text = state.imageLibraryTotalLabel(), tone = StatusTone.Accent)
-            }
-            item {
-                StatusPill(text = state.imageLibraryCompletedLabel(), tone = StatusTone.Success)
-            }
-            val failedCount = state.generations.count { it.status == ImageGenerationStatus.Failed }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatusPill(text = state.imageLibrarySummaryLabel(), tone = StatusTone.Neutral)
             if (failedCount > 0) {
-                item {
-                    StatusPill(text = "$failedCount 个失败", tone = StatusTone.Critical)
-                }
+                StatusPill(text = "$failedCount 个失败", tone = StatusTone.Critical)
             }
             if (state.isGenerating) {
-                item {
-                    StatusPill(text = "生成中", tone = StatusTone.Accent)
-                }
+                StatusPill(text = "生成中", tone = StatusTone.Accent)
             }
         }
     }
@@ -220,10 +244,9 @@ private fun ImageGenerationForm(
             title = "图像创作台",
             description = "先描述画面，细节参数按需展开。",
             trailing = {
-                StatusPill(
-                    text = if (state.isGenerating) "生成中" else "就绪",
-                    tone = if (state.isGenerating) StatusTone.Accent else StatusTone.Success,
-                )
+                if (state.isGenerating) {
+                    StatusPill(text = "生成中", tone = StatusTone.Accent)
+                }
             },
         )
         if (state.providers.none { it.enabled }) {
@@ -236,28 +259,6 @@ private fun ImageGenerationForm(
                     Text(text = "配置")
                 }
             }
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.providers, key = { it.id.value }) { provider ->
-                    AssistChip(
-                        onClick = { viewModel.selectProvider(provider.id.value) },
-                        label = {
-                            Text(
-                                text = provider.name,
-                                modifier = Modifier.widthIn(max = 180.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            if (state.selectedProviderId == provider.id.value) {
-                                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
-                            }
-                        },
-                        enabled = provider.enabled,
-                    )
-                }
-            }
         }
 
         OutlinedTextField(
@@ -266,6 +267,7 @@ private fun ImageGenerationForm(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(128.dp),
+            label = { Text(text = "提示词 *") },
             placeholder = { Text(text = "描述主体、风格、构图和约束") },
         )
         ImageGenerationReadiness(state)
@@ -275,6 +277,10 @@ private fun ImageGenerationForm(
             onToggle = onToggleControls,
         )
         if (controlsExpanded) {
+            ImageProviderSelector(
+                state = state,
+                onSelectProvider = viewModel::selectProvider,
+            )
             OutlinedTextField(
                 value = state.model,
                 onValueChange = viewModel::updateModel,
@@ -431,7 +437,7 @@ private fun CompactGenerationControlsSummary(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${state.model.ifBlank { "未设置模型" }} · ${state.size.ifBlank { "默认尺寸" }} · ${state.quality.ifBlank { "默认质量" }} · ${state.count.ifBlank { "?" }} 张",
+                    text = imageControlSummary(state),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -444,21 +450,74 @@ private fun CompactGenerationControlsSummary(
                 onClick = onToggle,
             )
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                StatusPill(text = state.size.ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
-            }
-            item {
-                StatusPill(text = state.quality.ifBlank { "默认质量" }, tone = StatusTone.Neutral)
-            }
+        ImageParameterStatusRow(state)
+    }
+}
+
+@Composable
+private fun ImageParameterStatusRow(state: ImageGenerationUiState) {
+    val showCountStatus = state.imageCountTone() != StatusTone.Success
+    val showModelStatus = state.imageModelTone() != StatusTone.Success
+    if (!showCountStatus && !showModelStatus) return
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (showCountStatus) {
             item {
                 StatusPill(text = state.imageCountLabel(), tone = state.imageCountTone())
             }
+        }
+        if (showModelStatus) {
             item {
                 StatusPill(text = state.imageModelLabel(), tone = state.imageModelTone())
             }
         }
     }
+}
+
+@Composable
+private fun ImageProviderSelector(
+    state: ImageGenerationUiState,
+    onSelectProvider: (String) -> Unit,
+) {
+    if (state.providers.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "模型服务",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(state.providers, key = { it.id.value }) { provider ->
+                AssistChip(
+                    onClick = { onSelectProvider(provider.id.value) },
+                    label = {
+                        Text(
+                            text = provider.name,
+                            modifier = Modifier.widthIn(max = 180.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        if (state.selectedProviderId == provider.id.value) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                        }
+                    },
+                    enabled = provider.enabled,
+                )
+            }
+        }
+    }
+}
+
+private fun imageControlSummary(state: ImageGenerationUiState): String {
+    val provider = state.selectedProvider?.name ?: "未选择模型服务"
+    val model = state.model.ifBlank { "未设置模型" }
+    val size = state.size.ifBlank { "默认尺寸" }
+    val quality = state.quality.ifBlank { "默认质量" }
+    val count = state.count.ifBlank { "?" }
+    return "$provider · $model · $size · $quality · $count 张"
 }
 
 @Composable
@@ -499,17 +558,13 @@ private fun ImageGenerationRow(
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        StatusPill(text = generation.model.orEmpty().ifBlank { "无模型" }, tone = StatusTone.Neutral)
-                    }
-                    item {
-                        StatusPill(text = generation.size.orEmpty().ifBlank { "默认尺寸" }, tone = StatusTone.Neutral)
-                    }
-                    item {
-                        StatusPill(text = generation.quality.orEmpty().ifBlank { "默认质量" }, tone = StatusTone.Neutral)
-                    }
-                }
+                Text(
+                    text = generation.metadataLabel(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 generation.errorSummary?.let {
                     Text(
                         text = "$it\n提示词已保留，可复用后修改并重试。",
@@ -520,7 +575,8 @@ private fun ImageGenerationRow(
             }
             LazyRow(
                 modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 item {
                     OutlinedButton(onClick = onReusePrompt) {
@@ -528,36 +584,31 @@ private fun ImageGenerationRow(
                     }
                 }
                 item {
-                    OutlinedButton(
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Replay,
+                        label = "重新生成",
                         onClick = onRegenerate,
                         enabled = generation.status == ImageGenerationStatus.Completed,
-                    ) {
-                        Icon(imageVector = Icons.Filled.Replay, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "重新生成")
-                    }
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 item {
-                    OutlinedButton(
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Share,
+                        label = "分享图片",
                         onClick = onShare,
                         enabled = generation.status == ImageGenerationStatus.Completed &&
                             generation.originalPath != null,
-                    ) {
-                        Icon(imageVector = Icons.Filled.Share, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "分享")
-                    }
+                    )
                 }
                 item {
-                    OutlinedButton(
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.SaveAlt,
+                        label = "保存图片",
                         onClick = onSave,
                         enabled = generation.status == ImageGenerationStatus.Completed &&
                             generation.originalPath != null,
-                    ) {
-                        Icon(imageVector = Icons.Filled.SaveAlt, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "保存")
-                    }
+                    )
                 }
             }
         }
@@ -609,6 +660,13 @@ private fun ImageGenerationStatus.displayLabel(): String =
         ImageGenerationStatus.Cancelled -> "已取消"
     }
 
+private fun ImageGeneration.metadataLabel(): String {
+    val model = model.orEmpty().ifBlank { "无模型" }
+    val size = size.orEmpty().ifBlank { "默认尺寸" }
+    val quality = quality.orEmpty().ifBlank { "默认质量" }
+    return "$model · $size · $quality"
+}
+
 private fun ImageGenerationUiState.canGenerateImages(): Boolean {
     val imageCount = imageCountOrNull()
     return !isGenerating &&
@@ -620,20 +678,10 @@ private fun ImageGenerationUiState.canGenerateImages(): Boolean {
         !selectedModelUnsupported
 }
 
-private fun ImageGenerationUiState.imageLibraryTotalLabel(): String =
-    when (generations.size) {
-        0 -> "暂无作品"
-        1 -> "1 个作品"
-        else -> "${generations.size} 个作品"
-    }
-
-private fun ImageGenerationUiState.imageLibraryCompletedLabel(): String {
+private fun ImageGenerationUiState.imageLibrarySummaryLabel(): String {
+    if (generations.isEmpty()) return "暂无作品"
     val completedCount = generations.count { it.status == ImageGenerationStatus.Completed }
-    return when (completedCount) {
-        0 -> "暂无完成"
-        1 -> "1 个完成"
-        else -> "$completedCount 个完成"
-    }
+    return "${generations.size} 个作品 · $completedCount 个完成"
 }
 
 private fun ImageGenerationUiState.imageCountOrNull(): Int? =

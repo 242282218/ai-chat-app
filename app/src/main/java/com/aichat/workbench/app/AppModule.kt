@@ -34,9 +34,11 @@ import com.aichat.workbench.provider.api.ProviderConnectionTester
 import com.aichat.workbench.provider.compatible.OpenAiCompatibleChatProvider
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.OpenAiImageGenerationProvider
+import com.aichat.workbench.provider.http.WorkbenchHttpClients
 import com.aichat.workbench.provider.openai.OpenAiChatProvider
 import com.aichat.workbench.tool.gateway.GatewayClient
 import java.time.Clock
+import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.Module
@@ -46,6 +48,9 @@ import org.koin.dsl.module
 val appModule: Module = module {
     single { AppDispatchers() }
     single { Clock.systemUTC() }
+    single<OkHttpClient>(named("jsonHttpClient")) { WorkbenchHttpClients.json() }
+    single<OkHttpClient>(named("streamingHttpClient")) { WorkbenchHttpClients.streaming() }
+    single<OkHttpClient>(named("longRunningHttpClient")) { WorkbenchHttpClients.longRunning() }
     single {
         Room.databaseBuilder(
             androidContext(),
@@ -85,10 +90,10 @@ val appModule: Module = module {
         RoomToolInvocationRepository(get<AiChatDatabase>().toolInvocationDao())
     }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
-    single { GatewaySettingsRepository(androidContext()) }
-    single { OpenAiChatProvider() }
+    single { GatewaySettingsRepository(androidContext(), secretStore = get()) }
+    single { OpenAiChatProvider(client = get(named("streamingHttpClient"))) }
     single<ChatProvider>(named("openai")) { get<OpenAiChatProvider>() }
-    single { OpenAiCompatibleChatProvider() }
+    single { OpenAiCompatibleChatProvider(client = get(named("streamingHttpClient"))) }
     single<ChatProvider>(named("compatible")) { get<OpenAiCompatibleChatProvider>() }
     single {
         ProviderRegistry().apply {
@@ -100,8 +105,8 @@ val appModule: Module = module {
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Ollama)), compatibleProvider)
         }
     }
-    factory<ImageGenerationProvider> { OpenAiImageGenerationProvider() }
-    single { GatewayClient() }
+    factory<ImageGenerationProvider> { OpenAiImageGenerationProvider(client = get(named("longRunningHttpClient"))) }
+    single { GatewayClient(client = get(named("jsonHttpClient"))) }
     single {
         val settingsRepository = get<GatewaySettingsRepository>()
         ToolExecutor(
@@ -120,7 +125,12 @@ val appModule: Module = module {
             clock = get(),
         )
     }
-    single { ProviderConnectionTester(providerRegistry = get()) }
+    single {
+        ProviderConnectionTester(
+            client = get(named("jsonHttpClient")),
+            providerRegistry = get(),
+        )
+    }
     factory { ConversationCompactor(conversationRepository = get(), clock = get()) }
     factory { ConversationManager(conversationRepository = get(), clock = get()) }
     factory {
