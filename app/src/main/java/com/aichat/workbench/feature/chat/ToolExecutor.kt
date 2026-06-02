@@ -22,6 +22,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -250,6 +251,9 @@ class ToolExecutor(
     private fun Throwable.toToolErrorCode(): String =
         when (this) {
             is GatewayHttpException -> gatewayCode
+            is IllegalArgumentException,
+            is SerializationException,
+            -> "invalid_tool_arguments"
             else -> "tool_failed"
         }
 

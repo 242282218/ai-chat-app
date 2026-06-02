@@ -295,8 +295,44 @@ class ToolExecutorTest {
             descriptor = descriptor,
         )
 
-        assertEquals("tool_failed", execution.result.error?.code)
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
         assertEquals("Sandbox timeoutSeconds 必须在 1 到 10 秒之间。", execution.result.error?.message)
+        assertEquals(1, repository.savedResults.value.size)
+    }
+
+    @Test
+    fun executeSearchReportsInvalidToolArgumentsForMalformedJson() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = ToolExecutor(
+            gatewaySettingsProvider = {
+                GatewaySettings(enabled = true, baseUrl = "http://127.0.0.1:8080", apiToken = "token")
+            },
+            gatewayClientProvider = { error("GatewayClient should not be created for malformed tool arguments") },
+            toolInvocationRepository = repository,
+            clock = clock,
+        )
+        val descriptor = ToolDescriptor(
+            name = "web_search",
+            displayName = "Web Search",
+            description = "Remote search",
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = 20,
+            source = ToolSource.Gateway,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                id = ToolCallId("call_4"),
+                name = "web_search",
+                arguments = "{",
+            ),
+            descriptor = descriptor,
+        )
+
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
         assertEquals(1, repository.savedResults.value.size)
     }
 }
