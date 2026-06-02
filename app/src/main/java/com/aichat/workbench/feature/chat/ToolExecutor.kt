@@ -270,7 +270,7 @@ class ToolExecutor(
 
     private fun String.isValidGatewayUrl(): Boolean {
         val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
-        return uri.host != null && uri.scheme in setOf("http", "https")
+        return uri.host != null && uri.scheme?.lowercase() in setOf("http", "https")
     }
 
     private fun GatewaySettings.toCacheKey(): GatewaySettingsCacheKey =

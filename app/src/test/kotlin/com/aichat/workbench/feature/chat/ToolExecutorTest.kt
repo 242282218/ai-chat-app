@@ -76,6 +76,31 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun remoteToolsAcceptCaseInsensitiveGatewayScheme() = runTest {
+        val server = MockWebServer()
+        server.enqueue(manifestResponse(toolName = "web_search", permissionLevel = "Network"))
+        server.start()
+        try {
+            val uppercaseBaseUrl = server.url("/").toString().replaceFirst("http", "HTTP")
+            val executor = ToolExecutor(
+                gatewaySettingsProvider = {
+                    GatewaySettings(enabled = true, baseUrl = " $uppercaseBaseUrl ", apiToken = "token")
+                },
+                gatewayClientProvider = { GatewayClient() },
+                toolInvocationRepository = RecordingToolInvocationRepository(),
+                clock = clock,
+            )
+
+            val tools = executor.availableTools()
+
+            assertEquals(listOf("time", "web_search"), tools.map { it.name })
+            assertEquals("/v1/tools/manifest", server.takeRequest().path)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun remoteToolsReuseCachedManifest() = runTest {
         val server = MockWebServer()
         server.enqueue(manifestResponse(toolName = "web_search", permissionLevel = "Network"))
