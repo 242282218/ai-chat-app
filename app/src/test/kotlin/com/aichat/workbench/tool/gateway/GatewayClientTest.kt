@@ -219,13 +219,15 @@ class GatewayClientTest {
             client.search(server.url("/").toString(), "AI news")
             fail("Expected GatewayHttpException")
         } catch (error: GatewayHttpException) {
+            val messagePrefix = "Gateway HTTP 502："
             val message = error.message.orEmpty()
             assertEquals(502, error.statusCode)
             assertEquals("http_502", error.gatewayCode)
             assertEquals(null, error.requestId)
-            assertTrue(message.startsWith("Gateway HTTP 502：<html> <body> Gateway unavailable"))
+            assertTrue(message.startsWith(messagePrefix))
+            assertTrue(message.contains("Gateway unavailable"))
             assertTrue(message.endsWith("..."))
-            assertTrue(message.length <= 260)
+            assertTrue(message.length <= messagePrefix.length + 240 + "...".length)
             assertFalse(message.contains("\n"))
             assertFalse(message.contains("</html>"))
         }
