@@ -2,6 +2,7 @@ package com.aichat.workbench.app
 
 import androidx.room.Room
 import com.aichat.workbench.data.backup.AppBackupService
+import com.aichat.workbench.data.backup.BackupService
 import com.aichat.workbench.data.crypto.AndroidSecretStore
 import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.image.AndroidImageStorage
@@ -116,7 +117,7 @@ val appModule: Module = module {
             clock = get(),
         )
     }
-    factory {
+    factory<BackupService> {
         AppBackupService(
             database = get(),
             providerRepository = get(),

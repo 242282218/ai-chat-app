@@ -2,8 +2,8 @@ package com.aichat.workbench.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.aichat.workbench.data.backup.AppBackupService
 import com.aichat.workbench.data.backup.BackupImportSummary
+import com.aichat.workbench.data.backup.BackupService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +14,7 @@ data class DataSettingsUiState(
     val includeChats: Boolean = false,
     val exportJson: String = "",
     val importJson: String = "",
+    val importPreviewJson: String? = null,
     val importPreviewSummary: BackupImportSummary? = null,
     val importSummary: BackupImportSummary? = null,
     val isBusy: Boolean = false,
@@ -21,7 +22,7 @@ data class DataSettingsUiState(
 )
 
 class DataSettingsViewModel(
-    private val backupService: AppBackupService,
+    private val backupService: BackupService,
 ) : ViewModel() {
     private val _state = MutableStateFlow(DataSettingsUiState())
     val state: StateFlow<DataSettingsUiState> = _state.asStateFlow()
@@ -34,6 +35,7 @@ class DataSettingsViewModel(
         _state.update {
             it.copy(
                 importJson = value,
+                importPreviewJson = null,
                 importPreviewSummary = null,
                 importSummary = null,
                 status = null,
@@ -43,17 +45,30 @@ class DataSettingsViewModel(
 
     fun previewImportJson(value: String) {
         if (value.isBlank()) {
-            _state.update { it.copy(importPreviewSummary = null, status = "导入 JSON 不能为空。") }
+            _state.update {
+                it.copy(
+                    importPreviewJson = null,
+                    importPreviewSummary = null,
+                    status = "导入 JSON 不能为空。",
+                )
+            }
             return
         }
         viewModelScope.launch {
             runCatching {
                 backupService.previewImportJson(value)
             }.onSuccess { summary ->
-                _state.update { it.copy(importPreviewSummary = summary, status = null) }
+                _state.update {
+                    it.copy(
+                        importPreviewJson = value,
+                        importPreviewSummary = summary,
+                        status = null,
+                    )
+                }
             }.onFailure { error ->
                 _state.update {
                     it.copy(
+                        importPreviewJson = null,
                         importPreviewSummary = null,
                         status = error.message ?: "导入预览失败。",
                     )
@@ -95,6 +110,11 @@ class DataSettingsViewModel(
             _state.update { it.copy(status = "导入 JSON 不能为空。") }
             return
         }
+        val current = _state.value
+        if (current.importPreviewJson != value || current.importPreviewSummary == null) {
+            _state.update { it.copy(status = "请先预览并确认导入摘要。") }
+            return
+        }
         viewModelScope.launch {
             _state.update { it.copy(isBusy = true, status = null, importSummary = null) }
             runCatching {
@@ -103,6 +123,7 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         importSummary = summary,
+                        importPreviewJson = null,
                         importPreviewSummary = null,
                         status = "导入完成",
                     )
@@ -150,6 +171,7 @@ class DataSettingsViewModel(
                 _state.update {
                     it.copy(
                         exportJson = "",
+                        importPreviewJson = null,
                         importPreviewSummary = null,
                         importSummary = null,
                         status = successMessage,

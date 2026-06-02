@@ -52,14 +52,30 @@ data class BackupImportSummary(
     val messages: Int,
 )
 
+interface BackupService {
+    suspend fun exportJson(includeChats: Boolean): String
+
+    suspend fun importJson(value: String): BackupImportSummary
+
+    suspend fun previewImportJson(value: String): BackupImportSummary
+
+    suspend fun clearChatHistory()
+
+    suspend fun clearProvidersAndApiKeys()
+
+    suspend fun clearPromptsModelsAndImages()
+
+    suspend fun clearAllData()
+}
+
 class AppBackupService(
     private val database: AiChatDatabase,
     private val providerRepository: ProviderConfigRepository,
     private val conversationRepository: ConversationRepository,
     private val imageStorage: ImageStorage,
     private val clock: Clock,
-) {
-    suspend fun exportJson(includeChats: Boolean): String =
+) : BackupService {
+    override suspend fun exportJson(includeChats: Boolean): String =
         withContext(Dispatchers.IO) {
             val providers = providerRepository.observeProviders().first()
             val prompts = database.promptPresetDao().observePromptPresets().first().map { it.toDomain() }
@@ -84,7 +100,7 @@ class AppBackupService(
             )
         }
 
-    suspend fun importJson(value: String): BackupImportSummary =
+    override suspend fun importJson(value: String): BackupImportSummary =
         withContext(Dispatchers.IO) {
             val root = decodeAndValidateBackup(value)
 
@@ -112,26 +128,26 @@ class AppBackupService(
             root.toImportSummary()
         }
 
-    suspend fun previewImportJson(value: String): BackupImportSummary =
+    override suspend fun previewImportJson(value: String): BackupImportSummary =
         withContext(Dispatchers.IO) {
             decodeAndValidateBackup(value).toImportSummary()
         }
 
-    suspend fun clearChatHistory() {
+    override suspend fun clearChatHistory() {
         withContext(Dispatchers.IO) {
             database.toolInvocationDao().deleteAllToolInvocations()
             database.conversationDao().deleteAllConversations()
         }
     }
 
-    suspend fun clearProvidersAndApiKeys() {
+    override suspend fun clearProvidersAndApiKeys() {
         val providers = providerRepository.observeProviders().first()
         providers.forEach { provider ->
             providerRepository.deleteProvider(provider.id)
         }
     }
 
-    suspend fun clearPromptsModelsAndImages() {
+    override suspend fun clearPromptsModelsAndImages() {
         withContext(Dispatchers.IO) {
             database.promptPresetDao().deleteAllPromptPresets()
             database.modelPreferenceDao().deleteAllModelPreferences()
@@ -140,7 +156,7 @@ class AppBackupService(
         }
     }
 
-    suspend fun clearAllData() {
+    override suspend fun clearAllData() {
         clearProvidersAndApiKeys()
         clearPromptsModelsAndImages()
         clearChatHistory()

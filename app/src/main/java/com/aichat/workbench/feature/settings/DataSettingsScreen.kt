@@ -93,7 +93,6 @@ fun DataSettingsScreen(
                 val json = importJson
                 viewModel.updateImportJson(json)
                 viewModel.previewImportJson(json)
-                pendingImportJson = json
             }
         }
     }
@@ -152,8 +151,11 @@ fun DataSettingsScreen(
                     onToggleRawJson = { showImportJson = !showImportJson },
                     onImportJsonChange = viewModel::updateImportJson,
                     onImportCurrentJson = {
-                        viewModel.previewImportJson(state.importJson)
-                        pendingImportJson = state.importJson
+                        if (state.importPreviewJson == state.importJson && state.importPreviewSummary != null) {
+                            pendingImportJson = state.importJson
+                        } else {
+                            viewModel.previewImportJson(state.importJson)
+                        }
                     },
                     onOpenImport = {
                         importLauncher.launch(arrayOf("application/json", "text/*"))
@@ -183,21 +185,20 @@ fun DataSettingsScreen(
     }
 
     pendingImportJson?.let { json ->
-        WorkbenchConfirmDialog(
-            title = "导入备份？",
-            message = importConfirmationMessage(
-                json = json,
-                preview = state.importPreviewSummary,
-                status = state.status,
-            ),
-            confirmLabel = "导入",
-            onConfirm = {
-                pendingImportJson = null
-                viewModel.importJson(json)
-            },
-            onDismiss = { pendingImportJson = null },
-            tone = StatusTone.Warning,
-        )
+        val preview = state.importPreviewSummary
+        if (state.importPreviewJson == json && preview != null) {
+            WorkbenchConfirmDialog(
+                title = "导入备份？",
+                message = importConfirmationMessage(preview),
+                confirmLabel = "导入",
+                onConfirm = {
+                    pendingImportJson = null
+                    viewModel.importJson(json)
+                },
+                onDismiss = { pendingImportJson = null },
+                tone = StatusTone.Warning,
+            )
+        }
     }
 }
 
@@ -356,7 +357,13 @@ private fun ImportPanel(
                 enabled = state.importJson.isNotBlank() && !state.isBusy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "导入")
+                Text(
+                    text = if (state.importPreviewJson == state.importJson && state.importPreviewSummary != null) {
+                        "导入"
+                    } else {
+                        "预览"
+                    },
+                )
             }
         }
         BackupJsonSummary(
@@ -538,19 +545,8 @@ private fun BackupImportSummary.importedObjectsDetail(): String =
         "$messages 条消息",
     ).joinToString(" · ")
 
-private fun importConfirmationMessage(
-    json: String,
-    preview: BackupImportSummary?,
-    status: String?,
-): String =
-    when {
-        preview != null ->
-            "将合并 ${preview.importedObjectsLabel()} 到本地存储：${preview.importedObjectsDetail()}。\n服务商 API Key 不会恢复。"
-        status?.isErrorStatus() == true ->
-            "导入摘要读取失败：$status\n仍可尝试导入，失败时会保留当前本地数据状态。服务商 API Key 不会恢复。"
-        else ->
-            "正在读取导入摘要。将 ${json.length} 个字符的 JSON 合并到本地存储；服务商 API Key 不会恢复。"
-    }
+private fun importConfirmationMessage(preview: BackupImportSummary): String =
+    "将合并 ${preview.importedObjectsLabel()} 到本地存储：${preview.importedObjectsDetail()}。\n服务商 API Key 不会恢复。"
 
 private enum class ClearAction(
     val buttonText: String,
