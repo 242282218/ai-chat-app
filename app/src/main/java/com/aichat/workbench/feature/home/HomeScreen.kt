@@ -510,6 +510,21 @@ private fun CreateConversationSheet(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         )
+        Text(
+            text = "选择一个入口开始新的 AI 工作流。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+        FlowRow(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            StatusPill(text = "本地会话", tone = StatusTone.Success)
+            StatusPill(text = "临时模式", tone = StatusTone.Warning)
+            StatusPill(text = "素材创作", tone = StatusTone.Accent)
+        }
         CreationActionRow(
             icon = Icons.AutoMirrored.Filled.Chat,
             title = "新建会话",
