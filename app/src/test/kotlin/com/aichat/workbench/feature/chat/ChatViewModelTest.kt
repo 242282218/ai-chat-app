@@ -302,6 +302,35 @@ class ChatViewModelTest : KoinTest {
         assertTrue(conversationRepository.allMessages().any { it.content == "partial" && it.status == MessageStatus.Completed })
     }
 
+    @Test
+    fun stopGenerationMarksActiveAssistantMessageCancelled() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val events = Channel<ProviderStreamEvent>(Channel.UNLIMITED)
+        val chatProvider = RecordingChatProvider(events.receiveAsFlow())
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = chatProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("Stream")
+        viewModel.sendMessage()
+        advanceUntilIdle()
+        events.send(ProviderStreamEvent.TextDelta("partial"))
+        advanceUntilIdle()
+
+        viewModel.stopGeneration()
+        advanceUntilIdle()
+
+        val assistant = conversationRepository.allMessages().single { it.role == MessageRole.Assistant }
+        assertFalse(viewModel.state.value.isGenerating)
+        assertEquals(MessageStatus.Cancelled, assistant.status)
+        assertEquals("partial", assistant.content)
+        assertEquals("已停止，已保留当前回复内容。", assistant.errorSummary)
+    }
+
     private fun startViewModel(
         conversationRepository: ConversationRepository,
         providerRepository: ProviderConfigRepository,

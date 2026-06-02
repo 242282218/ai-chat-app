@@ -73,6 +73,7 @@ class GenerationController(
                 conversationRepository.saveMessage(
                     active.copy(
                         status = MessageStatus.Cancelled,
+                        errorSummary = "已停止，已保留当前回复内容。",
                         updatedAt = clock.instant(),
                     ),
                 )
