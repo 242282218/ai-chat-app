@@ -64,7 +64,7 @@ class GatewaySettingsRepository(
     private suspend fun readApiToken(): String {
         val tokenRef = preferences.getString(KEY_API_TOKEN_REF, null)
         tokenRef?.let { ref ->
-            secretStore.getSecret(ref)?.takeIf { it.isNotBlank() }?.let { token ->
+            secretStore.getSecret(ref)?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
                 clearLegacyPlaintextToken()
                 return token
             }

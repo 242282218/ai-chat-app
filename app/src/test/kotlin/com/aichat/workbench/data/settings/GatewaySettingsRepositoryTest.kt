@@ -72,6 +72,23 @@ class GatewaySettingsRepositoryTest {
     }
 
     @Test
+    fun currentSettingsNormalizesSecretStoreApiToken() = runTest {
+        preferences.edit()
+            .putBoolean("enabled", true)
+            .putString("base_url", "http://127.0.0.1:8080")
+            .putString("api_token_ref", "gateway_api_token")
+            .commit()
+        val secretStore = FakeSecretStore().apply {
+            values["gateway_api_token"] = " stored-token "
+        }
+        val repository = GatewaySettingsRepository(context, secretStore)
+
+        val settings = repository.currentSettings()
+
+        assertEquals("stored-token", settings.apiToken)
+    }
+
+    @Test
     fun currentSettingsNormalizesStoredBaseUrl() = runTest {
         preferences.edit()
             .putBoolean("enabled", true)
