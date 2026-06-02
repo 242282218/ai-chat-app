@@ -197,12 +197,21 @@ class GatewayClient(
             statusCode = code,
             gatewayCode = gatewayError?.code ?: "http_$code",
             requestId = gatewayError?.requestId,
-            message = gatewayError?.message ?: errorBody.ifBlank { "Gateway 请求失败。" },
+            message = gatewayError?.message ?: gatewayFallbackErrorMessage(code, errorBody),
         )
     }
 
     private fun Response.bodyText(): String =
         body?.string().orEmpty()
+
+    private fun gatewayFallbackErrorMessage(statusCode: Int, body: String): String {
+        val preview = body.trim().replace(gatewayErrorWhitespace, " ")
+        if (preview.isBlank()) {
+            return "Gateway HTTP $statusCode 请求失败。"
+        }
+        val suffix = if (preview.length > MAX_GATEWAY_ERROR_PREVIEW_LENGTH) "..." else ""
+        return "Gateway HTTP $statusCode：${preview.take(MAX_GATEWAY_ERROR_PREVIEW_LENGTH)}$suffix"
+    }
 
     private fun String.toDisplayName(): String =
         when (this) {
@@ -249,6 +258,8 @@ private data class GatewayErrorResponse(
 private val JSON = "application/json; charset=utf-8".toMediaType()
 private const val MIN_SANDBOX_TIMEOUT_SECONDS = 1
 private const val MAX_SANDBOX_TIMEOUT_SECONDS = 10
+private const val MAX_GATEWAY_ERROR_PREVIEW_LENGTH = 240
+private val gatewayErrorWhitespace = Regex("\\s+")
 
 private val gatewayJson = Json {
     ignoreUnknownKeys = true

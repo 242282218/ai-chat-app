@@ -186,6 +186,52 @@ class GatewayClientTest {
     }
 
     @Test
+    fun search_mapsBlankHttpErrorToReadableFallback() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(502)
+                .setBody(" \n\t "),
+        )
+        val client = GatewayClient()
+
+        try {
+            client.search(server.url("/").toString(), "AI news")
+            fail("Expected GatewayHttpException")
+        } catch (error: GatewayHttpException) {
+            assertEquals(502, error.statusCode)
+            assertEquals("http_502", error.gatewayCode)
+            assertEquals(null, error.requestId)
+            assertEquals("Gateway HTTP 502 请求失败。", error.message)
+        }
+    }
+
+    @Test
+    fun search_truncatesNonJsonHttpErrorBody() = runTest {
+        val longBody = "<html>\n<body>" + "Gateway unavailable ".repeat(40) + "</body>\n</html>"
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(502)
+                .setBody(longBody),
+        )
+        val client = GatewayClient()
+
+        try {
+            client.search(server.url("/").toString(), "AI news")
+            fail("Expected GatewayHttpException")
+        } catch (error: GatewayHttpException) {
+            val message = error.message.orEmpty()
+            assertEquals(502, error.statusCode)
+            assertEquals("http_502", error.gatewayCode)
+            assertEquals(null, error.requestId)
+            assertTrue(message.startsWith("Gateway HTTP 502：<html> <body> Gateway unavailable"))
+            assertTrue(message.endsWith("..."))
+            assertTrue(message.length <= 260)
+            assertFalse(message.contains("\n"))
+            assertFalse(message.contains("</html>"))
+        }
+    }
+
+    @Test
     fun sandboxRun_postsCodeAndParsesResult() = runTest {
         server.enqueue(
             MockResponse()
