@@ -357,17 +357,25 @@ class GenerationController(
         chatProvider: ChatProvider,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ): ConversationContext =
-        conversationCompactor.compactIfNeeded(
-            conversation = conversation,
-            provider = provider,
-            apiKey = apiKey,
-            model = model,
-            messages = this,
-            chatProvider = chatProvider,
-        ).also { context ->
-            context.summaryMessage?.let { summary ->
-                onStateChanged { it.copy(messages = it.messages.upsertSorted(summary)) }
+        try {
+            conversationCompactor.compactIfNeeded(
+                conversation = conversation,
+                provider = provider,
+                apiKey = apiKey,
+                model = model,
+                messages = this,
+                chatProvider = chatProvider,
+            ).also { context ->
+                context.summaryMessage?.let { summary ->
+                    onStateChanged { it.copy(messages = it.messages.upsertSorted(summary)) }
+                }
             }
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            throw IllegalStateException(
+                "长对话压缩失败：${error.message ?: "摘要生成失败。"}",
+                error,
+            )
         }
 
     private fun List<Message>.upsert(message: Message): List<Message> =

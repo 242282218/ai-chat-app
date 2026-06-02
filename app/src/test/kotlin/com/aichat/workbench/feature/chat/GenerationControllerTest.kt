@@ -332,6 +332,70 @@ class GenerationControllerTest {
         assertTrue(conversationRepository.allMessages().any { it.status == MessageStatus.Compressed })
     }
 
+    @Test
+    fun startReportsCompressionFailureBeforeProviderStream() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("openai", ProviderType.OpenAI, maxContextTokens = 90)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val conversation = conversation(provider)
+        conversationRepository.saveConversation(conversation)
+        (1..14).forEach { index ->
+            conversationRepository.saveMessage(
+                historyMessage(
+                    conversation = conversation,
+                    id = "message-$index",
+                    content = "message $index ${"x".repeat(48)}",
+                    createdAt = clock.instant().plusMillis(index.toLong()),
+                ),
+            )
+        }
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val chatProvider = GenerationControllerChatProvider(
+            eventTurns = listOf(flowOf(ProviderStreamEvent.TextDelta("Should not send"), ProviderStreamEvent.Completed)),
+            completionContent = " ",
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAI.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            conversations = listOf(conversation),
+            selectedConversationId = conversation.id,
+            messages = conversationRepository.getMessages(conversation.id),
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "model-a", input = "new question"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "new question",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { readyConversation ->
+                state = state.copy(
+                    conversations = state.conversations.filterNot { it.id == readyConversation.id } + readyConversation,
+                    selectedConversationId = readyConversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        assertFalse(state.isGenerating)
+        assertEquals("长对话压缩失败：长对话压缩摘要为空。", state.error)
+        assertEquals(1, chatProvider.requests.size)
+        assertFalse(conversationRepository.allMessages().any { it.status == MessageStatus.Compressed })
+        assertFalse(conversationRepository.allMessages().any { it.content == "Should not send" })
+    }
+
     private fun provider(id: String, type: ProviderType, maxContextTokens: Int? = null): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
