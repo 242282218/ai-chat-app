@@ -607,11 +607,23 @@ private fun ConversationChip(
         selected = selected,
         onClick = onClick,
         label = {
-            Text(
-                text = conversation.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(
+                modifier = Modifier.widthIn(max = 168.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Text(
+                    text = conversation.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = conversation.chipStatusText(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
     )
 }
@@ -1528,6 +1540,14 @@ private fun chatSubtitle(
     }
     return listOfNotNull(stateText, providerText).joinToString(" · ")
 }
+
+private fun Conversation.chipStatusText(): String =
+    when {
+        isSensitive && isTemporary -> "敏感 · 临时"
+        isSensitive -> "敏感"
+        isTemporary -> "临时"
+        else -> "普通会话"
+    }
 
 private fun selectedChatProvider(state: ChatUiState) =
     state.selectedProviderId
