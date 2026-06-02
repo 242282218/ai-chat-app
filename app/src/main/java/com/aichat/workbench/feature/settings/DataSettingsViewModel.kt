@@ -26,12 +26,14 @@ class DataSettingsViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(DataSettingsUiState())
     val state: StateFlow<DataSettingsUiState> = _state.asStateFlow()
+    private var importPreviewVersion: Int = 0
 
     fun updateIncludeChats(value: Boolean) {
         _state.update { it.copy(includeChats = value) }
     }
 
     fun updateImportJson(value: String) {
+        importPreviewVersion += 1
         _state.update {
             it.copy(
                 importJson = value,
@@ -45,6 +47,7 @@ class DataSettingsViewModel(
 
     fun previewImportJson(value: String) {
         if (_state.value.isBusy) return
+        val previewVersion = ++importPreviewVersion
         if (value.isBlank()) {
             _state.update {
                 it.copy(
@@ -59,16 +62,16 @@ class DataSettingsViewModel(
             runCatching {
                 backupService.previewImportJson(value)
             }.onSuccess { summary ->
-                _state.update {
-                    it.copy(
+                updatePreviewStateIfCurrent(previewVersion, value) {
+                    copy(
                         importPreviewJson = value,
                         importPreviewSummary = summary,
                         status = null,
                     )
                 }
             }.onFailure { error ->
-                _state.update {
-                    it.copy(
+                updatePreviewStateIfCurrent(previewVersion, value) {
+                    copy(
                         importPreviewJson = null,
                         importPreviewSummary = null,
                         status = error.message ?: "导入预览失败。",
@@ -197,6 +200,20 @@ class DataSettingsViewModel(
                 block()
             } finally {
                 _state.update { it.copy(isBusy = false) }
+            }
+        }
+    }
+
+    private fun updatePreviewStateIfCurrent(
+        previewVersion: Int,
+        value: String,
+        transform: DataSettingsUiState.() -> DataSettingsUiState,
+    ) {
+        _state.update { current ->
+            if (previewVersion == importPreviewVersion && current.importJson == value) {
+                current.transform()
+            } else {
+                current
             }
         }
     }

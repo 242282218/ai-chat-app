@@ -2,6 +2,7 @@ package com.aichat.workbench.feature.settings
 
 import com.aichat.workbench.data.backup.BackupImportSummary
 import com.aichat.workbench.data.backup.BackupService
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -77,6 +79,46 @@ class DataSettingsViewModelTest {
     }
 
     @Test
+    fun stalePreviewResultIsIgnoredAfterImportJsonChanges() = runTest(mainDispatcherRule.testDispatcher) {
+        val service = ControlledPreviewBackupService()
+        val viewModel = DataSettingsViewModel(service)
+        val staleSummary = BackupImportSummary(
+            providers = 1,
+            prompts = 0,
+            modelPreferences = 0,
+            conversations = 0,
+            messages = 0,
+        )
+        val currentSummary = BackupImportSummary(
+            providers = 0,
+            prompts = 1,
+            modelPreferences = 0,
+            conversations = 0,
+            messages = 0,
+        )
+
+        viewModel.updateImportJson(validBackupJson)
+        viewModel.previewImportJson(validBackupJson)
+        runCurrent()
+        viewModel.updateImportJson(otherBackupJson)
+        service.completePreview(validBackupJson, staleSummary)
+        advanceUntilIdle()
+
+        assertEquals(otherBackupJson, viewModel.state.value.importJson)
+        assertNull(viewModel.state.value.importPreviewJson)
+        assertNull(viewModel.state.value.importPreviewSummary)
+        assertNull(viewModel.state.value.status)
+
+        viewModel.previewImportJson(otherBackupJson)
+        runCurrent()
+        service.completePreview(otherBackupJson, currentSummary)
+        advanceUntilIdle()
+
+        assertEquals(otherBackupJson, viewModel.state.value.importPreviewJson)
+        assertEquals(currentSummary, viewModel.state.value.importPreviewSummary)
+    }
+
+    @Test
     fun duplicateExportsAreIgnoredWhileBusy() = runTest(mainDispatcherRule.testDispatcher) {
         val service = FakeBackupService()
         val viewModel = DataSettingsViewModel(service)
@@ -132,6 +174,22 @@ private val validBackupJson: String = """
     {"version":1,"providers":[],"prompts":[],"modelPreferences":[],"conversations":[]}
 """.trimIndent()
 
+private val otherBackupJson: String = """
+    {
+      "version": 1,
+      "providers": [],
+      "prompts": [
+        {
+          "id": "prompt-1",
+          "name": "Writer",
+          "systemPrompt": "Improve clarity."
+        }
+      ],
+      "modelPreferences": [],
+      "conversations": []
+    }
+""".trimIndent()
+
 private class FakeBackupService(
     private val previewSummary: BackupImportSummary = BackupImportSummary(
         providers = 0,
@@ -171,6 +229,37 @@ private class FakeBackupService(
     override suspend fun clearAllData() {
         clearAllRequests += 1
     }
+}
+
+private class ControlledPreviewBackupService : BackupService {
+    private val previewRequests = mutableMapOf<String, CompletableDeferred<BackupImportSummary>>()
+
+    override suspend fun exportJson(includeChats: Boolean): String =
+        validBackupJson
+
+    override suspend fun importJson(value: String): BackupImportSummary =
+        BackupImportSummary(
+            providers = 0,
+            prompts = 0,
+            modelPreferences = 0,
+            conversations = 0,
+            messages = 0,
+        )
+
+    override suspend fun previewImportJson(value: String): BackupImportSummary =
+        previewRequests.getOrPut(value) { CompletableDeferred() }.await()
+
+    fun completePreview(value: String, summary: BackupImportSummary) {
+        requireNotNull(previewRequests[value]) { "Preview was not requested." }.complete(summary)
+    }
+
+    override suspend fun clearChatHistory() = Unit
+
+    override suspend fun clearProvidersAndApiKeys() = Unit
+
+    override suspend fun clearPromptsModelsAndImages() = Unit
+
+    override suspend fun clearAllData() = Unit
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
