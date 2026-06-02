@@ -1,5 +1,7 @@
 package com.aichat.workbench.feature.provider
 
+import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.ui.component.StatusTone
@@ -73,6 +75,14 @@ class ProviderDraftsTest {
     }
 
     @Test
+    fun summarizesUnsupportedStoredProviderAsUnavailable() {
+        assertEquals(
+            "暂不可用 · Anthropic · claude-test · 缺少密钥",
+            provider(type = ProviderType.Anthropic, model = "claude-test").connectionSummary(),
+        )
+    }
+
+    @Test
     fun validatesHeaderLines() {
         assertEquals(
             HeaderStatus(label = "无请求头", tone = StatusTone.Neutral),
@@ -125,4 +135,20 @@ class ProviderDraftsTest {
             headers,
         )
     }
+
+    private fun provider(
+        type: ProviderType = ProviderType.OpenAI,
+        model: String? = "gpt-test",
+    ): ProviderConfig =
+        ProviderConfig(
+            id = ProviderId("provider-1"),
+            name = "Provider",
+            type = type,
+            baseUrl = "https://example.test/v1",
+            apiKeyRef = null,
+            headers = emptyMap(),
+            models = emptyList(),
+            defaultModel = model,
+            enabled = true,
+        )
 }

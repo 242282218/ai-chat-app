@@ -18,7 +18,7 @@ data class ProviderConnectionResult(
 
 class ProviderConnectionTester(
     private val client: OkHttpClient = OkHttpClient(),
-    private val providerRegistry: ProviderRegistry = ProviderRegistry(),
+    private val providerRegistry: ProviderRegistry,
 ) {
     suspend fun test(
         provider: ProviderConfig,
@@ -27,6 +27,13 @@ class ProviderConnectionTester(
         withContext(Dispatchers.IO) {
             runCatching {
                 val descriptor = providerRegistry.descriptor(provider.type)
+                if (!providerRegistry.isRegistered(provider.type)) {
+                    return@withContext ProviderConnectionResult(
+                        ok = false,
+                        statusCode = null,
+                        message = "当前 Provider 暂未接入聊天发送：${descriptor.displayName}。",
+                    )
+                }
                 if (descriptor.requiresApiKey && apiKey.isNullOrBlank()) {
                     return@withContext ProviderConnectionResult(
                         ok = false,

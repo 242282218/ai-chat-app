@@ -3,6 +3,9 @@ package com.aichat.workbench.provider.api
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.provider.ProviderRegistry
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -34,7 +37,7 @@ class ProviderConnectionTesterTest {
                 .setResponseCode(200)
                 .setBody("""{"data":[]}"""),
         )
-        val tester = ProviderConnectionTester()
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
         val result = tester.test(provider(), "test-key")
         val recorded = server.takeRequest()
@@ -52,7 +55,7 @@ class ProviderConnectionTesterTest {
                 .setResponseCode(401)
                 .setBody("""{"error":"unauthorized"}"""),
         )
-        val tester = ProviderConnectionTester()
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
         val result = tester.test(provider(), "bad-key")
 
@@ -63,7 +66,7 @@ class ProviderConnectionTesterTest {
 
     @Test
     fun test_returnsMissingApiKeyWhenDescriptorRequiresOne() = runTest {
-        val tester = ProviderConnectionTester()
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
         val result = tester.test(provider(), null)
 
@@ -80,7 +83,7 @@ class ProviderConnectionTesterTest {
                 .setResponseCode(200)
                 .setBody("""{"models":[]}"""),
         )
-        val tester = ProviderConnectionTester()
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
         val result = tester.test(provider(type = ProviderType.Ollama), null)
         val recorded = server.takeRequest()
@@ -88,6 +91,18 @@ class ProviderConnectionTesterTest {
         assertTrue(result.ok)
         assertEquals("/api/tags", recorded.path)
         assertEquals(null, recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun test_returnsUnsupportedWhenProviderHasNoChatImplementation() = runTest {
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
+
+        val result = tester.test(provider(type = ProviderType.Anthropic), "test-key")
+
+        assertFalse(result.ok)
+        assertEquals(null, result.statusCode)
+        assertEquals("当前 Provider 暂未接入聊天发送：Anthropic。", result.message)
+        assertEquals(0, server.requestCount)
     }
 
     private fun provider(type: ProviderType = ProviderType.OpenAICompatible): ProviderConfig =
@@ -102,4 +117,19 @@ class ProviderConnectionTesterTest {
             defaultModel = null,
             enabled = true,
         )
+
+    private fun registeredRegistry(): ProviderRegistry =
+        ProviderRegistry().apply {
+            val provider = ProviderConnectionTesterChatProvider()
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenAICompatible)), provider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Ollama)), provider)
+        }
+}
+
+private class ProviderConnectionTesterChatProvider : ChatProvider {
+    override suspend fun complete(request: ChatProviderRequest): ProviderTextResponse =
+        ProviderTextResponse("")
+
+    override fun stream(request: ChatProviderRequest): Flow<ProviderStreamEvent> =
+        emptyFlow()
 }

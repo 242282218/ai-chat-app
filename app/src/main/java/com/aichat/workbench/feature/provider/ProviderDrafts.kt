@@ -1,5 +1,6 @@
 package com.aichat.workbench.feature.provider
 
+import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.isPersistableProviderHeader
 import com.aichat.workbench.domain.model.persistableProviderHeaderDisplayNames
@@ -27,6 +28,21 @@ internal val providerHeaderPolicyText: String =
 
 internal fun ProviderType.providerTypeLabel(): String =
     ProviderRegistry.builtInDescriptor(this)?.displayName ?: value
+
+internal fun ProviderConfig.connectionSummary(): String {
+    val statusText = when {
+        !ProviderRegistry.isSupportedBuiltInChatProvider(type) -> "暂不可用"
+        enabled -> "已启用"
+        else -> "已停用"
+    }
+    val modelText = defaultModel ?: "无默认模型"
+    val keyText = when {
+        ProviderRegistry.builtInDescriptor(type)?.requiresApiKey == false -> "无需密钥"
+        apiKeyRef != null -> "密钥已保存"
+        else -> "缺少密钥"
+    }
+    return "$statusText · ${type.providerTypeLabel()} · $modelText · $keyText"
+}
 
 internal fun providerKeyStatus(
     apiKey: String,
