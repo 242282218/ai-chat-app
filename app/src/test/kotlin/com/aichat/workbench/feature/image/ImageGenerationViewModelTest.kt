@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
+import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -19,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -70,14 +70,79 @@ class ImageGenerationViewModelTest {
         assertEquals(1, repository.generations.value.size)
     }
 
+    @Test
+    fun observesOnlyImageCapableProviders() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val storage = FakeImageStorage()
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val compatibleProvider = provider("compatible", ProviderType.OpenAICompatible)
+        val viewModel = viewModel(
+            repository = repository,
+            storage = storage,
+            providerRepository = FakeProviderConfigRepository(listOf(compatibleProvider, openAiProvider)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(openAiProvider), viewModel.state.value.providers)
+        assertEquals(openAiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-image-1", viewModel.state.value.model)
+    }
+
+    @Test
+    fun generateWithoutImageCapableProviderDoesNotCallImageProvider() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val storage = FakeImageStorage()
+        val imageProvider = RecordingImageProvider()
+        val viewModel = viewModel(
+            repository = repository,
+            storage = storage,
+            providerRepository = FakeProviderConfigRepository(
+                listOf(provider("compatible", ProviderType.OpenAICompatible)),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        advanceUntilIdle()
+
+        assertEquals("模型服务未配置。", viewModel.state.value.error)
+        assertEquals(emptyList<ImageGeneration>(), repository.generations.value)
+        assertEquals(emptyList<ImageGenerationProviderRequest>(), imageProvider.requests)
+    }
+
+    @Test
+    fun switchesToDefaultImageModelWhenImageProviderFallbackChanges() = runTest(mainDispatcherRule.testDispatcher) {
+        val providerRepository = FakeProviderConfigRepository(
+            listOf(provider("compatible", ProviderType.OpenAICompatible)),
+        )
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = providerRepository,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateModel("openrouter/text-model")
+        providerRepository.replaceProviders(listOf(openAiProvider))
+        advanceUntilIdle()
+
+        assertEquals(openAiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-image-1", viewModel.state.value.model)
+    }
+
     private fun viewModel(
         repository: ImageGenerationRepository,
         storage: ImageStorage,
+        providerRepository: ProviderConfigRepository = FakeProviderConfigRepository(emptyList()),
+        imageProvider: ImageGenerationProvider = NoopImageProvider(),
     ): ImageGenerationViewModel =
         ImageGenerationViewModel(
             imageRepository = repository,
-            providerRepository = EmptyProviderConfigRepository(),
-            imageProvider = NoopImageProvider(),
+            providerRepository = providerRepository,
+            imageProvider = imageProvider,
             imageStorage = storage,
             clock = clock,
         )
@@ -97,6 +162,19 @@ class ImageGenerationViewModelTest {
             status = ImageGenerationStatus.Completed,
             errorSummary = null,
             createdAt = clock.instant(),
+        )
+
+    private fun provider(id: String, type: ProviderType): ProviderConfig =
+        ProviderConfig(
+            id = ProviderId(id),
+            name = id,
+            type = type,
+            baseUrl = "https://example.test/v1",
+            apiKeyRef = null,
+            headers = emptyMap(),
+            models = emptyList(),
+            defaultModel = "$id-model",
+            enabled = true,
         )
 }
 
@@ -155,16 +233,28 @@ private class FakeImageStorage(
     }
 }
 
-private class EmptyProviderConfigRepository : ProviderConfigRepository {
-    override fun observeProviders(): Flow<List<ProviderConfig>> = flowOf(emptyList())
+private class FakeProviderConfigRepository(
+    initialProviders: List<ProviderConfig>,
+) : ProviderConfigRepository {
+    private val providers = MutableStateFlow(initialProviders)
+
+    override fun observeProviders(): Flow<List<ProviderConfig>> = providers
+
+    fun replaceProviders(nextProviders: List<ProviderConfig>) {
+        providers.value = nextProviders
+    }
 
     override suspend fun getProvider(id: ProviderId): ProviderConfig? = null
 
-    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) = Unit
+    override suspend fun saveProvider(provider: ProviderConfig, plaintextApiKey: String?) {
+        providers.value = providers.value.filterNot { it.id == provider.id } + provider
+    }
 
     override suspend fun getApiKey(providerId: ProviderId): String? = null
 
-    override suspend fun deleteProvider(id: ProviderId) = Unit
+    override suspend fun deleteProvider(id: ProviderId) {
+        providers.value = providers.value.filterNot { it.id == id }
+    }
 }
 
 private class NoopImageProvider : ImageGenerationProvider {
@@ -172,4 +262,15 @@ private class NoopImageProvider : ImageGenerationProvider {
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse =
         error("Image generation should not run in this test.")
+}
+
+private class RecordingImageProvider : ImageGenerationProvider {
+    val requests = mutableListOf<ImageGenerationProviderRequest>()
+
+    override suspend fun generate(
+        request: ImageGenerationProviderRequest,
+    ): ImageGenerationProviderResponse {
+        requests += request
+        return ImageGenerationProviderResponse(emptyList())
+    }
 }

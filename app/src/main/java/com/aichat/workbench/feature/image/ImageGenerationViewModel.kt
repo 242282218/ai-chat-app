@@ -10,6 +10,7 @@ import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
+import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
 import kotlinx.coroutines.Job
@@ -62,13 +63,19 @@ class ImageGenerationViewModel(
         viewModelScope.launch {
             providerRepository.observeProviders().collect { providers ->
                 _state.update { current ->
+                    val imageProviders = providers.filter { it.supportsImageGeneration() }
                     val selected = current.selectedProviderId
-                        ?.let { id -> providers.firstOrNull { it.id.value == id && it.enabled } }
-                    val fallback = selected ?: providers.firstOrNull { it.enabled }
+                        ?.let { id -> imageProviders.firstOrNull { it.id.value == id && it.enabled } }
+                    val fallback = selected ?: imageProviders.firstOrNull { it.enabled }
+                    val selectedProviderChanged = current.selectedProviderId != fallback?.id?.value
                     current.copy(
-                        providers = providers,
+                        providers = imageProviders,
                         selectedProviderId = fallback?.id?.value,
-                        model = current.model.ifBlank { fallback?.defaultImageModel().orEmpty() },
+                        model = when {
+                            fallback == null -> current.model
+                            selectedProviderChanged -> fallback.defaultImageModel()
+                            else -> current.model.ifBlank { fallback.defaultImageModel() }
+                        },
                     )
                 }
             }
@@ -123,6 +130,7 @@ class ImageGenerationViewModel(
             runCatching {
                 requireNotNull(provider) { "模型服务未配置。" }
                 require(current.prompt.isNotBlank()) { "图片提示词不能为空。" }
+                require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
                 require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
                 require(imageCount != null && imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
@@ -188,6 +196,9 @@ class ImageGenerationViewModel(
         models.firstOrNull { it.capability?.imageGeneration == true }?.id
             ?: defaultModel?.takeIf { type != ProviderType.OpenAI }
             ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else defaultModel.orEmpty()
+
+    private fun ProviderConfig.supportsImageGeneration(): Boolean =
+        ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true
 }
 
 private const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"
