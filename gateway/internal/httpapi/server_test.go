@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,48 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 	}
 	if body.Code != "invalid_query" {
 		t.Fatalf("code = %q, want invalid_query", body.Code)
+	}
+}
+
+func TestGatewayErrorTrimsRequestID(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMux())
+	defer server.Close()
+
+	resp, err := postJSONWithRequestID(server.URL+"/v1/search", `{"query":" "}`, testToken, "  request-123  ")
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body GatewayError
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.RequestID == nil || *body.RequestID != "request-123" {
+		t.Fatalf("request id = %v, want request-123", body.RequestID)
+	}
+}
+
+func TestGatewayErrorTruncatesLongRequestID(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMux())
+	defer server.Close()
+	requestID := strings.Repeat("x", maxGatewayRequestIDLength+16)
+
+	resp, err := postJSONWithRequestID(server.URL+"/v1/search", `{"query":" "}`, testToken, requestID)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var body GatewayError
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.RequestID == nil {
+		t.Fatal("request id is nil")
+	}
+	if len(*body.RequestID) != maxGatewayRequestIDLength {
+		t.Fatalf("request id length = %d, want %d", len(*body.RequestID), maxGatewayRequestIDLength)
 	}
 }
 
@@ -498,6 +541,10 @@ func newAuthenticatedSandboxTestMux(runner sandbox.Runner, options Options) http
 }
 
 func postJSON(url string, body string, token string) (*http.Response, error) {
+	return postJSONWithRequestID(url, body, token, "")
+}
+
+func postJSONWithRequestID(url string, body string, token string, requestID string) (*http.Response, error) {
 	request, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 	if err != nil {
 		return nil, err
@@ -505,6 +552,9 @@ func postJSON(url string, body string, token string) (*http.Response, error) {
 	request.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	if requestID != "" {
+		request.Header.Set("X-Request-Id", requestID)
 	}
 	return http.DefaultClient.Do(request)
 }

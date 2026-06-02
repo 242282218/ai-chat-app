@@ -16,6 +16,7 @@ import (
 
 const serviceName = "ai-chat-gateway"
 const bearerPrefix = "Bearer "
+const maxGatewayRequestIDLength = 128
 const minSandboxTimeoutSeconds = 1
 const maxSandboxTimeoutSeconds = 10
 
@@ -279,14 +280,22 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func writeGatewayError(w http.ResponseWriter, status int, code string, message string, requestID string) {
-	var requestIDPtr *string
-	if requestID != "" {
-		requestIDPtr = &requestID
-	}
 	writeJSON(w, status, GatewayError{
 		Code:      code,
 		Message:   message,
-		RequestID: requestIDPtr,
+		RequestID: normalizedRequestID(requestID),
 		Details:   nil,
 	})
+}
+
+func normalizedRequestID(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	runes := []rune(trimmed)
+	if len(runes) > maxGatewayRequestIDLength {
+		trimmed = string(runes[:maxGatewayRequestIDLength])
+	}
+	return &trimmed
 }
