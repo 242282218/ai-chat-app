@@ -340,7 +340,18 @@ class AppBackupService(
         require(messageCount <= MAX_BACKUP_MESSAGES) {
             "导入消息数量超过 $MAX_BACKUP_MESSAGES 条限制。"
         }
+        validateUniqueKeys()
         validateBackupPayloads()
+    }
+
+    private fun BackupJson.validateUniqueKeys() {
+        providers.map { it.id }.requireUniqueValues("模型连接 ID")
+        prompts.map { it.id }.requireUniqueValues("提示词 ID")
+        modelPreferences.map { it.id }.requireUniqueValues("模型偏好 ID")
+        modelPreferences.map { "${it.providerId}/${it.model}" }.requireUniqueValues("模型偏好 Provider/模型")
+        conversations.map { it.id }.requireUniqueValues("会话 ID")
+        conversations.flatMap { conversation -> conversation.messages.map { it.id } }
+            .requireUniqueValues("消息 ID")
     }
 
     private fun BackupJson.validateBackupPayloads() {
@@ -434,6 +445,13 @@ class AppBackupService(
     private fun String.requireMaxLength(label: String, maxLength: Int) {
         require(length <= maxLength) {
             "$label 超过 $maxLength 字符限制。"
+        }
+    }
+
+    private fun List<String>.requireUniqueValues(label: String) {
+        val duplicate = groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.key
+        require(duplicate == null) {
+            "$label 重复：$duplicate。"
         }
     }
 

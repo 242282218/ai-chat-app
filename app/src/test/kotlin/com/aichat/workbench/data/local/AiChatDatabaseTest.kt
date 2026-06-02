@@ -574,6 +574,120 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupImport_rejectsDuplicateModelPreferenceBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "OpenAI",
+                  "type": "openai",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "headers": {},
+                  "models": [],
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [
+                {
+                  "id": "preference-1",
+                  "providerId": "provider-1",
+                  "model": "gpt-4.1-mini"
+                },
+                {
+                  "id": "preference-2",
+                  "providerId": "provider-1",
+                  "model": "gpt-4.1-mini"
+                }
+              ],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("模型偏好 Provider/模型 重复"))
+        assertNull(database.providerConfigDao().getProvider("provider-1"))
+        assertEquals(emptyList<ProviderConfig>(), providerRepository.observeProviders().first())
+    }
+
+    @Test
+    fun backupImport_rejectsDuplicateMessageIdsBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val conversationRepository = RoomConversationRepository(database.conversationDao(), clock)
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = conversationRepository,
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": [
+                {
+                  "id": "conversation-1",
+                  "title": "Imported chat 1",
+                  "messages": [
+                    {
+                      "id": "message-1",
+                      "role": "User",
+                      "content": "Hello",
+                      "status": "Completed"
+                    }
+                  ]
+                },
+                {
+                  "id": "conversation-2",
+                  "title": "Imported chat 2",
+                  "messages": [
+                    {
+                      "id": "message-1",
+                      "role": "Assistant",
+                      "content": "Hi",
+                      "status": "Completed"
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("消息 ID 重复"))
+        assertEquals(0, conversationRepository.observeConversations(includeArchived = true).first().size)
+    }
+
+    @Test
     fun backupImport_rejectsOversizedMessageContentBeforeWritingRows() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),
