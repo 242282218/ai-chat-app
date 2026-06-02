@@ -44,6 +44,7 @@ class DataSettingsViewModel(
     }
 
     fun previewImportJson(value: String) {
+        if (_state.value.isBusy) return
         if (value.isBlank()) {
             _state.update {
                 it.copy(
@@ -83,8 +84,9 @@ class DataSettingsViewModel(
 
     fun createExport() {
         val includeChats = _state.value.includeChats
-        viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = null) }
+        launchBusyOperation(
+            beforeStart = { it.copy(status = null) },
+        ) {
             runCatching {
                 backupService.exportJson(includeChats)
             }.onSuccess { json ->
@@ -97,7 +99,6 @@ class DataSettingsViewModel(
             }.onFailure { error ->
                 _state.update { it.copy(status = error.message ?: "导出失败。") }
             }
-            _state.update { it.copy(isBusy = false) }
         }
     }
 
@@ -106,6 +107,7 @@ class DataSettingsViewModel(
     }
 
     fun importJson(value: String) {
+        if (_state.value.isBusy) return
         if (value.isBlank()) {
             _state.update { it.copy(status = "导入 JSON 不能为空。") }
             return
@@ -115,8 +117,9 @@ class DataSettingsViewModel(
             _state.update { it.copy(status = "请先预览并确认导入摘要。") }
             return
         }
-        viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = null, importSummary = null) }
+        launchBusyOperation(
+            beforeStart = { it.copy(status = null, importSummary = null) },
+        ) {
             runCatching {
                 backupService.importJson(value)
             }.onSuccess { summary ->
@@ -131,7 +134,6 @@ class DataSettingsViewModel(
             }.onFailure { error ->
                 _state.update { it.copy(status = error.message ?: "导入失败。") }
             }
-            _state.update { it.copy(isBusy = false) }
         }
     }
 
@@ -163,8 +165,9 @@ class DataSettingsViewModel(
         successMessage: String,
         block: suspend () -> Unit,
     ) {
-        viewModelScope.launch {
-            _state.update { it.copy(isBusy = true, status = null) }
+        launchBusyOperation(
+            beforeStart = { it.copy(status = null) },
+        ) {
             runCatching {
                 block()
             }.onSuccess {
@@ -180,7 +183,21 @@ class DataSettingsViewModel(
             }.onFailure { error ->
                 _state.update { it.copy(status = error.message ?: "清空失败。") }
             }
-            _state.update { it.copy(isBusy = false) }
+        }
+    }
+
+    private fun launchBusyOperation(
+        beforeStart: (DataSettingsUiState) -> DataSettingsUiState,
+        block: suspend () -> Unit,
+    ) {
+        if (_state.value.isBusy) return
+        _state.update { beforeStart(it).copy(isBusy = true) }
+        viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                _state.update { it.copy(isBusy = false) }
+            }
         }
     }
 }

@@ -75,6 +75,57 @@ class DataSettingsViewModelTest {
         assertNull(viewModel.state.value.importPreviewJson)
         assertEquals("导入完成", viewModel.state.value.status)
     }
+
+    @Test
+    fun duplicateExportsAreIgnoredWhileBusy() = runTest(mainDispatcherRule.testDispatcher) {
+        val service = FakeBackupService()
+        val viewModel = DataSettingsViewModel(service)
+
+        viewModel.createExport()
+        viewModel.createExport()
+
+        assertEquals(true, viewModel.state.value.isBusy)
+        advanceUntilIdle()
+
+        assertEquals(listOf(false), service.exportRequests)
+        assertEquals(false, viewModel.state.value.isBusy)
+    }
+
+    @Test
+    fun duplicateImportsAreIgnoredWhileBusy() = runTest(mainDispatcherRule.testDispatcher) {
+        val summary = BackupImportSummary(
+            providers = 1,
+            prompts = 0,
+            modelPreferences = 0,
+            conversations = 0,
+            messages = 0,
+        )
+        val service = FakeBackupService(previewSummary = summary, importSummary = summary)
+        val viewModel = DataSettingsViewModel(service)
+        viewModel.updateImportJson(validBackupJson)
+        viewModel.previewImportJson(validBackupJson)
+        advanceUntilIdle()
+
+        viewModel.importCurrentJson()
+        viewModel.importCurrentJson()
+        advanceUntilIdle()
+
+        assertEquals(listOf(validBackupJson), service.importRequests)
+        assertEquals(false, viewModel.state.value.isBusy)
+    }
+
+    @Test
+    fun duplicateClearAllRequestsAreIgnoredWhileBusy() = runTest(mainDispatcherRule.testDispatcher) {
+        val service = FakeBackupService()
+        val viewModel = DataSettingsViewModel(service)
+
+        viewModel.clearAllData()
+        viewModel.clearAllData()
+        advanceUntilIdle()
+
+        assertEquals(1, service.clearAllRequests)
+        assertEquals(false, viewModel.state.value.isBusy)
+    }
 }
 
 private val validBackupJson: String = """
@@ -92,10 +143,14 @@ private class FakeBackupService(
     private val importSummary: BackupImportSummary = previewSummary,
     private val previewError: Throwable? = null,
 ) : BackupService {
+    val exportRequests = mutableListOf<Boolean>()
     val importRequests = mutableListOf<String>()
+    var clearAllRequests = 0
 
-    override suspend fun exportJson(includeChats: Boolean): String =
-        validBackupJson
+    override suspend fun exportJson(includeChats: Boolean): String {
+        exportRequests += includeChats
+        return validBackupJson
+    }
 
     override suspend fun importJson(value: String): BackupImportSummary {
         importRequests += value
@@ -113,7 +168,9 @@ private class FakeBackupService(
 
     override suspend fun clearPromptsModelsAndImages() = Unit
 
-    override suspend fun clearAllData() = Unit
+    override suspend fun clearAllData() {
+        clearAllRequests += 1
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
