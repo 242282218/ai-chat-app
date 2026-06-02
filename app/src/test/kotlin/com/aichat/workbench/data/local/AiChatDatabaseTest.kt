@@ -447,7 +447,7 @@ class AiChatDatabaseTest {
             service.importJson(backupJson)
         }
 
-        assertTrue(error.message.orEmpty().contains("Header 值超过"))
+        assertTrue(error.message.orEmpty().contains("Header 值 超过"))
         assertNull(database.providerConfigDao().getProvider("provider-1"))
     }
 
@@ -566,7 +566,7 @@ class AiChatDatabaseTest {
             service.importJson(backupJson)
         }
 
-        assertTrue(error.message.orEmpty().contains("消息内容超过"))
+        assertTrue(error.message.orEmpty().contains("消息内容 超过"))
         assertEquals(0, conversationRepository.observeConversations(includeArchived = true).first().size)
     }
 
