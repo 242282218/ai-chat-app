@@ -119,10 +119,10 @@ class DataSettingsViewModelTest {
     }
 
     @Test
-    fun stalePreviewResultDoesNotOverwriteClearStatus() = runTest(mainDispatcherRule.testDispatcher) {
+    fun previewImportMarksBusyAndBlocksConcurrentDataActions() = runTest(mainDispatcherRule.testDispatcher) {
         val service = ControlledPreviewBackupService()
         val viewModel = DataSettingsViewModel(service)
-        val staleSummary = BackupImportSummary(
+        val summary = BackupImportSummary(
             providers = 1,
             prompts = 0,
             modelPreferences = 0,
@@ -133,15 +133,26 @@ class DataSettingsViewModelTest {
         viewModel.updateImportJson(validBackupJson)
         viewModel.previewImportJson(validBackupJson)
         runCurrent()
+
+        assertEquals(true, viewModel.state.value.isBusy)
+        assertEquals("正在预览导入内容…", viewModel.state.value.status)
+
         viewModel.clearAllData()
-        advanceUntilIdle()
-        service.completePreview(validBackupJson, staleSummary)
+        viewModel.createExport()
+        viewModel.importCurrentJson()
         advanceUntilIdle()
 
-        assertEquals(1, service.clearAllRequests)
-        assertEquals("全部本地数据已清空", viewModel.state.value.status)
-        assertNull(viewModel.state.value.importPreviewJson)
-        assertNull(viewModel.state.value.importPreviewSummary)
+        assertEquals(0, service.clearAllRequests)
+        assertEquals(emptyList<Boolean>(), service.exportRequests)
+        assertEquals(emptyList<String>(), service.importRequests)
+
+        service.completePreview(validBackupJson, summary)
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.isBusy)
+        assertNull(viewModel.state.value.status)
+        assertEquals(validBackupJson, viewModel.state.value.importPreviewJson)
+        assertEquals(summary, viewModel.state.value.importPreviewSummary)
     }
 
     @Test
@@ -259,19 +270,25 @@ private class FakeBackupService(
 
 private class ControlledPreviewBackupService : BackupService {
     private val previewRequests = mutableMapOf<String, CompletableDeferred<BackupImportSummary>>()
+    val exportRequests = mutableListOf<Boolean>()
+    val importRequests = mutableListOf<String>()
     var clearAllRequests = 0
 
-    override suspend fun exportJson(includeChats: Boolean): String =
-        validBackupJson
+    override suspend fun exportJson(includeChats: Boolean): String {
+        exportRequests += includeChats
+        return validBackupJson
+    }
 
-    override suspend fun importJson(value: String): BackupImportSummary =
-        BackupImportSummary(
+    override suspend fun importJson(value: String): BackupImportSummary {
+        importRequests += value
+        return BackupImportSummary(
             providers = 0,
             prompts = 0,
             modelPreferences = 0,
             conversations = 0,
             messages = 0,
         )
+    }
 
     override suspend fun previewImportJson(value: String): BackupImportSummary =
         previewRequests.getOrPut(value) { CompletableDeferred() }.await()

@@ -58,25 +58,37 @@ class DataSettingsViewModel(
             }
             return
         }
+        _state.update {
+            it.copy(
+                importPreviewJson = null,
+                importPreviewSummary = null,
+                status = "正在预览导入内容…",
+                isBusy = true,
+            )
+        }
         viewModelScope.launch {
-            runCatching {
-                backupService.previewImportJson(value)
-            }.onSuccess { summary ->
-                updatePreviewStateIfCurrent(previewVersion, value) {
-                    copy(
-                        importPreviewJson = value,
-                        importPreviewSummary = summary,
-                        status = null,
-                    )
+            try {
+                runCatching {
+                    backupService.previewImportJson(value)
+                }.onSuccess { summary ->
+                    updatePreviewStateIfCurrent(previewVersion, value) {
+                        copy(
+                            importPreviewJson = value,
+                            importPreviewSummary = summary,
+                            status = null,
+                        )
+                    }
+                }.onFailure { error ->
+                    updatePreviewStateIfCurrent(previewVersion, value) {
+                        copy(
+                            importPreviewJson = null,
+                            importPreviewSummary = null,
+                            status = error.message ?: "导入预览失败。",
+                        )
+                    }
                 }
-            }.onFailure { error ->
-                updatePreviewStateIfCurrent(previewVersion, value) {
-                    copy(
-                        importPreviewJson = null,
-                        importPreviewSummary = null,
-                        status = error.message ?: "导入预览失败。",
-                    )
-                }
+            } finally {
+                _state.update { it.copy(isBusy = false) }
             }
         }
     }
