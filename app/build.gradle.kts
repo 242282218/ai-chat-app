@@ -15,8 +15,8 @@ android {
         applicationId = "com.aichat.workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 37
-        versionName = "0.37.0"
+        versionCode = 38
+        versionName = "0.38.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
