@@ -91,6 +91,10 @@ fun PromptPresetScreen(
     val filteredPresets = remember(presets, searchQuery) {
         presets.filterByQuery(searchQuery)
     }
+    val saveStatus = promptSaveStatus(
+        name = name,
+        systemPrompt = systemPrompt,
+    )
 
     val hasPromptDraft = editingId != null ||
         name.isNotBlank() ||
@@ -232,7 +236,7 @@ fun PromptPresetScreen(
                         onDefaultToolsChange = { defaultTools = it },
                         formKey = editingId ?: "new",
                         message = message,
-                        canSave = name.isNotBlank() && systemPrompt.isNotBlank(),
+                        canSave = saveStatus.isReady,
                         canClear = hasPromptDraft,
                         onSave = {
                             val now = clock.instant()
@@ -245,7 +249,7 @@ fun PromptPresetScreen(
                                 description = description.trim().ifBlank { null },
                                 systemPrompt = systemPrompt.trim(),
                                 defaultModel = defaultModel.trim().ifBlank { null },
-                                defaultToolNames = parseToolNames(defaultTools),
+                                defaultToolNames = parsePromptToolNames(defaultTools),
                                 createdAt = existing?.createdAt ?: now,
                                 updatedAt = now,
                             )
@@ -554,17 +558,6 @@ private fun PromptDefaultsFields(
     }
 }
 
-private fun promptDefaultsLabel(defaultModel: String, defaultTools: String): String {
-    val hasModel = defaultModel.isNotBlank()
-    val toolCount = parseToolNames(defaultTools).size
-    return when {
-        hasModel && toolCount > 0 -> "模型 + 工具"
-        hasModel -> "模型"
-        toolCount > 0 -> "$toolCount 个工具"
-        else -> "未绑定"
-    }
-}
-
 private fun promptDefaultsTone(defaultModel: String, defaultTools: String): StatusTone =
     if (defaultModel.isNotBlank() || defaultTools.isNotBlank()) {
         StatusTone.Accent
@@ -579,7 +572,7 @@ private fun PromptFormSummary(
     defaultModel: String,
     defaultTools: String,
 ) {
-    val toolCount = parseToolNames(defaultTools).size
+    val toolCount = parsePromptToolNames(defaultTools).size
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
@@ -631,7 +624,7 @@ private fun PromptPresetRow(
     onDelete: () -> Unit,
 ) {
     QuietListRow(
-        title = preset.name.preview(72),
+        title = preset.name.previewPromptText(72),
         description = preset.summaryText(),
         icon = Icons.Filled.AutoAwesome,
         onClick = onClick,
@@ -644,42 +637,4 @@ private fun PromptPresetRow(
             )
         },
     )
-}
-
-private fun parseToolNames(value: String): List<String> =
-    value.split(',')
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-
-private fun PromptPreset.summaryText(): String {
-    val descriptionText = if (description.isNullOrBlank()) "无描述" else "已描述"
-    val modelText = defaultModel?.takeIf { it.isNotBlank() } ?: "无默认模型"
-    val toolsText = when (val toolCount = defaultToolNames.size) {
-        0 -> "无默认工具"
-        else -> "${toolCount} 个工具"
-    }
-    return listOf(descriptionText, modelText, toolsText).joinToString(" · ")
-}
-
-private fun List<PromptPreset>.filterByQuery(query: String): List<PromptPreset> {
-    val needle = query.trim().lowercase()
-    if (needle.isBlank()) return this
-    return filter { preset ->
-        listOf(
-            preset.name,
-            preset.description.orEmpty(),
-            preset.systemPrompt,
-            preset.defaultModel.orEmpty(),
-            preset.defaultToolNames.joinToString(" "),
-        ).any { value -> value.lowercase().contains(needle) }
-    }
-}
-
-private fun String.preview(maxLength: Int): String {
-    val normalized = trim()
-    return if (normalized.length <= maxLength) {
-        normalized
-    } else {
-        "${normalized.take(maxLength - 3)}..."
-    }
 }
