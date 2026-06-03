@@ -1,7 +1,9 @@
 package com.aichat.workbench.feature.image
 
+import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.provider.requiresApiKey
+import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.ui.component.StatusTone
 
 internal data class ImageReadiness(
@@ -12,6 +14,9 @@ internal data class ImageReadiness(
 
 internal fun ImageGenerationUiState.canGenerateImages(): Boolean =
     imageGenerationReadiness().tone == StatusTone.Success
+
+internal fun ImageGenerationUiState.availableImageModels(): List<ModelConfig> =
+    selectedProvider?.models.orEmpty().filter { it.supportsImageGeneration() }
 
 internal fun ImageGenerationUiState.imageGenerationReadiness(): ImageReadiness {
     val imageCount = imageCountOrNull()

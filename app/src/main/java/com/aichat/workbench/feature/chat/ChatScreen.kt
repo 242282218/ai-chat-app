@@ -808,10 +808,10 @@ private fun ChatModelPicker(
     selectedModel: String,
     onSelectModel: (String) -> Unit,
 ) {
-    val models = provider?.models.orEmpty()
+    val models = provider.availableChatModels()
     if (models.isEmpty()) {
         Text(
-            text = "当前连接还没有同步模型，可手动填写模型名。",
+            text = "当前连接还没有同步对话模型，可手动填写模型名。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

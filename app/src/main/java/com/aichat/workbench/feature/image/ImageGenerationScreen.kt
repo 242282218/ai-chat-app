@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -67,6 +68,7 @@ import androidx.core.content.FileProvider
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.ui.component.InlineNotice
+import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
@@ -281,6 +283,10 @@ private fun ImageGenerationForm(
                 state = state,
                 onSelectProvider = viewModel::selectProvider,
             )
+            ImageModelPicker(
+                state = state,
+                onSelectModel = viewModel::updateModel,
+            )
             OutlinedTextField(
                 value = state.model,
                 onValueChange = viewModel::updateModel,
@@ -422,6 +428,50 @@ private fun ImageParameterStatusRow(state: ImageGenerationUiState) {
         if (showModelStatus) {
             item {
                 StatusPill(text = state.imageModelLabel(), tone = state.imageModelTone())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageModelPicker(
+    state: ImageGenerationUiState,
+    onSelectModel: (String) -> Unit,
+) {
+    val models = state.availableImageModels()
+    if (models.isEmpty()) {
+        Text(
+            text = "当前连接还没有同步图片模型，可手动填写模型名。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        MetadataRow(
+            label = "图片模型",
+            value = "${state.selectedProvider?.name.orEmpty()} · ${models.size} 个",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(models, key = { it.id }) { model ->
+                FilterChip(
+                    selected = model.id == state.model.trim(),
+                    onClick = { onSelectModel(model.id) },
+                    label = {
+                        Text(
+                            text = model.displayName.ifBlank { model.id },
+                            modifier = Modifier.widthIn(max = 180.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        if (model.id == state.model.trim()) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                        }
+                    },
+                )
             }
         }
     }

@@ -91,6 +91,24 @@ class ImageDraftsTest {
         assertEquals("需要模型", ready.copy(model = "").imageModelLabel())
     }
 
+    @Test
+    fun availableImageModelsExcludesTextOnlyModels() {
+        val state = state(
+            provider = provider(
+                apiKeyRef = "key-ref",
+                models = listOf(
+                    model("gpt-5.4", text = true, imageGeneration = false),
+                    model("gpt-image-2", text = false, imageGeneration = true),
+                    ModelConfig("flux-pro", "Flux Pro", capability = null),
+                ),
+            ),
+            prompt = "Draw",
+            model = "gpt-image-2",
+        )
+
+        assertEquals(listOf("gpt-image-2", "flux-pro"), state.availableImageModels().map { it.id })
+    }
+
     private fun state(
         provider: ProviderConfig?,
         prompt: String,
@@ -120,5 +138,25 @@ class ImageDraftsTest {
             models = models,
             defaultModel = "gpt-image-1",
             enabled = true,
+        )
+
+    private fun model(
+        id: String,
+        text: Boolean,
+        imageGeneration: Boolean,
+    ): ModelConfig =
+        ModelConfig(
+            id = id,
+            displayName = id,
+            capability = ModelCapability(
+                model = id,
+                text = text,
+                vision = text,
+                imageGeneration = imageGeneration,
+                toolCalling = text,
+                structuredOutput = text,
+                longContext = text,
+                maxContextTokens = null,
+            ),
         )
 }
