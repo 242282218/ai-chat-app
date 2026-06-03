@@ -52,6 +52,28 @@ class ProviderConnectionTesterTest {
     }
 
     @Test
+    fun test_appendsV1ForNewApiRootBaseUrl() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"id":"model-a"}]}"""),
+        )
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
+
+        val result = tester.test(
+            provider(
+                type = ProviderType.NewApi,
+                baseUrl = server.url("/").toString().trimEnd('/'),
+            ),
+            "test-key",
+        )
+        val recorded = server.takeRequest()
+
+        assertTrue(result.ok)
+        assertEquals("/v1/models", recorded.path)
+    }
+
+    @Test
     fun test_returnsFailureForHttpErrors() = runTest {
         server.enqueue(
             MockResponse()
@@ -142,12 +164,15 @@ class ProviderConnectionTesterTest {
         assertEquals(0, server.requestCount)
     }
 
-    private fun provider(type: ProviderType = ProviderType.OpenAICompatible): ProviderConfig =
+    private fun provider(
+        type: ProviderType = ProviderType.OpenAICompatible,
+        baseUrl: String = server.url("/v1").toString().trimEnd('/'),
+    ): ProviderConfig =
         ProviderConfig(
             id = ProviderId("provider-1"),
             name = "OpenAI compatible",
             type = type,
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
+            baseUrl = baseUrl,
             apiKeyRef = null,
             headers = emptyMap(),
             models = emptyList(),
@@ -159,6 +184,9 @@ class ProviderConnectionTesterTest {
         ProviderRegistry().apply {
             val provider = ProviderConnectionTesterChatProvider()
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenAICompatible)), provider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.NewApi)), provider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Sub2Api)), provider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Custom)), provider)
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Ollama)), provider)
         }
 }

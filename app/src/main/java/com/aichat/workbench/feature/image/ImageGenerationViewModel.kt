@@ -194,8 +194,9 @@ class ImageGenerationViewModel(
 
     private fun ProviderConfig.defaultImageModel(): String =
         models.firstOrNull { it.capability?.imageGeneration == true }?.id
-            ?: defaultModel?.takeIf { type != ProviderType.OpenAI }
-            ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else defaultModel.orEmpty()
+            ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else null
+            ?: defaultModel?.takeIf { it.isNotBlank() }
+            ?: if (supportsImageGeneration()) DEFAULT_OPENAI_IMAGE_MODEL else ""
 
     private fun ProviderConfig.supportsImageGeneration(): Boolean =
         ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true

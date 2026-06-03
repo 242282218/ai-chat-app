@@ -16,6 +16,9 @@ data class ProviderType(val value: String) : java.io.Serializable {
     companion object {
         val OpenAI = ProviderType("openai")
         val OpenAICompatible = ProviderType("openai_compatible")
+        val NewApi = ProviderType("newapi")
+        val Sub2Api = ProviderType("sub2api")
+        val Custom = ProviderType("custom")
         val OpenRouter = ProviderType("openrouter")
         val Anthropic = ProviderType("anthropic")
         val Gemini = ProviderType("gemini")
@@ -25,6 +28,9 @@ data class ProviderType(val value: String) : java.io.Serializable {
             when (value) {
                 "OpenAI", OpenAI.value -> OpenAI
                 "OpenAICompatible", OpenAICompatible.value -> OpenAICompatible
+                "NewApi", NewApi.value -> NewApi
+                "Sub2Api", Sub2Api.value -> Sub2Api
+                "Custom", Custom.value -> Custom
                 OpenRouter.value -> OpenRouter
                 Anthropic.value -> Anthropic
                 Gemini.value -> Gemini

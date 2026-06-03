@@ -27,6 +27,7 @@ import com.aichat.workbench.provider.api.ResponsesResponse
 import com.aichat.workbench.provider.api.ResponsesSseEvent
 import com.aichat.workbench.provider.api.ResponsesTool
 import com.aichat.workbench.provider.api.ToolChoice
+import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.http.parseSse
 import com.aichat.workbench.tool.model.ToolDescriptor
@@ -125,7 +126,7 @@ open class OpenAiChatProvider(
             tools = tools.toResponsesTools(),
         )
 
-        return postJson("${provider.apiBaseUrl()}/responses", providerJson.encodeToString(body), stream)
+        return postJson("${provider.openAiApiBaseUrl()}/responses", providerJson.encodeToString(body), stream)
     }
 
     private fun ChatProviderRequest.toChatCompletionsRequest(stream: Boolean): Request {
@@ -142,12 +143,7 @@ open class OpenAiChatProvider(
             parallelToolCalls = tools.takeIf { it.isNotEmpty() }?.let { false },
         )
 
-        return postJson("${provider.apiBaseUrl()}/chat/completions", providerJson.encodeToString(body), stream)
-    }
-
-    private fun com.aichat.workbench.domain.model.ProviderConfig.apiBaseUrl(): String {
-        val trimmed = baseUrl.trimEnd('/')
-        return if (type == ProviderType.Ollama && !trimmed.endsWith("/v1")) "$trimmed/v1" else trimmed
+        return postJson("${provider.openAiApiBaseUrl()}/chat/completions", providerJson.encodeToString(body), stream)
     }
 
     private fun ChatProviderRequest.postJson(url: String, body: String, stream: Boolean): Request {

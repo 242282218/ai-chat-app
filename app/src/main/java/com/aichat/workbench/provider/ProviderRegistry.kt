@@ -24,8 +24,10 @@ class ProviderRegistry {
         descriptors[descriptor.type.value] = descriptor
     }
 
-    fun get(type: String): ChatProvider =
-        providers[type] ?: error("No ChatProvider registered for type: $type")
+    fun get(type: String): ChatProvider {
+        val providerType = ProviderType.fromStorage(type)
+        return providers[providerType.value] ?: error("No ChatProvider registered for type: $type")
+    }
 
     fun descriptor(type: ProviderType): ProviderDescriptor =
         descriptors[type.value] ?: builtInDescriptor(type) ?: customDescriptor(type)
@@ -72,6 +74,9 @@ class ProviderRegistry {
         private val supportedBuiltInChatProviderTypes = setOf(
             ProviderType.OpenAI,
             ProviderType.OpenAICompatible,
+            ProviderType.NewApi,
+            ProviderType.Sub2Api,
+            ProviderType.Custom,
             ProviderType.OpenRouter,
             ProviderType.Ollama,
         )
@@ -108,6 +113,57 @@ class ProviderRegistry {
                     text = true,
                     vision = true,
                     imageGeneration = false,
+                    toolCalling = true,
+                    structuredOutput = true,
+                    longContext = true,
+                ),
+            ),
+            ProviderDescriptor(
+                type = ProviderType.NewApi,
+                displayName = "New API",
+                authMode = ProviderAuthMode.ApiKey,
+                supportsCustomBaseUrl = true,
+                defaultBaseUrl = null,
+                modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
+                protocol = ProviderProtocol.OpenAiChatCompletions,
+                capabilities = ProviderCapabilities(
+                    text = true,
+                    vision = true,
+                    imageGeneration = true,
+                    toolCalling = true,
+                    structuredOutput = true,
+                    longContext = true,
+                ),
+            ),
+            ProviderDescriptor(
+                type = ProviderType.Sub2Api,
+                displayName = "Sub2 API",
+                authMode = ProviderAuthMode.ApiKey,
+                supportsCustomBaseUrl = true,
+                defaultBaseUrl = null,
+                modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
+                protocol = ProviderProtocol.OpenAiChatCompletions,
+                capabilities = ProviderCapabilities(
+                    text = true,
+                    vision = true,
+                    imageGeneration = true,
+                    toolCalling = true,
+                    structuredOutput = true,
+                    longContext = true,
+                ),
+            ),
+            ProviderDescriptor(
+                type = ProviderType.Custom,
+                displayName = "自定义兼容接口",
+                authMode = ProviderAuthMode.ApiKey,
+                supportsCustomBaseUrl = true,
+                defaultBaseUrl = null,
+                modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
+                protocol = ProviderProtocol.OpenAiChatCompletions,
+                capabilities = ProviderCapabilities(
+                    text = true,
+                    vision = true,
+                    imageGeneration = true,
                     toolCalling = true,
                     structuredOutput = true,
                     longContext = true,

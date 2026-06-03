@@ -25,6 +25,7 @@ import org.commonmark.node.StrongEmphasis
 import org.commonmark.node.Text
 import org.commonmark.node.ThematicBreak
 import org.commonmark.parser.Parser
+import java.util.LinkedHashMap
 
 sealed interface MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock
@@ -42,8 +43,14 @@ class MarkdownBlockParser(
     private val parser: Parser = Parser.builder()
         .extensions(listOf(TablesExtension.create()))
         .build(),
+    cacheSize: Int = DEFAULT_MARKDOWN_CACHE_SIZE,
 ) {
+    private val cache = MarkdownBlockCache(cacheSize)
+
     fun parse(markdown: String): List<MarkdownBlock> =
+        cache.getOrPut(markdown) { parseUncached(markdown) }
+
+    private fun parseUncached(markdown: String): List<MarkdownBlock> =
         runCatching {
             val blocks = parser.parse(markdown).children().mapNotNull { it.toBlock() }.toList()
             blocks.ifEmpty { listOf(MarkdownBlock.Paragraph(markdown)) }
@@ -168,3 +175,22 @@ class MarkdownBlockParser(
 object DefaultMarkdownBlockParser {
     val instance = MarkdownBlockParser()
 }
+
+private class MarkdownBlockCache(
+    private val maxSize: Int,
+) {
+    private val entries = object : LinkedHashMap<String, List<MarkdownBlock>>(maxSize, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MarkdownBlock>>): Boolean =
+            size > maxSize
+    }
+
+    fun getOrPut(key: String, producer: () -> List<MarkdownBlock>): List<MarkdownBlock> =
+        synchronized(entries) { entries[key] }
+            ?: producer().also { parsed ->
+                synchronized(entries) {
+                    entries[key] ?: parsed.also { entries[key] = it }
+                }
+            }
+}
+
+private const val DEFAULT_MARKDOWN_CACHE_SIZE = 128

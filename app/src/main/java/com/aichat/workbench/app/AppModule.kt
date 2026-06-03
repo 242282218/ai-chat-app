@@ -102,6 +102,9 @@ val appModule: Module = module {
             val compatibleProvider = get<ChatProvider>(named("compatible"))
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenAI)), openAiProvider)
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenAICompatible)), compatibleProvider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.NewApi)), compatibleProvider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Sub2Api)), compatibleProvider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Custom)), compatibleProvider)
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenRouter)), compatibleProvider)
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Ollama)), compatibleProvider)
         }

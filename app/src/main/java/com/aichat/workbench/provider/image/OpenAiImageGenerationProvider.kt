@@ -3,6 +3,7 @@ package com.aichat.workbench.provider.image
 import com.aichat.workbench.provider.api.ProviderError
 import com.aichat.workbench.provider.api.ProviderErrorEnvelope
 import com.aichat.workbench.provider.api.ProviderHttpException
+import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +41,7 @@ class OpenAiImageGenerationProvider(
         )
 
         val builder = Request.Builder()
-            .url("${provider.baseUrl.trimEnd('/')}/images/generations")
+            .url("${provider.openAiApiBaseUrl()}/images/generations")
             .post(providerJson.encodeToString(body).toRequestBody(JSON))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")

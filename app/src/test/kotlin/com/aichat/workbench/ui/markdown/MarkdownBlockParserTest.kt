@@ -101,4 +101,26 @@ class MarkdownBlockParserTest {
         assertEquals(MarkdownBlock.OrderedList(startNumber = 3, items = listOf("inspect", "verify")), blocks[2])
         assertEquals(MarkdownBlock.Divider, blocks[3])
     }
+
+    @Test
+    fun reusesCachedBlocksForRepeatedMarkdown() {
+        val cachedParser = MarkdownBlockParser(cacheSize = 2)
+
+        val first = cachedParser.parse("# Cached")
+        val second = cachedParser.parse("# Cached")
+
+        assertTrue(first === second)
+    }
+
+    @Test
+    fun evictsOldMarkdownBlocksWhenCacheIsFull() {
+        val cachedParser = MarkdownBlockParser(cacheSize = 1)
+
+        val first = cachedParser.parse("# Old")
+        cachedParser.parse("# New")
+        val reparsed = cachedParser.parse("# Old")
+
+        assertEquals(first, reparsed)
+        assertTrue(first !== reparsed)
+    }
 }

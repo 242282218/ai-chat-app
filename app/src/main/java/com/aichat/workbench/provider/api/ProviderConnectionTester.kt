@@ -151,15 +151,6 @@ class ProviderConnectionTester(
         }
         return builder.build()
     }
-
-    private fun ProviderConfig.modelDiscoveryBaseUrl(): String {
-        val trimmed = baseUrl.trimEnd('/')
-        return if (type == ProviderType.Ollama && trimmed.endsWith("/v1")) {
-            trimmed.removeSuffix("/v1")
-        } else {
-            trimmed
-        }
-    }
 }
 
 private const val MAX_PROVIDER_ERROR_PREVIEW_LENGTH = 240

@@ -30,6 +30,8 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      AI_CHAT_PROVIDER_BASE_URL: ${{ secrets.AI_CHAT_PROVIDER_BASE_URL }}
+      AI_CHAT_PROVIDER_API_KEY: ${{ secrets.AI_CHAT_PROVIDER_API_KEY }}
 
     steps:
       - uses: actions/checkout@v6
@@ -48,6 +50,16 @@ jobs:
 
       - name: Run Android checks
         run: ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Upload Android build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-build-artifacts
+          if-no-files-found: warn
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/mapping/release/
 
       - name: Upload Android reports
         if: always()

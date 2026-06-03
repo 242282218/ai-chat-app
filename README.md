@@ -5,7 +5,7 @@
 ## 当前范围
 
 - Android App：Kotlin、Jetpack Compose、Material 3、Room、OkHttp。
-- Provider：支持 OpenAI、OpenAI-compatible 文本聊天，以及 OpenAI 图片生成。
+- Provider：支持 OpenAI、OpenAI-compatible、New API、Sub2 API、自定义兼容接口文本聊天，以及 OpenAI 兼容图片生成。
 - 本地数据：会话、消息、Prompt、模型偏好、Provider 配置、工具结果、图片历史。
 - 隐私：API Key 通过 Android Keystore 支持的存储保存；备份导出不包含 API Key，默认不导出敏感会话和临时会话。
 - 工具：可选 Go 网关，支持健康检查、工具清单、网页搜索和 Python 沙箱执行。
@@ -29,6 +29,8 @@
 ```powershell
 .\gradlew.bat testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
 ```
+
+GitHub Actions 会执行同等 Android 检查并上传测试报告、lint 报告、APK 和 release mapping artifact。外部 Provider 连接测试使用 GitHub Secrets 或 `.env.example` 中的占位变量，不在代码中硬编码 API Key。
 
 可以从 Android Studio 运行 debug App，也可以安装生成的 APK：
 

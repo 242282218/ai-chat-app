@@ -15,6 +15,9 @@ class ProviderDraftsTest {
     fun labelsProviderTypesForDisplay() {
         assertEquals("OpenAI", ProviderType.OpenAI.providerTypeLabel())
         assertEquals("兼容 OpenAI", ProviderType.OpenAICompatible.providerTypeLabel())
+        assertEquals("New API", ProviderType.NewApi.providerTypeLabel())
+        assertEquals("Sub2 API", ProviderType.Sub2Api.providerTypeLabel())
+        assertEquals("自定义兼容接口", ProviderType.Custom.providerTypeLabel())
         assertEquals("OpenRouter", ProviderType.OpenRouter.providerTypeLabel())
         assertEquals("Ollama", ProviderType.Ollama.providerTypeLabel())
     }
@@ -100,10 +103,10 @@ class ProviderDraftsTest {
         assertEquals(
             ProviderActionStatus(label = "可保存", isReady = true),
             providerSaveStatus(
-                name = "OpenAI",
-                type = ProviderType.OpenAI,
-                baseUrl = "https://api.openai.com/v1",
-                apiKey = "",
+                name = "Custom",
+                type = ProviderType.Custom,
+                baseUrl = "https://zzshu.cc",
+                apiKey = "sk-test",
                 hasStoredKey = false,
                 headers = "",
                 enabled = false,

@@ -50,6 +50,26 @@ class OpenAiImageGenerationProviderTest {
     }
 
     @Test
+    fun generate_appendsV1ForCustomRootBaseUrl() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"b64_json":"aW1hZ2U="}]}"""),
+        )
+        val provider = OpenAiImageGenerationProvider()
+
+        provider.generate(
+            request(
+                type = ProviderType.Custom,
+                baseUrl = server.url("/").toString().trimEnd('/'),
+            ),
+        )
+        val recorded = server.takeRequest()
+
+        assertEquals("/v1/images/generations", recorded.path)
+    }
+
+    @Test
     fun generate_mapsProviderErrors() = runTest {
         server.enqueue(
             MockResponse()
@@ -68,13 +88,16 @@ class OpenAiImageGenerationProviderTest {
         assertEquals(429, error.error.statusCode)
     }
 
-    private fun request(): ImageGenerationProviderRequest =
+    private fun request(
+        type: ProviderType = ProviderType.OpenAI,
+        baseUrl: String = server.url("/v1").toString().trimEnd('/'),
+    ): ImageGenerationProviderRequest =
         ImageGenerationProviderRequest(
             provider = ProviderConfig(
                 id = ProviderId("provider-1"),
                 name = "OpenAI",
-                type = ProviderType.OpenAI,
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                type = type,
+                baseUrl = baseUrl,
                 apiKeyRef = null,
                 headers = emptyMap(),
                 models = emptyList(),

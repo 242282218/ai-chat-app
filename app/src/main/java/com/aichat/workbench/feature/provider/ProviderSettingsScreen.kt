@@ -145,7 +145,7 @@ fun ProviderSettingsScreen(
         val descriptor = ProviderRegistry.builtInDescriptor(nextType)
         if (editingId == null) {
             name = descriptor?.displayName ?: nextType.providerTypeLabel()
-            descriptor?.defaultBaseUrl?.let { baseUrl = it }
+            baseUrl = descriptor?.defaultBaseUrl.orEmpty()
             allowHttp = descriptor?.defaultBaseUrl?.startsWith("http://") == true
         }
     }

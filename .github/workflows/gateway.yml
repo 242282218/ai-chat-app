@@ -26,11 +26,15 @@ jobs:
 
       - name: Run gateway tests
         working-directory: gateway
-        run: go test ./...
+        run: |
+          set -o pipefail
+          go test ./... | tee ../gateway-test.log
 
       - name: Run gateway race tests
         working-directory: gateway
-        run: go test -race ./...
+        run: |
+          set -o pipefail
+          go test -race ./... | tee ../gateway-race-test.log
 
       - name: Run go vet
         working-directory: gateway
@@ -39,3 +43,12 @@ jobs:
       - name: Run govulncheck
         working-directory: gateway
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      - name: Upload gateway reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gateway-reports
+          path: |
+            gateway-test.log
+            gateway-race-test.log

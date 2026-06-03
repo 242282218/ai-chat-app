@@ -117,6 +117,27 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun compatibleProvider_appendsV1ForRootBaseUrl() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"choices":[{"message":{"content":"Hello"}}]}"""),
+        )
+        val provider = OpenAiCompatibleChatProvider()
+
+        val response = provider.complete(
+            openAiRequest(
+                type = ProviderType.Custom,
+                baseUrl = server.url("/").toString().trimEnd('/'),
+            ),
+        )
+        val recorded = server.takeRequest()
+
+        assertEquals("Hello", response.content)
+        assertEquals("/v1/chat/completions", recorded.path)
+    }
+
+    @Test
     fun stream_aggregatesChatCompletionsToolCallDeltas() = runTest {
         server.enqueue(
             MockResponse()
@@ -224,6 +245,7 @@ class OpenAiChatProviderTest {
 
     private fun openAiRequest(
         type: ProviderType = ProviderType.OpenAI,
+        baseUrl: String = server.url("/v1").toString().trimEnd('/'),
         tools: List<ToolDescriptor> = emptyList(),
         messages: List<ProviderChatMessage> = listOf(ProviderChatMessage(MessageRole.User, "Hello")),
     ): ChatProviderRequest =
@@ -232,7 +254,7 @@ class OpenAiChatProviderTest {
                 id = ProviderId("provider-1"),
                 name = "OpenAI",
                 type = type,
-                baseUrl = server.url("/v1").toString().trimEnd('/'),
+                baseUrl = baseUrl,
                 apiKeyRef = null,
                 headers = emptyMap(),
                 models = emptyList(),

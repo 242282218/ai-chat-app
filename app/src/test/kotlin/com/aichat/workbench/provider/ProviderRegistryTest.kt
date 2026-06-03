@@ -35,6 +35,7 @@ class ProviderRegistryTest {
         }
 
         assertSame(provider, registry.get(ProviderType.OpenAI.value))
+        assertSame(provider, registry.get("OpenAI"))
         assertEquals(setOf(ProviderType.OpenAI.value), registry.registeredTypes())
     }
 
@@ -46,6 +47,10 @@ class ProviderRegistryTest {
         assertEquals("OpenAI", openAi?.displayName)
         assertEquals("https://api.openai.com/v1", openAi?.defaultBaseUrl)
         assertEquals(ProviderAuthMode.ApiKey, openAi?.authMode)
+        assertEquals("New API", ProviderRegistry.builtInDescriptor(ProviderType.NewApi)?.displayName)
+        assertTrue(ProviderRegistry.builtInDescriptor(ProviderType.NewApi)?.capabilities?.imageGeneration == true)
+        assertEquals("Sub2 API", ProviderRegistry.builtInDescriptor(ProviderType.Sub2Api)?.displayName)
+        assertEquals("自定义兼容接口", ProviderRegistry.builtInDescriptor(ProviderType.Custom)?.displayName)
         assertEquals("Ollama", ollama?.displayName)
         assertEquals(ProviderAuthMode.None, ollama?.authMode)
         assertEquals("http://10.0.2.2:11434", ollama?.defaultBaseUrl)
@@ -60,21 +65,27 @@ class ProviderRegistryTest {
             listOf(
                 ProviderType.OpenAI,
                 ProviderType.OpenAICompatible,
+                ProviderType.NewApi,
+                ProviderType.Sub2Api,
+                ProviderType.Custom,
                 ProviderType.OpenRouter,
                 ProviderType.Ollama,
             ),
             supportedTypes,
         )
         assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.OpenAI))
+        assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.NewApi))
+        assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Sub2Api))
+        assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Custom))
         assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Anthropic))
         assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Gemini))
     }
 
     @Test
     fun fallsBackToCustomDescriptorForUnknownType() {
-        val descriptor = ProviderRegistry().descriptor(ProviderType("custom"))
+        val descriptor = ProviderRegistry().descriptor(ProviderType("custom_vendor"))
 
-        assertEquals("custom", descriptor.displayName)
+        assertEquals("custom_vendor", descriptor.displayName)
         assertEquals(ProviderAuthMode.ApiKey, descriptor.authMode)
         assertEquals("/models", descriptor.modelDiscovery?.path)
     }
