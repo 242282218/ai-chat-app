@@ -110,7 +110,7 @@ class OpenAiImageGenerationProvider(
                     ),
                 )
             }
-            val bytes = it.body?.bytes().orEmpty()
+            val bytes = it.body?.bytes() ?: ByteArray(0)
             require(bytes.isNotEmpty()) { "图片 URL 下载结果为空。" }
             return Base64.getEncoder().encodeToString(bytes)
         }
