@@ -31,6 +31,12 @@ class SaveProviderConfigUseCase(
         require(normalizedProvider.models.map { it.id }.distinct().size == normalizedProvider.models.size) {
             "Model names must be unique."
         }
+        require(
+            normalizedProvider.defaultModel == null ||
+                normalizedProvider.models.any { it.id == normalizedProvider.defaultModel },
+        ) {
+            "Default model must exist in model list."
+        }
         repository.saveProvider(normalizedProvider, normalizedApiKey)
     }
 

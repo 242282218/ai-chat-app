@@ -96,6 +96,30 @@ class ProviderConfigUseCasesTest {
         assertNull(repository.savedProvider)
     }
 
+    @Test
+    fun saveProviderRejectsDefaultModelOutsideModelList() = runTest {
+        val repository = RecordingProviderConfigRepository()
+        val saveProvider = SaveProviderConfigUseCase(repository)
+
+        try {
+            saveProvider(
+                provider(
+                    enabled = true,
+                    baseUrl = "https://api.example.com/v1",
+                    models = listOf(ModelConfig("gpt-test", "GPT test", capability = null)),
+                    defaultModel = "missing-model",
+                ),
+                plaintextApiKey = null,
+                allowInsecureHttp = false,
+            )
+            fail("Expected missing default model to be rejected.")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Default model must exist in model list.", error.message)
+        }
+
+        assertNull(repository.savedProvider)
+    }
+
     private fun provider(
         enabled: Boolean,
         baseUrl: String,
