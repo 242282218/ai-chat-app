@@ -404,7 +404,7 @@ class GenerationControllerTest {
             messages = conversationRepository.getMessages(conversation.id),
             providers = listOf(provider),
             selectedProviderId = provider.id.value,
-            draft = DraftState(model = "model-a", input = "new question"),
+            draft = DraftState(model = provider.defaultModel.orEmpty(), input = "new question"),
         )
 
         controller.start(
@@ -468,7 +468,7 @@ class GenerationControllerTest {
             messages = conversationRepository.getMessages(conversation.id),
             providers = listOf(provider),
             selectedProviderId = provider.id.value,
-            draft = DraftState(model = "model-a", input = "new question"),
+            draft = DraftState(model = provider.defaultModel.orEmpty(), input = "new question"),
         )
 
         controller.start(
