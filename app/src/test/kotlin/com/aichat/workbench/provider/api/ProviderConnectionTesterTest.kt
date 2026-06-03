@@ -37,7 +37,7 @@ class ProviderConnectionTesterTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody("""{"data":[]}"""),
+                .setBody("""{"data":[{"id":"model-a"},{"id":"model-b"}]}"""),
         )
         val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
@@ -46,6 +46,7 @@ class ProviderConnectionTesterTest {
 
         assertTrue(result.ok)
         assertEquals(200, result.statusCode)
+        assertEquals("连接正常，发现 2 个模型", result.message)
         assertEquals("/v1/models", recorded.path)
         assertEquals("Bearer test-key", recorded.getHeader("Authorization"))
     }
@@ -100,7 +101,7 @@ class ProviderConnectionTesterTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody("""{"models":[]}"""),
+                .setBody("""{"models":[{"name":"llama3"},{"name":"qwen2"}]}"""),
         )
         val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
@@ -108,8 +109,25 @@ class ProviderConnectionTesterTest {
         val recorded = server.takeRequest()
 
         assertTrue(result.ok)
+        assertEquals("连接正常，发现 2 个模型", result.message)
         assertEquals("/api/tags", recorded.path)
         assertEquals(null, recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun test_rejectsInvalidModelDiscoveryResponse() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("<html>ok</html>"),
+        )
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
+
+        val result = tester.test(provider(), "test-key")
+
+        assertFalse(result.ok)
+        assertEquals(200, result.statusCode)
+        assertEquals("模型发现响应无效。", result.message)
     }
 
     @Test

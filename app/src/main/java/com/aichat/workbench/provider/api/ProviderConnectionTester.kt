@@ -2,11 +2,13 @@ package com.aichat.workbench.provider.api
 
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderModelDiscovery
+import com.aichat.workbench.domain.model.ProviderModelDiscoveryFormat
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.ProviderRegistry
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -48,14 +50,23 @@ class ProviderConnectionTester(
                         ok = false,
                         statusCode = null,
                         message = "当前 Provider 暂无模型发现接口。",
-                    )
+                )
                 client.newCall(provider.toModelsRequest(apiKey, discovery)).execute().use { response ->
                     if (response.isSuccessful) {
-                        ProviderConnectionResult(
-                            ok = true,
-                            statusCode = response.code,
-                            message = "连接正常",
-                        )
+                        val modelCount = discovery.modelCountOrNull(response.bodyText())
+                        if (modelCount == null) {
+                            ProviderConnectionResult(
+                                ok = false,
+                                statusCode = response.code,
+                                message = "模型发现响应无效。",
+                            )
+                        } else {
+                            ProviderConnectionResult(
+                                ok = true,
+                                statusCode = response.code,
+                                message = modelCount.toConnectionMessage(),
+                            )
+                        }
                     } else {
                         ProviderConnectionResult(
                             ok = false,
@@ -80,6 +91,19 @@ class ProviderConnectionTester(
         val providerMessage = body.toProviderErrorMessageOrNull() ?: return "Provider 返回 HTTP $statusCode"
         return "Provider HTTP $statusCode：$providerMessage"
     }
+
+    private fun ProviderModelDiscovery.modelCountOrNull(body: String): Int? =
+        runCatching {
+            when (responseFormat) {
+                ProviderModelDiscoveryFormat.OpenAiModels ->
+                    providerJson.decodeFromString<OpenAiModelsResponse>(body).data?.size
+                ProviderModelDiscoveryFormat.OllamaTags ->
+                    providerJson.decodeFromString<OllamaTagsResponse>(body).models?.size
+            }
+        }.getOrNull()
+
+    private fun Int.toConnectionMessage(): String =
+        if (this == 0) "连接正常，未发现模型" else "连接正常，发现 $this 个模型"
 
     private fun providerConnectionFailureMessage(error: Throwable): String =
         when (error) {
@@ -140,3 +164,23 @@ class ProviderConnectionTester(
 
 private const val MAX_PROVIDER_ERROR_PREVIEW_LENGTH = 240
 private val providerErrorWhitespace = Regex("\\s+")
+
+@Serializable
+private data class OpenAiModelsResponse(
+    val data: List<OpenAiModelItem>? = null,
+)
+
+@Serializable
+private data class OpenAiModelItem(
+    val id: String,
+)
+
+@Serializable
+private data class OllamaTagsResponse(
+    val models: List<OllamaModelItem>? = null,
+)
+
+@Serializable
+private data class OllamaModelItem(
+    val name: String,
+)
