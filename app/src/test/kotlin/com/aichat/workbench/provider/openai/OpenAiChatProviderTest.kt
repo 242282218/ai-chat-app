@@ -228,6 +228,43 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun stream_mapsResponsesImageGenerationEventsToImageDeltas() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    event: response.image_generation_call.partial_image
+                    data: {"type":"response.image_generation_call.partial_image","partial_image_index":0,"partial_image_b64":"partial-image"}
+
+                    event: response.output_item.done
+                    data: {"type":"response.output_item.done","item":{"type":"image_generation_call","result":"final-image"}}
+
+                    event: response.completed
+                    data: {"type":"response.completed"}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider()
+
+        val events = provider.stream(
+            openAiRequest(
+                tools = listOf(hostedTool("image_generation", ToolPermissionLevel.ReadOnly)),
+            ),
+        ).toList()
+
+        assertEquals(
+            listOf(
+                ProviderStreamEvent.ImageDelta(MessagePart.Image("data:image/png;base64,final-image", "image/png")),
+                ProviderStreamEvent.Completed,
+            ),
+            events,
+        )
+    }
+
+    @Test
     fun stream_withGatewayFunctionToolsUsesChatCompletionsAndAggregatesToolDeltas() = runTest {
         server.enqueue(
             MockResponse()

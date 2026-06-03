@@ -6,6 +6,7 @@ import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.provider.preferredModel
+import com.aichat.workbench.provider.supportsTextGeneration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -36,7 +37,9 @@ internal fun CoroutineScope.observeChatStateSources(
     launch {
         providerRepository.observeProviders().collect { providers ->
             updateState { current ->
-                val chatProviders = providers.filter { providerRegistry.isRegistered(it.type) }
+                val chatProviders = providers.filter {
+                    providerRegistry.isRegistered(it.type) && it.supportsTextGeneration()
+                }
                 val selected = current.selectedProviderId
                     ?.let { id -> chatProviders.firstOrNull { it.id.value == id && it.enabled } }
                 val fallback = selected ?: chatProviders.firstOrNull { it.enabled }

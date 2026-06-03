@@ -97,8 +97,8 @@ class ConversationManager(
             ?.let { id -> current.providers.firstOrNull { it.id.value == id && it.enabled } }
 
         return retryProvider
-            ?: conversationProvider
             ?: selectedProvider
+            ?: conversationProvider
             ?: current.providers.firstOrNull { it.enabled }
             ?: error("模型连接未配置。")
     }
@@ -110,8 +110,8 @@ class ConversationManager(
         retryFailedMessage: Message?,
     ): String =
         retryFailedMessage?.model?.takeIf { retryFailedMessage.providerId == provider.id }
-            ?: conversation.defaultModel?.takeIf { conversation.defaultProviderId == provider.id }
             ?: current.modelDraft.trim().ifBlank { null }
+            ?: conversation.defaultModel?.takeIf { conversation.defaultProviderId == provider.id }
             ?: provider.defaultModel
             ?: provider.models.firstOrNull()?.id
             ?: error("默认 Model 缺失。")

@@ -47,10 +47,17 @@ class SendMessageUseCase(
 
             try {
                 chatProvider.stream(request).collect { event ->
-                    val isDelta = event is ProviderStreamEvent.TextDelta || event is ProviderStreamEvent.ToolCallDelta
+                    val isDelta = event is ProviderStreamEvent.TextDelta ||
+                        event is ProviderStreamEvent.ImageDelta ||
+                        event is ProviderStreamEvent.ToolCallDelta
                     current = when (event) {
                         is ProviderStreamEvent.TextDelta -> current.withContent(
                             content = current.content + event.text,
+                            status = MessageStatus.Streaming,
+                            errorSummary = null,
+                        )
+                        is ProviderStreamEvent.ImageDelta -> current.withImage(
+                            image = event.image,
                             status = MessageStatus.Streaming,
                             errorSummary = null,
                         )
@@ -97,11 +104,29 @@ class SendMessageUseCase(
     ): Message =
         copy(
             content = content,
-            contentParts = if (content.isBlank()) emptyList() else listOf(MessagePart.Text(content)),
+            contentParts = content.toTextParts() + contentParts.filterIsInstance<MessagePart.Image>(),
             status = status,
             errorSummary = errorSummary,
             updatedAt = clock.instant(),
         )
+
+    private fun Message.withImage(
+        image: MessagePart.Image,
+        status: MessageStatus,
+        errorSummary: String? = this.errorSummary,
+    ): Message {
+        val nextContent = content.ifBlank { GENERATED_IMAGE_PLACEHOLDER }
+        return copy(
+            content = nextContent,
+            contentParts = nextContent.toTextParts() + contentParts.filterIsInstance<MessagePart.Image>() + image,
+            status = status,
+            errorSummary = errorSummary,
+            updatedAt = clock.instant(),
+        )
+    }
+
+    private fun String.toTextParts(): List<MessagePart.Text> =
+        if (isBlank()) emptyList() else listOf(MessagePart.Text(this))
 
     private fun Throwable.summary(): String =
         when (this) {
@@ -118,5 +143,6 @@ class SendMessageUseCase(
     private companion object {
         const val FLUSH_DELTA_COUNT = 10
         const val FLUSH_INTERVAL_MILLIS = 500L
+        const val GENERATED_IMAGE_PLACEHOLDER = "已生成图片。"
     }
 }

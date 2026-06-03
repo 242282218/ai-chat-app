@@ -123,6 +123,11 @@ val appModule: Module = module {
             gatewaySettingsProvider = { settingsRepository.currentSettings() },
             gatewayClientProvider = { get() },
             toolInvocationRepository = get(),
+            providerRepository = get(),
+            preferencesRepository = get(),
+            imageGenerationRepository = get(),
+            imageProvider = get(),
+            imageStorage = get(),
             clock = get(),
         )
     }

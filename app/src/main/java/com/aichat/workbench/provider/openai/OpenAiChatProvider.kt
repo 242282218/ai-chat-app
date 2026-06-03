@@ -349,11 +349,20 @@ open class OpenAiChatProvider(
         val event = providerJson.decodeFromString<ResponsesSseEvent>(data)
         return when (event.type) {
             "response.output_text.delta" -> ProviderStreamEvent.TextDelta(event.delta.orEmpty())
+            "response.output_item.done" -> event.item?.toImageDelta()
             "response.completed" -> ProviderStreamEvent.Completed
             "response.failed", "error" -> ProviderStreamEvent.Failed(event.toProviderError(statusCode = null))
             else -> null
         }
     }
+
+    private fun com.aichat.workbench.provider.api.ResponsesOutputItem.toImageDelta(): ProviderStreamEvent.ImageDelta? =
+        result
+            ?.takeIf { type == "image_generation_call" && it.isNotBlank() }
+            ?.toImageDelta()
+
+    private fun String.toImageDelta(): ProviderStreamEvent.ImageDelta =
+        ProviderStreamEvent.ImageDelta(MessagePart.Image("data:image/png;base64,$this", "image/png"))
 
     private fun mapChatCompletionSse(
         data: String,

@@ -11,6 +11,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import java.util.Base64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -55,7 +56,8 @@ class OpenAiImageGenerationProvider(
         val response = providerJson.decodeFromString<OpenAiImageResponse>(body)
         val images = response.data.map { item ->
             GeneratedImage(
-                base64 = item.base64?.takeIf { it.isNotBlank() },
+                base64 = item.base64?.takeIf { it.isNotBlank() }
+                    ?: item.url?.takeIf { it.isNotBlank() }?.let(::downloadImageAsBase64),
                 url = item.url?.takeIf { it.isNotBlank() },
                 revisedPrompt = item.revisedPrompt?.takeIf { it.isNotBlank() },
             )
@@ -74,7 +76,7 @@ class OpenAiImageGenerationProvider(
     private fun parseHttpError(statusCode: Int, body: String): ProviderError {
         val message = runCatching {
             providerJson.decodeFromString<ProviderErrorEnvelope>(body).error?.message
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "图片生成请求失败。"
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "图片生成请求失败：HTTP $statusCode。"
         val code = when (statusCode) {
             401 -> "authentication_failed"
             429 -> "rate_limited"
@@ -87,6 +89,31 @@ class OpenAiImageGenerationProvider(
             statusCode = statusCode,
             retryable = statusCode == 429 || statusCode in 500..599,
         )
+    }
+
+    private fun downloadImageAsBase64(url: String): String {
+        val response = client.newCall(
+            Request.Builder()
+                .url(url)
+                .get()
+                .header("Accept", "image/*")
+                .build(),
+        ).execute()
+        response.use {
+            if (!it.isSuccessful) {
+                throw ProviderHttpException(
+                    ProviderError(
+                        code = if (it.code in 500..599) "provider_unavailable" else "provider_error",
+                        message = "图片 URL 下载失败：HTTP ${it.code}。",
+                        statusCode = it.code,
+                        retryable = it.code == 429 || it.code in 500..599,
+                    ),
+                )
+            }
+            val bytes = it.body?.bytes().orEmpty()
+            require(bytes.isNotEmpty()) { "图片 URL 下载结果为空。" }
+            return Base64.getEncoder().encodeToString(bytes)
+        }
     }
 
     private companion object {

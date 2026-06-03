@@ -84,7 +84,11 @@ class ProviderModelDiscoveryClientTest {
         val chatModel = result.models.single { it.id == "codex-auto-review" }
         val imageModel = result.models.single { it.id == "gpt-image-1" }
         assertEquals(false, chatModel.capability?.imageGeneration)
+        assertEquals(true, chatModel.capability?.text)
+        assertEquals(true, chatModel.capability?.toolCalling)
         assertEquals(true, imageModel.capability?.imageGeneration)
+        assertEquals(false, imageModel.capability?.text)
+        assertEquals(false, imageModel.capability?.toolCalling)
         assertEquals(ModelCapabilitySource.ProviderDiscovery, chatModel.capability?.source)
     }
 

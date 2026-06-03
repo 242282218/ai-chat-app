@@ -105,6 +105,7 @@ import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
+import java.io.File
 import java.util.Base64
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
@@ -1136,7 +1137,12 @@ private fun MessageBubble(
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
-    var expanded by rememberSaveable(message.id.value) { mutableStateOf(message.role != MessageRole.Tool) }
+    var expanded by rememberSaveable(message.id.value) {
+        mutableStateOf(
+            message.role != MessageRole.Tool ||
+                message.contentParts.any { it is MessagePart.Image },
+        )
+    }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -1186,12 +1192,12 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    if (message.content.isBlank()) {
+                    if (message.content.isBlank() && images.isEmpty()) {
                         Text(
                             text = "...",
                             style = MaterialTheme.typography.bodyLarge,
                         )
-                    } else {
+                    } else if (message.content.isNotBlank()) {
                         MarkdownMessageContent(text = message.content)
                     }
                 } else {
@@ -1249,10 +1255,21 @@ private fun ChatImagePreview(
 
 private fun String.toImageBitmapOrNull() =
     runCatching {
-        val base64 = substringAfter("base64,", missingDelimiterValue = "")
-        if (base64.isBlank()) return@runCatching null
-        val bytes = Base64.getDecoder().decode(base64)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        val normalized = trim()
+        when {
+            normalized.startsWith("data:image") -> {
+                val base64 = substringAfter("base64,", missingDelimiterValue = "")
+                if (base64.isBlank()) return@runCatching null
+                val bytes = Base64.getDecoder().decode(base64)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }
+            normalized.startsWith("file://") -> {
+                val path = Uri.parse(normalized).path ?: return@runCatching null
+                BitmapFactory.decodeFile(path)
+            }
+            File(normalized).isFile -> BitmapFactory.decodeFile(normalized)
+            else -> null
+        }?.asImageBitmap()
     }.getOrNull()
 
 @Composable

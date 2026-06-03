@@ -2,13 +2,26 @@ package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.MessagePart
+import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolError
 import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.model.ToolStatus
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
+import com.aichat.workbench.domain.repository.ImageGenerationRepository
+import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
+import com.aichat.workbench.domain.usecase.GenerateImageRequest
+import com.aichat.workbench.domain.usecase.GenerateImageUseCase
+import com.aichat.workbench.provider.defaultImageModel
+import com.aichat.workbench.provider.image.ImageGenerationProvider
+import com.aichat.workbench.provider.requiresApiKey
+import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.tool.gateway.GatewayClient
 import com.aichat.workbench.tool.gateway.GatewayHttpException
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
@@ -16,11 +29,13 @@ import com.aichat.workbench.tool.gateway.SearchResponse
 import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
+import com.aichat.workbench.tool.model.canonicalToolName
 import com.aichat.workbench.tool.registry.BuiltInToolRegistry
 import java.net.URI
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -32,12 +47,23 @@ import kotlinx.serialization.json.Json
 data class ToolExecution(
     val result: ToolResult,
     val messageContent: String,
+    val contentParts: List<MessagePart> = emptyList(),
+)
+
+private data class ExecutedToolOutput(
+    val output: ToolOutput,
+    val contentParts: List<MessagePart> = emptyList(),
 )
 
 class ToolExecutor(
     private val gatewaySettingsProvider: suspend () -> GatewaySettings,
     gatewayClientProvider: () -> GatewayClient,
     private val toolInvocationRepository: ToolInvocationRepository,
+    private val providerRepository: ProviderConfigRepository,
+    private val preferencesRepository: ImageGenerationPreferencesRepository,
+    private val imageGenerationRepository: ImageGenerationRepository,
+    private val imageProvider: ImageGenerationProvider,
+    private val imageStorage: ImageStorage,
     private val clock: Clock,
 ) {
     private val gatewayClient: GatewayClient by lazy(gatewayClientProvider)
@@ -48,7 +74,7 @@ class ToolExecutor(
         localTools() + remoteTools()
 
     suspend fun descriptorFor(name: String): ToolDescriptor? =
-        availableTools().firstOrNull { it.name == name }
+        availableTools().firstOrNull { it.name == name.canonicalToolName() }
 
     suspend fun execute(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
         execute(conversationId, toolCall, descriptorFor(toolCall.name))
@@ -71,17 +97,19 @@ class ToolExecutor(
         }
         val startedAt = clock.instant()
         return runCatching {
-            when (toolCall.name) {
-                "time" -> ToolOutput.Json(timeOutputJson())
-                "web_search" -> ToolOutput.Json(executeSearch(toolCall.arguments).toJson())
-                "code_sandbox" -> ToolOutput.Json(executeSandbox(toolCall.arguments).toJson())
+            when (toolDescriptor.name) {
+                "time" -> ExecutedToolOutput(ToolOutput.Json(timeOutputJson()))
+                "web_search" -> ExecutedToolOutput(ToolOutput.Json(executeSearch(toolCall.arguments).toJson()))
+                "code_sandbox" -> ExecutedToolOutput(ToolOutput.Json(executeSandbox(toolCall.arguments).toJson()))
+                "image_generation" -> executeImageGeneration(conversationId, toolCall.arguments)
                 else -> error("工具尚未实现：${toolCall.name}")
             }
         }.fold(
-            onSuccess = { output ->
+            onSuccess = { executed ->
+                val output = executed.output
                 val result = ToolResult(
                     id = toolCall.id,
-                    toolName = toolCall.name,
+                    toolName = toolDescriptor.name,
                     permissionLevel = toolDescriptor.permissionLevel,
                     inputSummary = toolCall.arguments.toInputSummary(),
                     output = output,
@@ -91,7 +119,7 @@ class ToolExecutor(
                     error = null,
                 )
                 toolInvocationRepository.saveToolResult(conversationId, result)
-                ToolExecution(result, output.asModelContent())
+                ToolExecution(result, output.asModelContent(), executed.contentParts)
             },
             onFailure = { error ->
                 saveFailure(
@@ -123,7 +151,7 @@ class ToolExecutor(
         )
 
     private fun localTools(): List<ToolDescriptor> =
-        BuiltInToolRegistry.tools.filter { it.name == "time" }
+        BuiltInToolRegistry.tools.filter { it.name in LOCAL_TOOL_NAMES }
 
     private suspend fun remoteTools(): List<ToolDescriptor> {
         val settings = gatewaySettingsProvider()
@@ -184,6 +212,78 @@ class ToolExecutor(
             timeoutSeconds = timeoutSeconds,
             apiToken = settings.apiToken,
         )
+    }
+
+    private suspend fun executeImageGeneration(
+        conversationId: ConversationId,
+        arguments: String,
+    ): ExecutedToolOutput {
+        val args = decodeToolArguments<ImageGenerationArguments>(arguments)
+        val prompt = args.prompt.trim()
+        if (prompt.isBlank()) {
+            throw InvalidToolArgumentsException("图片提示词不能为空。")
+        }
+        val provider = selectImageProvider()
+        val apiKey = providerRepository.getApiKey(provider.id)
+        if (provider.requiresApiKey()) {
+            require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
+        }
+        val model = args.model?.trim()?.takeIf { it.isNotBlank() }
+            ?: imagePreferencesModel(provider)
+            ?: provider.defaultImageModel()
+        if (model.isBlank()) {
+            throw InvalidToolArgumentsException("图片 Model 不能为空。")
+        }
+        val count = args.count ?: 1
+        if (count !in 1..4) {
+            throw InvalidToolArgumentsException("图片数量必须在 1 到 4 之间。")
+        }
+        val images = GenerateImageUseCase(
+            repository = imageGenerationRepository,
+            imageProvider = imageProvider,
+            imageStorage = imageStorage,
+            clock = clock,
+        )(
+            GenerateImageRequest(
+                conversationId = conversationId,
+                provider = provider,
+                apiKey = apiKey,
+                model = model,
+                prompt = prompt,
+                size = args.size?.trim()?.ifBlank { null },
+                quality = args.quality?.trim()?.ifBlank { null },
+                count = count,
+            ),
+        )
+        val output = ImageGenerationOutput(
+            prompt = prompt,
+            providerId = provider.id.value,
+            model = model,
+            count = images.size,
+            images = images.map { it.toOutput() },
+            markdown = images.toMarkdown(),
+        )
+        return ExecutedToolOutput(
+            output = ToolOutput.Json(toolJson.encodeToString(output)),
+            contentParts = images.toMessageParts(),
+        )
+    }
+
+    private suspend fun selectImageProvider(): ProviderConfig {
+        val preferences = preferencesRepository.observePreferences().value
+        val providers = providerRepository.observeProviders().first()
+            .filter { it.enabled && it.supportsImageGeneration() }
+        val preferred = preferences.providerId
+            ?.let { id -> providers.firstOrNull { it.id.value == id } }
+        return preferred ?: providers.firstOrNull() ?: error("模型服务未配置。")
+    }
+
+    private fun imagePreferencesModel(provider: ProviderConfig): String? {
+        val preferences = preferencesRepository.observePreferences().value
+        return preferences.model
+            ?.takeIf { preferences.providerId == provider.id.value }
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun requireGatewaySettings(): GatewaySettings {
@@ -299,6 +399,25 @@ class ToolExecutor(
 
     private fun List<ToolDescriptor>.filterExecutableRemoteTools(): List<ToolDescriptor> =
         filter { it.name in EXECUTABLE_REMOTE_TOOL_NAMES }
+
+    private fun ImageGeneration.toOutput(): ImageGenerationResultOutput =
+        ImageGenerationResultOutput(
+            id = id.value,
+            originalPath = originalPath,
+            thumbnailPath = thumbnailPath,
+            status = status.name.lowercase(),
+            errorSummary = errorSummary,
+        )
+
+    private fun List<ImageGeneration>.toMarkdown(): String =
+        mapNotNull { image ->
+            image.originalPath?.let { path -> "![generated image]($path)" }
+        }.joinToString("\n")
+
+    private fun List<ImageGeneration>.toMessageParts(): List<MessagePart> =
+        mapNotNull { image ->
+            image.originalPath?.let { path -> MessagePart.Image(uri = path, mimeType = "image/png") }
+        }
 }
 
 private data class RemoteToolsCache(
@@ -324,6 +443,7 @@ private class GatewaySettingsException(
 ) : RuntimeException(message)
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
+private val LOCAL_TOOL_NAMES = setOf("time", "image_generation")
 private const val DEFAULT_SANDBOX_LANGUAGE = "python"
 private const val DEFAULT_SANDBOX_TIMEOUT_SECONDS = 3
 private const val MIN_SANDBOX_TIMEOUT_SECONDS = 1
@@ -347,10 +467,38 @@ private data class SandboxArguments(
 )
 
 @Serializable
+private data class ImageGenerationArguments(
+    val prompt: String = "",
+    val model: String? = null,
+    val size: String? = null,
+    val quality: String? = null,
+    val count: Int? = null,
+)
+
+@Serializable
 private data class TimeOutput(val currentTime: String)
 
 @Serializable
 private data class ToolErrorOutput(val code: String, val message: String)
+
+@Serializable
+private data class ImageGenerationOutput(
+    val prompt: String,
+    val providerId: String,
+    val model: String,
+    val count: Int,
+    val images: List<ImageGenerationResultOutput>,
+    val markdown: String,
+)
+
+@Serializable
+private data class ImageGenerationResultOutput(
+    val id: String,
+    val originalPath: String?,
+    val thumbnailPath: String?,
+    val status: String,
+    val errorSummary: String? = null,
+)
 
 @Serializable
 private data class SearchOutput(

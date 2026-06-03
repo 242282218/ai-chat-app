@@ -3,6 +3,8 @@ package com.aichat.workbench.feature.image
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.ImageGenerationStatus
+import com.aichat.workbench.domain.model.ModelCapability
+import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
@@ -223,6 +225,35 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun imageProviderSelectionSkipsDiscoveredTextOnlyModels() = runTest(mainDispatcherRule.testDispatcher) {
+        val chatOnlyProvider = provider(
+            id = "chat-new-api",
+            type = ProviderType.NewApi,
+            defaultModel = "gpt-5.4",
+            models = listOf(model("gpt-5.4", text = true, imageGeneration = false)),
+        )
+        val imageProvider = provider(
+            id = "image-new-api",
+            type = ProviderType.NewApi,
+            defaultModel = "gpt-image-2",
+            models = listOf(
+                model("gpt-image-1.5", text = false, imageGeneration = true),
+                model("gpt-image-2", text = false, imageGeneration = true),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(chatOnlyProvider, imageProvider)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(imageProvider), viewModel.state.value.providers)
+        assertEquals(imageProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-image-2", viewModel.state.value.model)
+    }
+
+    @Test
     fun selectProviderPersistsImageProviderAndDefaultImageModel() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val newApiProvider = provider("new-api", ProviderType.NewApi)
@@ -317,6 +348,7 @@ class ImageGenerationViewModelTest {
         type: ProviderType,
         apiKeyRef: String? = null,
         defaultModel: String = "$id-model",
+        models: List<ModelConfig> = emptyList(),
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
@@ -325,9 +357,29 @@ class ImageGenerationViewModelTest {
             baseUrl = "https://example.test/v1",
             apiKeyRef = apiKeyRef,
             headers = emptyMap(),
-            models = emptyList(),
+            models = models,
             defaultModel = defaultModel,
             enabled = true,
+        )
+
+    private fun model(
+        id: String,
+        text: Boolean,
+        imageGeneration: Boolean,
+    ): ModelConfig =
+        ModelConfig(
+            id = id,
+            displayName = id,
+            capability = ModelCapability(
+                model = id,
+                text = text,
+                vision = text,
+                imageGeneration = imageGeneration,
+                toolCalling = text,
+                structuredOutput = text,
+                longContext = text,
+                maxContextTokens = null,
+            ),
         )
 
     private fun base64Image(bytes: ByteArray): GeneratedImage =

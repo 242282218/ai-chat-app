@@ -18,6 +18,7 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
+import com.aichat.workbench.tool.model.canonicalToolName
 import com.aichat.workbench.tool.model.requiresConfirmation
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
@@ -265,7 +266,7 @@ class GenerationController(
         tools: List<ToolDescriptor>,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
-        val descriptor = tools.firstOrNull { it.name == toolCall.name }
+        val descriptor = tools.firstOrNull { it.name == toolCall.name.canonicalToolName() }
         val approved = if (descriptor?.permissionLevel?.requiresConfirmation() == true) {
             awaitToolApproval(toolCall, descriptor, onStateChanged)
         } else {
@@ -292,6 +293,7 @@ class GenerationController(
             toolCallId = toolCall.id,
             toolResult = execution.messageContent,
             errorSummary = execution.result.error?.message,
+            contentParts = execution.contentParts.ifEmpty { listOf(MessagePart.Text(execution.messageContent)) },
         )
         conversationRepository.saveMessage(toolMessage)
     }
@@ -390,14 +392,14 @@ class GenerationController(
             source = ToolSource.Official,
         )
 
-    private fun ProviderType.supportsChatCompletionsHostedWebSearch(): Boolean =
-        this == ProviderType.NewApi ||
-            this == ProviderType.Sub2Api
-
     private fun ProviderConfig.supportsToolCalling(model: String, providerSupportsTools: Boolean): Boolean {
         val capability = models.firstOrNull { it.id == model }?.capability
         return capability?.toolCalling ?: providerSupportsTools
     }
+
+    private fun ProviderType.supportsChatCompletionsHostedWebSearch(): Boolean =
+        this == ProviderType.NewApi ||
+            this == ProviderType.Sub2Api
 
     private fun editHistory(
         messages: List<Message>,

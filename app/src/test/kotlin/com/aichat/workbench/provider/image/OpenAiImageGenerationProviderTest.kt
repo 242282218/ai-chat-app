@@ -70,6 +70,30 @@ class OpenAiImageGenerationProviderTest {
     }
 
     @Test
+    fun generate_downloadsUrlImagesAsBase64Images() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"url":"${server.url("/generated.png")}"}]}"""),
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("image"),
+        )
+        val provider = OpenAiImageGenerationProvider()
+
+        val response = provider.generate(request())
+        val postRequest = server.takeRequest()
+        val downloadRequest = server.takeRequest()
+
+        assertEquals("/v1/images/generations", postRequest.path)
+        assertEquals("/generated.png", downloadRequest.path)
+        assertEquals("aW1hZ2U=", response.images.single().base64)
+        assertEquals(server.url("/generated.png").toString(), response.images.single().url)
+    }
+
+    @Test
     fun generate_mapsProviderErrors() = runTest {
         server.enqueue(
             MockResponse()

@@ -4,6 +4,7 @@ import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
+import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ModelParameters
@@ -68,6 +69,27 @@ class SendMessageUseCaseTest {
         assertEquals(MessageStatus.Streaming, repository.savedMessages[1].status)
         assertEquals("ab", repository.savedMessages[2].content)
         assertEquals(MessageStatus.Completed, repository.savedMessages[2].status)
+    }
+
+    @Test
+    fun imageDeltaAddsImageContentPartAndKeepsItAfterCompleted() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val image = MessagePart.Image("data:image/png;base64,abc", "image/png")
+        val provider = FlowChatProvider(
+            flowOf(
+                ProviderStreamEvent.TextDelta("Image ready"),
+                ProviderStreamEvent.ImageDelta(image),
+                ProviderStreamEvent.Completed,
+            ),
+        )
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals("Image ready", states.last().content)
+        assertEquals(listOf(MessagePart.Text("Image ready"), image), states.last().contentParts)
+        assertEquals(listOf(MessagePart.Text("Image ready"), image), repository.savedMessages.last().contentParts)
     }
 
     private fun assistantMessage(clock: Clock): Message =

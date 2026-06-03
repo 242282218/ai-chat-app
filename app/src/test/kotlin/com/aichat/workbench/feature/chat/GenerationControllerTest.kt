@@ -3,6 +3,8 @@ package com.aichat.workbench.feature.chat
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessageRole
@@ -16,8 +18,13 @@ import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.model.ToolResult
+import com.aichat.workbench.domain.repository.ImageGenerationPreferences
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
+import com.aichat.workbench.domain.repository.ImageGenerationRepository
+import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
@@ -25,6 +32,9 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
+import com.aichat.workbench.provider.image.ImageGenerationProvider
+import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
+import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
 import com.aichat.workbench.tool.gateway.GatewayClient
 import java.time.Clock
 import java.time.Instant
@@ -143,7 +153,7 @@ class GenerationControllerTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("time", "web_search"), chatProvider.requests.single().tools.map { it.name })
+        assertEquals(listOf("time", "image_generation", "web_search"), chatProvider.requests.single().tools.map { it.name })
     }
 
     @Test
@@ -187,7 +197,7 @@ class GenerationControllerTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("time"), chatProvider.requests.single().tools.map { it.name })
+        assertEquals(listOf("time", "image_generation"), chatProvider.requests.single().tools.map { it.name })
     }
 
     @Test
@@ -579,6 +589,11 @@ private fun toolExecutor(
         gatewaySettingsProvider = { GatewaySettings(enabled = false, baseUrl = "", apiToken = "") },
         gatewayClientProvider = { GatewayClient() },
         toolInvocationRepository = toolInvocationRepository,
+        providerRepository = GenerationControllerProviderRepository(emptyList(), emptyMap()),
+        preferencesRepository = GenerationControllerImagePreferencesRepository(),
+        imageGenerationRepository = GenerationControllerImageGenerationRepository(),
+        imageProvider = GenerationControllerImageProvider(),
+        imageStorage = GenerationControllerImageStorage(),
         clock = clock,
     )
 
@@ -590,6 +605,54 @@ private class GenerationControllerToolInvocationRepository : ToolInvocationRepos
     override suspend fun saveToolResult(conversationId: ConversationId?, toolResult: ToolResult) {
         savedResults.value = savedResults.value + toolResult
     }
+}
+
+private class GenerationControllerImagePreferencesRepository : ImageGenerationPreferencesRepository {
+    private val preferences = MutableStateFlow(ImageGenerationPreferences())
+
+    override fun observePreferences(): MutableStateFlow<ImageGenerationPreferences> = preferences
+
+    override suspend fun savePreferences(providerId: String?, model: String?) {
+        preferences.value = ImageGenerationPreferences(providerId = providerId, model = model)
+    }
+}
+
+private class GenerationControllerImageGenerationRepository : ImageGenerationRepository {
+    private val generations = MutableStateFlow<List<ImageGeneration>>(emptyList())
+
+    override fun observeImageGenerations(): Flow<List<ImageGeneration>> = generations
+
+    override suspend fun getImageGeneration(id: ImageGenerationId): ImageGeneration? =
+        generations.value.firstOrNull { it.id == id }
+
+    override suspend fun saveImageGeneration(imageGeneration: ImageGeneration) {
+        generations.value = generations.value.filterNot { it.id == imageGeneration.id } + imageGeneration
+    }
+
+    override suspend fun deleteImageGeneration(id: ImageGenerationId) {
+        generations.value = generations.value.filterNot { it.id == id }
+    }
+
+    override suspend fun deleteAllImageGenerations() {
+        generations.value = emptyList()
+    }
+}
+
+private class GenerationControllerImageProvider : ImageGenerationProvider {
+    override suspend fun generate(
+        request: ImageGenerationProviderRequest,
+    ): ImageGenerationProviderResponse =
+        ImageGenerationProviderResponse(emptyList())
+}
+
+private class GenerationControllerImageStorage : ImageStorage {
+    override suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths =
+        StoredImagePaths(
+            originalPath = "original/${id.value}.png",
+            thumbnailPath = "thumb/${id.value}.png",
+        )
+
+    override suspend fun deleteAllImages() = Unit
 }
 
 private class GenerationControllerProviderRepository(

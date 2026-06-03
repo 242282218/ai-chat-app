@@ -141,6 +141,8 @@ internal data class ResponsesSseEvent(
     val type: String? = null,
     val delta: String? = null,
     val item: ResponsesOutputItem? = null,
+    @SerialName("partial_image_b64") val partialImageB64: String? = null,
+    @SerialName("partial_image_index") val partialImageIndex: Int? = null,
     val error: ProviderErrorBody? = null,
     val code: String? = null,
     val message: String? = null,

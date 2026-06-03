@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ProviderConfig
-import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
@@ -12,8 +11,10 @@ import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
-import com.aichat.workbench.provider.ProviderRegistry
-import com.aichat.workbench.provider.isLikelyImageGenerationModel
+import com.aichat.workbench.provider.DEFAULT_OPENAI_IMAGE_MODEL
+import com.aichat.workbench.provider.defaultImageModel
+import com.aichat.workbench.provider.requiresApiKey
+import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
 import kotlinx.coroutines.Job
@@ -227,24 +228,4 @@ class ImageGenerationViewModel(
             selectedProviderChanged -> provider.defaultImageModel()
             else -> model.ifBlank { provider.defaultImageModel() }
         }
-
-    private fun ProviderConfig.defaultImageModel(): String =
-        models.firstOrNull { it.capability?.imageGeneration == true && it.id.isLikelyImageGenerationModel() }?.id
-            ?: defaultModel?.takeIf { it.isLikelyImageGenerationModel() }
-            ?: if (type.supportsOpenAiCompatibleImageGeneration() || supportsImageGeneration()) {
-                DEFAULT_OPENAI_IMAGE_MODEL
-            } else {
-                ""
-            }
-
-    private fun ProviderConfig.supportsImageGeneration(): Boolean =
-        ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true
-
-    private fun ProviderType.supportsOpenAiCompatibleImageGeneration(): Boolean =
-        this == ProviderType.OpenAI ||
-            this == ProviderType.NewApi ||
-            this == ProviderType.Sub2Api ||
-            this == ProviderType.Custom
 }
-
-private const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"

@@ -47,6 +47,8 @@ data class ProviderTextResponse(
 sealed interface ProviderStreamEvent {
     data class TextDelta(val text: String) : ProviderStreamEvent
 
+    data class ImageDelta(val image: MessagePart.Image) : ProviderStreamEvent
+
     data class ToolCallDelta(val toolCall: ToolCall) : ProviderStreamEvent
 
     data object Completed : ProviderStreamEvent

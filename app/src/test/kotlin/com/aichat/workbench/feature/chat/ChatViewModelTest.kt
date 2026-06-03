@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
@@ -19,8 +21,13 @@ import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.ImageGenerationPreferences
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
+import com.aichat.workbench.domain.repository.ImageGenerationRepository
+import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
@@ -28,6 +35,9 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
+import com.aichat.workbench.provider.image.ImageGenerationProvider
+import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
+import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
 import com.aichat.workbench.tool.gateway.GatewayClient
 import java.time.Clock
 import java.time.Instant
@@ -129,6 +139,36 @@ class ChatViewModelTest : KoinTest {
         assertEquals(listOf(openAi), viewModel.state.value.providers)
         assertEquals(openAi.id.value, viewModel.state.value.selectedProviderId)
         assertEquals("openai-model", viewModel.state.value.modelDraft)
+    }
+
+    @Test
+    fun observesOnlyTextCapableChatProviders() = runTest(mainDispatcherRule.testDispatcher) {
+        val chatProvider = provider(
+            id = "chat",
+            type = ProviderType.OpenAI,
+            defaultModel = "gpt-5.4",
+            models = listOf(model("gpt-5.4", text = true)),
+        )
+        val imageProvider = provider(
+            id = "image",
+            type = ProviderType.OpenAICompatible,
+            defaultModel = "gpt-image-2",
+            models = listOf(model("gpt-image-2", text = false, imageGeneration = true)),
+        )
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(
+                providers = listOf(imageProvider, chatProvider),
+                apiKeys = mapOf(chatProvider.id to "chat-key", imageProvider.id to "image-key"),
+            ),
+            openAiProvider = RecordingChatProvider(),
+            compatibleProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(chatProvider), viewModel.state.value.providers)
+        assertEquals(chatProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-5.4", viewModel.state.value.modelDraft)
     }
 
     @Test
@@ -373,6 +413,10 @@ class ChatViewModelTest : KoinTest {
                     single<ProviderConfigRepository> { providerRepository }
                     single<PromptPresetRepository> { FakePromptPresetRepository() }
                     single<ToolInvocationRepository> { FakeToolInvocationRepository() }
+                    single<ImageGenerationPreferencesRepository> { FakeImageGenerationPreferencesRepository() }
+                    single<ImageGenerationRepository> { FakeImageGenerationRepository() }
+                    single<ImageGenerationProvider> { FakeImageGenerationProvider() }
+                    single<ImageStorage> { FakeImageStorage() }
                     single<ChatProvider>(named("openai")) { openAiProvider }
                     single<ChatProvider>(named("compatible")) { compatibleProvider }
                     single {
@@ -388,6 +432,11 @@ class ChatViewModelTest : KoinTest {
                             gatewaySettingsProvider = { GatewaySettings(enabled = false, baseUrl = "", apiToken = "") },
                             gatewayClientProvider = { GatewayClient() },
                             toolInvocationRepository = get(),
+                            providerRepository = get(),
+                            preferencesRepository = get(),
+                            imageGenerationRepository = get(),
+                            imageProvider = get(),
+                            imageStorage = get(),
                             clock = get(),
                         )
                     }
@@ -453,6 +502,26 @@ class ChatViewModelTest : KoinTest {
             models = models,
             defaultModel = defaultModel,
             enabled = true,
+        )
+
+    private fun model(
+        id: String,
+        text: Boolean,
+        imageGeneration: Boolean = false,
+    ): ModelConfig =
+        ModelConfig(
+            id = id,
+            displayName = id,
+            capability = ModelCapability(
+                model = id,
+                text = text,
+                vision = text,
+                imageGeneration = imageGeneration,
+                toolCalling = text,
+                structuredOutput = text,
+                longContext = text,
+                maxContextTokens = null,
+            ),
         )
 
     private fun conversation(
@@ -630,6 +699,54 @@ private class FakePromptPresetRepository : PromptPresetRepository {
     override suspend fun deletePromptPreset(id: PromptPresetId) {
         presets.value = presets.value.filterNot { it.id == id }
     }
+}
+
+private class FakeImageGenerationPreferencesRepository : ImageGenerationPreferencesRepository {
+    private val preferences = MutableStateFlow(ImageGenerationPreferences())
+
+    override fun observePreferences(): MutableStateFlow<ImageGenerationPreferences> = preferences
+
+    override suspend fun savePreferences(providerId: String?, model: String?) {
+        preferences.value = ImageGenerationPreferences(providerId = providerId, model = model)
+    }
+}
+
+private class FakeImageGenerationRepository : ImageGenerationRepository {
+    private val generations = MutableStateFlow<List<ImageGeneration>>(emptyList())
+
+    override fun observeImageGenerations(): Flow<List<ImageGeneration>> = generations
+
+    override suspend fun getImageGeneration(id: ImageGenerationId): ImageGeneration? =
+        generations.value.firstOrNull { it.id == id }
+
+    override suspend fun saveImageGeneration(imageGeneration: ImageGeneration) {
+        generations.value = generations.value.filterNot { it.id == imageGeneration.id } + imageGeneration
+    }
+
+    override suspend fun deleteImageGeneration(id: ImageGenerationId) {
+        generations.value = generations.value.filterNot { it.id == id }
+    }
+
+    override suspend fun deleteAllImageGenerations() {
+        generations.value = emptyList()
+    }
+}
+
+private class FakeImageGenerationProvider : ImageGenerationProvider {
+    override suspend fun generate(
+        request: ImageGenerationProviderRequest,
+    ): ImageGenerationProviderResponse =
+        ImageGenerationProviderResponse(emptyList())
+}
+
+private class FakeImageStorage : ImageStorage {
+    override suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths =
+        StoredImagePaths(
+            originalPath = "original/${id.value}.png",
+            thumbnailPath = "thumb/${id.value}.png",
+        )
+
+    override suspend fun deleteAllImages() = Unit
 }
 
 private class FakeToolInvocationRepository : ToolInvocationRepository {

@@ -1,7 +1,7 @@
 package com.aichat.workbench.feature.image
 
 import com.aichat.workbench.domain.model.ProviderConfig
-import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.ui.component.StatusTone
 
 internal data class ImageReadiness(
@@ -99,6 +99,3 @@ private fun ImageGenerationUiState.selectedProviderMissingApiKey(): Boolean {
     val provider = selectedProvider ?: return false
     return provider.requiresApiKey() && provider.apiKeyRef == null
 }
-
-internal fun ProviderConfig.requiresApiKey(): Boolean =
-    ProviderRegistry.builtInDescriptor(type)?.requiresApiKey ?: true
