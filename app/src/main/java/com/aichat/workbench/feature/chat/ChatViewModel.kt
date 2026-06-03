@@ -14,6 +14,7 @@ import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.preferredModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,9 +86,9 @@ class ChatViewModel(
                 selectedProviderId = id,
                 draft = it.draft.copy(
                     model = if (providerChanged) {
-                        provider.defaultModel.orEmpty()
+                        provider.preferredModel()
                     } else {
-                        it.modelDraft.ifBlank { provider.defaultModel.orEmpty() }
+                        it.modelDraft.ifBlank { provider.preferredModel() }
                     },
                 ),
             )

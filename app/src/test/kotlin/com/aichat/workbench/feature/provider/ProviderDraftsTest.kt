@@ -187,7 +187,7 @@ class ProviderDraftsTest {
     @Test
     fun summarizesUnsupportedStoredProviderAsUnavailable() {
         assertEquals(
-            "暂不可用 · Anthropic · claude-test · 缺少密钥",
+            "暂不可用 · Anthropic · claude-test · 未同步模型 · 缺少密钥",
             provider(type = ProviderType.Anthropic, model = "claude-test").connectionSummary(),
         )
     }

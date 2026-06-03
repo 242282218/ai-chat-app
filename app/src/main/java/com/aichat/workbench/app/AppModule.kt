@@ -32,6 +32,7 @@ import com.aichat.workbench.feature.tools.ToolsViewModel
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ProviderConnectionTester
+import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
 import com.aichat.workbench.provider.compatible.OpenAiCompatibleChatProvider
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.OpenAiImageGenerationProvider
@@ -127,6 +128,12 @@ val appModule: Module = module {
             conversationRepository = get(),
             imageStorage = get(),
             clock = get(),
+        )
+    }
+    single {
+        ProviderModelDiscoveryClient(
+            client = get(named("jsonHttpClient")),
+            providerRegistry = get(),
         )
     }
     single {

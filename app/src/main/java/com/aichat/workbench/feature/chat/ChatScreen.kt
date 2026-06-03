@@ -91,7 +91,10 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.ModelConfig
+import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.provider.preferredModel
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
@@ -711,6 +714,11 @@ private fun ChatSettingsPanel(
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                ChatModelPicker(
+                    provider = selectedChatProvider(state),
+                    selectedModel = state.modelDraft,
+                    onSelectModel = viewModel::updateModelDraft,
+                )
                 OutlinedTextField(
                     value = state.modelDraft,
                     onValueChange = viewModel::updateModelDraft,
@@ -791,6 +799,63 @@ private fun ChatSettingsPanel(
             }
         }
     }
+}
+
+@Composable
+private fun ChatModelPicker(
+    provider: ProviderConfig?,
+    selectedModel: String,
+    onSelectModel: (String) -> Unit,
+) {
+    val models = provider?.models.orEmpty()
+    if (models.isEmpty()) {
+        Text(
+            text = "当前连接还没有同步模型，可手动填写模型名。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        MetadataRow(
+            label = "可用模型",
+            value = "${provider?.name.orEmpty()} · ${models.size} 个",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(models, key = { it.id }) { model ->
+                ModelChip(
+                    model = model,
+                    selected = model.id == selectedModel.trim(),
+                    onClick = { onSelectModel(model.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelChip(
+    model: ModelConfig,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text(
+                text = model.displayName.ifBlank { model.id },
+                modifier = Modifier.widthIn(max = 180.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        leadingIcon = {
+            if (selected) {
+                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+            }
+        },
+    )
 }
 
 @Composable
@@ -1531,7 +1596,7 @@ private fun chatSubtitle(
     selectedConversation: Conversation?,
 ): String {
     val selectedProvider = selectedChatProvider(state)
-    val model = state.modelDraft.ifBlank { selectedProvider?.defaultModel.orEmpty() }
+    val model = state.modelDraft.ifBlank { selectedProvider?.preferredModel().orEmpty() }
     val providerText = selectedProvider?.let {
         if (model.isBlank()) it.name else "${it.name} / $model"
     } ?: "需要模型连接"

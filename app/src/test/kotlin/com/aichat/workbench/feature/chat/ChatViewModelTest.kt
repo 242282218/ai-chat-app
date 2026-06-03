@@ -154,6 +154,33 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun selectProviderFallsBackToFirstDiscoveredModel() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val compatible = provider(
+            id = "compatible",
+            type = ProviderType.OpenAICompatible,
+            defaultModel = null,
+            models = listOf(ModelConfig("model-a", "Model A", capability = null)),
+        )
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(
+                providers = listOf(openAi, compatible),
+                apiKeys = mapOf(openAi.id to "openai-key", compatible.id to "compatible-key"),
+            ),
+            openAiProvider = RecordingChatProvider(),
+            compatibleProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateModelDraft("manual-openai-model")
+        viewModel.selectProvider(compatible.id.value)
+
+        assertEquals(compatible.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("model-a", viewModel.state.value.modelDraft)
+    }
+
+    @Test
     fun editMessageSendsRewrittenHistory() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)
@@ -392,7 +419,30 @@ class ChatViewModelTest : KoinTest {
         return get()
     }
 
-    private fun provider(id: String, type: ProviderType, vision: Boolean? = null): ProviderConfig =
+    private fun provider(
+        id: String,
+        type: ProviderType,
+        vision: Boolean? = null,
+        defaultModel: String? = "$id-model",
+        models: List<ModelConfig> = listOfNotNull(
+            vision?.let {
+                ModelConfig(
+                    id = "$id-model",
+                    displayName = "$id model",
+                    capability = ModelCapability(
+                        model = "$id-model",
+                        text = true,
+                        vision = it,
+                        imageGeneration = false,
+                        toolCalling = true,
+                        structuredOutput = false,
+                        longContext = false,
+                        maxContextTokens = 32_000,
+                    ),
+                )
+            },
+        ),
+    ): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
             name = id,
@@ -400,25 +450,8 @@ class ChatViewModelTest : KoinTest {
             baseUrl = "https://example.test/v1",
             apiKeyRef = null,
             headers = emptyMap(),
-            models = listOfNotNull(
-                vision?.let {
-                    ModelConfig(
-                        id = "$id-model",
-                        displayName = "$id model",
-                        capability = ModelCapability(
-                            model = "$id-model",
-                            text = true,
-                            vision = it,
-                            imageGeneration = false,
-                            toolCalling = true,
-                            structuredOutput = false,
-                            longContext = false,
-                            maxContextTokens = 32_000,
-                        ),
-                    )
-                },
-            ),
-            defaultModel = "$id-model",
+            models = models,
+            defaultModel = defaultModel,
             enabled = true,
         )
 

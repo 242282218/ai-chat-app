@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,11 +20,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
@@ -58,10 +61,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ModelConfig
-import com.aichat.workbench.domain.model.ModelCapability
-import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
@@ -69,7 +71,9 @@ import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
 import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.defaultModelCapability
 import com.aichat.workbench.provider.api.ProviderConnectionTester
+import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
@@ -92,6 +96,7 @@ fun ProviderSettingsScreen(
 ) {
     val repository = koinInject<ProviderConfigRepository>()
     val connectionTester = koinInject<ProviderConnectionTester>()
+    val modelDiscoveryClient = koinInject<ProviderModelDiscoveryClient>()
     val saveProvider = remember(repository) { SaveProviderConfigUseCase(repository) }
     val deleteProvider = remember(repository) { DeleteProviderConfigUseCase(repository) }
     val providers by repository.observeProviders().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -102,6 +107,7 @@ fun ProviderSettingsScreen(
     var type by rememberSaveable { mutableStateOf(ProviderType.OpenAI) }
     var baseUrl by rememberSaveable { mutableStateOf("https://api.openai.com/v1") }
     var model by rememberSaveable { mutableStateOf("") }
+    var models by remember { mutableStateOf<List<ModelConfig>>(emptyList()) }
     var apiKey by rememberSaveable { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
     var enabled by rememberSaveable { mutableStateOf(true) }
@@ -120,6 +126,7 @@ fun ProviderSettingsScreen(
         type != ProviderType.OpenAI ||
         baseUrl != "https://api.openai.com/v1" ||
         model.isNotBlank() ||
+        models.isNotEmpty() ||
         apiKey.isNotBlank() ||
         headers.isNotBlank() ||
         !enabled ||
@@ -132,6 +139,7 @@ fun ProviderSettingsScreen(
         type = provider.type
         baseUrl = provider.baseUrl
         model = provider.defaultModel.orEmpty()
+        models = provider.models
         apiKey = ""
         headers = provider.headers.entries.joinToString("\n") { (key, value) -> "$key: $value" }
         enabled = provider.enabled
@@ -148,6 +156,8 @@ fun ProviderSettingsScreen(
             baseUrl = descriptor?.defaultBaseUrl.orEmpty()
             allowHttp = descriptor?.defaultBaseUrl?.startsWith("http://") == true
         }
+        models = emptyList()
+        model = ""
     }
 
     fun resetForm() {
@@ -156,6 +166,7 @@ fun ProviderSettingsScreen(
         type = ProviderType.OpenAI
         baseUrl = "https://api.openai.com/v1"
         model = ""
+        models = emptyList()
         apiKey = ""
         headers = ""
         enabled = true
@@ -190,6 +201,7 @@ fun ProviderSettingsScreen(
     fun currentProvider(): ProviderConfig {
         val providerId = ProviderId(editingId ?: UUID.randomUUID().toString())
         val trimmedModel = model.trim()
+        val normalizedModels = models.withManualModel(type, trimmedModel)
         return ProviderConfig(
             id = providerId,
             name = name.trim(),
@@ -197,14 +209,31 @@ fun ProviderSettingsScreen(
             baseUrl = baseUrl.trim().trimEnd('/'),
             apiKeyRef = null,
             headers = parseHeaderLines(headers),
-            models = if (trimmedModel.isBlank()) {
-                emptyList()
-            } else {
-                listOf(ModelConfig(trimmedModel, trimmedModel, capability = type.defaultCapability(trimmedModel)))
-            },
+            models = normalizedModels,
             defaultModel = trimmedModel.ifBlank { null },
             enabled = enabled,
         )
+    }
+
+    suspend fun discoverModelsFor(provider: ProviderConfig): List<ModelConfig>? {
+        val storedKey = if (apiKey.isBlank()) repository.getApiKey(provider.id) else null
+        val result = modelDiscoveryClient.discover(
+            provider = provider,
+            apiKey = apiKey.trim().ifBlank { storedKey.orEmpty() },
+        )
+        message = if (result.ok) {
+            "${result.message}，保存后可用于聊天。"
+        } else {
+            result.message
+        }
+        return result.models.takeIf { result.ok }
+    }
+
+    fun applyDiscoveredModels(discoveredModels: List<ModelConfig>) {
+        models = discoveredModels
+        if (model.isBlank()) {
+            model = discoveredModels.firstOrNull()?.id.orEmpty()
+        }
     }
     val saveStatus = providerSaveStatus(
         name = name,
@@ -307,6 +336,8 @@ fun ProviderSettingsScreen(
                         onBaseUrlChange = { baseUrl = it },
                         model = model,
                         onModelChange = { model = it },
+                        models = models,
+                        onSelectModel = { model = it },
                         apiKey = apiKey,
                         hasStoredKey = storedApiKeyRef != null,
                         onApiKeyChange = { apiKey = it },
@@ -322,16 +353,40 @@ fun ProviderSettingsScreen(
                         canTest = testStatus.isReady,
                         onSave = {
                             val provider = currentProvider()
-
                             scope.launch {
                                 runCatching {
-                                saveProvider(provider, apiKey.trim(), allowHttp)
-                            }.onSuccess {
-                                resetForm()
-                                showProviderEditor = false
-                            }.onFailure { error ->
-                                message = error.message ?: "保存失败"
+                                    val discoveredModels = if (testStatus.isReady) {
+                                        discoverModelsFor(provider)
+                                    } else {
+                                        null
+                                    }
+                                    val providerToSave = if (discoveredModels == null) {
+                                        provider
+                                    } else {
+                                        val defaultModel = model.trim().ifBlank { discoveredModels.firstOrNull()?.id.orEmpty() }
+                                        provider.copy(
+                                            models = discoveredModels.withManualModel(type, defaultModel),
+                                            defaultModel = defaultModel.ifBlank { null },
+                                        )
+                                    }
+                                    saveProvider(providerToSave, apiKey.trim(), allowHttp)
+                                }.onSuccess {
+                                    resetForm()
+                                    showProviderEditor = false
+                                }.onFailure { error ->
+                                    message = error.message ?: "保存失败"
+                                }
                             }
+                        },
+                        onRefreshModels = {
+                            val provider = currentProvider()
+                            if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !allowHttp) {
+                                message = "刷新模型前请先允许 HTTP。"
+                                return@ProviderForm
+                            }
+                            scope.launch {
+                                message = "刷新模型中..."
+                                discoverModelsFor(provider)?.let(::applyDiscoveredModels)
                             }
                         },
                         onTest = {
@@ -530,6 +585,8 @@ private fun ProviderForm(
     onBaseUrlChange: (String) -> Unit,
     model: String,
     onModelChange: (String) -> Unit,
+    models: List<ModelConfig>,
+    onSelectModel: (String) -> Unit,
     apiKey: String,
     hasStoredKey: Boolean,
     onApiKeyChange: (String) -> Unit,
@@ -544,6 +601,7 @@ private fun ProviderForm(
     canSave: Boolean,
     canTest: Boolean,
     onSave: () -> Unit,
+    onRefreshModels: () -> Unit,
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -607,6 +665,13 @@ private fun ProviderForm(
             modifier = Modifier.fillMaxWidth(),
             label = { Text(text = "默认模型") },
             singleLine = true,
+        )
+        ProviderModelPicker(
+            models = models,
+            selectedModel = model,
+            canRefresh = canTest,
+            onSelectModel = onSelectModel,
+            onRefreshModels = onRefreshModels,
         )
         OutlinedTextField(
             value = apiKey,
@@ -680,6 +745,60 @@ private fun ProviderForm(
 
         message?.let {
             ProviderFormFeedback(message = it)
+        }
+    }
+}
+
+@Composable
+private fun ProviderModelPicker(
+    models: List<ModelConfig>,
+    selectedModel: String,
+    canRefresh: Boolean,
+    onSelectModel: (String) -> Unit,
+    onRefreshModels: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (models.isEmpty()) "未同步模型" else "已同步 ${models.size} 个模型",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onRefreshModels,
+                enabled = canRefresh,
+            ) {
+                Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "刷新模型")
+            }
+        }
+        if (models.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(models, key = { it.id }) { item ->
+                    FilterChip(
+                        selected = item.id == selectedModel.trim(),
+                        onClick = { onSelectModel(item.id) },
+                        label = {
+                            Text(
+                                text = item.displayName.ifBlank { item.id },
+                                modifier = Modifier.widthIn(max = 180.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = {
+                            if (item.id == selectedModel.trim()) {
+                                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -884,17 +1003,27 @@ private fun ProviderRow(
     )
 }
 
-private fun ProviderType.defaultCapability(model: String): ModelCapability? {
-    val descriptor = ProviderRegistry.builtInDescriptor(this) ?: return null
-    return ModelCapability(
-        model = model,
-        text = descriptor.capabilities.text,
-        vision = descriptor.capabilities.vision,
-        imageGeneration = descriptor.capabilities.imageGeneration,
-        toolCalling = descriptor.capabilities.toolCalling,
-        structuredOutput = descriptor.capabilities.structuredOutput,
-        longContext = descriptor.capabilities.longContext,
-        maxContextTokens = null,
-        source = ModelCapabilitySource.BuiltInDefault,
-    )
+private fun List<ModelConfig>.withManualModel(type: ProviderType, model: String): List<ModelConfig> {
+    val trimmedModel = model.trim()
+    val normalizedModels = map { item ->
+        val id = item.id.trim()
+        item.copy(
+            id = id,
+            displayName = item.displayName.trim().ifBlank { id },
+            capability = item.capability?.copy(model = item.capability.model.trim()),
+        )
+    }.filter { it.id.isNotBlank() }
+
+    if (trimmedModel.isBlank() || normalizedModels.any { it.id == trimmedModel }) {
+        return normalizedModels.distinctBy { it.id }
+    }
+
+    return (
+        normalizedModels +
+            ModelConfig(
+                id = trimmedModel,
+                displayName = trimmedModel,
+                capability = type.defaultModelCapability(trimmedModel),
+            )
+        ).distinctBy { it.id }
 }

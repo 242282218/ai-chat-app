@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
-import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -18,9 +17,9 @@ class AndroidSecretStore(context: Context) : SecretStore {
 
     override suspend fun putSecret(ref: String, value: String) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        val iv = ByteArray(GCM_IV_BYTES).also { SecureRandom().nextBytes(it) }
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
+        val iv = cipher.iv
         preferences.edit()
             .putString(ref, "${iv.toBase64()}:${ciphertext.toBase64()}")
             .apply()
@@ -69,7 +68,6 @@ class AndroidSecretStore(context: Context) : SecretStore {
         const val KEY_ALIAS = "ai_chat_secret_master_key"
         const val PREFERENCES_NAME = "ai_chat_secrets"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
-        const val GCM_IV_BYTES = 12
         const val GCM_TAG_BITS = 128
     }
 }

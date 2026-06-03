@@ -64,12 +64,13 @@ internal fun ProviderConfig.connectionSummary(): String {
         else -> "已停用"
     }
     val modelText = defaultModel ?: "无默认模型"
+    val modelsText = if (models.isEmpty()) "未同步模型" else "${models.size} 个模型"
     val keyText = when {
         ProviderRegistry.builtInDescriptor(type)?.requiresApiKey == false -> "无需密钥"
         apiKeyRef != null -> "密钥已保存"
         else -> "缺少密钥"
     }
-    return "$statusText · ${type.providerTypeLabel()} · $modelText · $keyText"
+    return "$statusText · ${type.providerTypeLabel()} · $modelText · $modelsText · $keyText"
 }
 
 private fun ProviderConfig.supportsChatProvider(): Boolean =

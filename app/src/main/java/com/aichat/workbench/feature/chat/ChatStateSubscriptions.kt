@@ -5,6 +5,7 @@ import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.provider.preferredModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -46,8 +47,8 @@ internal fun CoroutineScope.observeChatStateSources(
                     draft = current.draft.copy(
                         model = when {
                             fallback == null -> current.modelDraft
-                            selectedProviderChanged -> fallback.defaultModel.orEmpty()
-                            else -> current.modelDraft.ifBlank { fallback.defaultModel.orEmpty() }
+                            selectedProviderChanged -> fallback.preferredModel()
+                            else -> current.modelDraft.ifBlank { fallback.preferredModel() }
                         },
                     ),
                 )
