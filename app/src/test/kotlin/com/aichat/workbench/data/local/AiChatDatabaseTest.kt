@@ -578,7 +578,7 @@ class AiChatDatabaseTest {
             service.importJson(backupJson)
         }
 
-        assertTrue(error.message.orEmpty().contains("模型名称重复"))
+        assertTrue(error.message.orEmpty().contains("模型名称 重复"))
         assertNull(database.providerConfigDao().getProvider("provider-1"))
     }
 
