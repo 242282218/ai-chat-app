@@ -536,6 +536,99 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun backupImport_rejectsDuplicateProviderModelsBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "OpenAI",
+                  "type": "openai",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "headers": {},
+                  "models": [
+                    {"id": " gpt-test ", "displayName": "GPT test"},
+                    {"id": "gpt-test", "displayName": "GPT duplicate"}
+                  ],
+                  "defaultModel": "gpt-test",
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("模型名称重复"))
+        assertNull(database.providerConfigDao().getProvider("provider-1"))
+    }
+
+    @Test
+    fun backupImport_rejectsMissingProviderDefaultModelBeforeWritingRows() = runTest {
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            database.modelPreferenceDao(),
+            FakeSecretStore(),
+            clock,
+        )
+        val service = AppBackupService(
+            database = database,
+            providerRepository = providerRepository,
+            conversationRepository = RoomConversationRepository(database.conversationDao(), clock),
+            imageStorage = FakeImageStorage(),
+            clock = clock,
+        )
+        val backupJson = """
+            {
+              "version": 1,
+              "providers": [
+                {
+                  "id": "provider-1",
+                  "name": "OpenAI",
+                  "type": "openai",
+                  "baseUrl": "https://api.openai.com/v1",
+                  "headers": {},
+                  "models": [
+                    {"id": "gpt-test", "displayName": "GPT test"}
+                  ],
+                  "defaultModel": "missing-model",
+                  "enabled": true
+                }
+              ],
+              "prompts": [],
+              "modelPreferences": [],
+              "conversations": []
+            }
+        """.trimIndent()
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.importJson(backupJson)
+        }
+
+        assertTrue(error.message.orEmpty().contains("默认模型不在模型列表中"))
+        assertNull(database.providerConfigDao().getProvider("provider-1"))
+    }
+
+    @Test
     fun backupImport_normalizesProviderBaseUrl() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),

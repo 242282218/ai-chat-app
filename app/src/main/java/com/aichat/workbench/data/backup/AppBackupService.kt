@@ -21,6 +21,7 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelPreference
 import com.aichat.workbench.domain.model.ModelPreferenceId
 import com.aichat.workbench.domain.model.PromptPreset
@@ -287,8 +288,8 @@ class AppBackupService(
             baseUrl = baseUrl.trim().trimEnd('/'),
             apiKeyRef = null,
             headers = stringMapFromJson(headers.jsonStringOrBlank()),
-            models = modelConfigsFromJson(models.jsonStringOrBlank()),
-            defaultModel = defaultModel,
+            models = normalizedProviderModels(),
+            defaultModel = defaultModel?.trim()?.takeIf { it.isNotBlank() },
             enabled = enabled,
         )
 
@@ -435,6 +436,15 @@ class AppBackupService(
         }
         defaultModel?.requireMaxLength("默认模型", MAX_BACKUP_MODEL_CHARS)
         models.requireJsonMaxLength("模型列表", MAX_BACKUP_JSON_FIELD_CHARS)
+        val importedModels = normalizedProviderModels()
+        require(importedModels.all { it.id.isNotBlank() }) {
+            "模型名称不能为空。"
+        }
+        importedModels.map { it.id }.requireUniqueValues("模型名称")
+        val normalizedDefaultModel = defaultModel?.trim()?.takeIf { it.isNotBlank() }
+        require(normalizedDefaultModel == null || importedModels.any { it.id == normalizedDefaultModel }) {
+            "默认模型不在模型列表中。"
+        }
         validateProviderHeaders(headers)
     }
 
@@ -492,6 +502,17 @@ class AppBackupService(
     private fun JsonElement?.requireJsonMaxLength(label: String, maxLength: Int) {
         jsonStringOrBlank().requireMaxLength(label, maxLength)
     }
+
+    private fun ProviderBackupJson.normalizedProviderModels(): List<ModelConfig> =
+        modelConfigsFromJson(models.jsonStringOrBlank()).map { model ->
+            val modelId = model.id.trim()
+            val capability = model.capability
+            model.copy(
+                id = modelId,
+                displayName = model.displayName.trim().ifBlank { modelId },
+                capability = capability?.copy(model = capability.model.trim()),
+            )
+        }
 
     private fun String.requireMaxLength(label: String, maxLength: Int) {
         require(length <= maxLength) {
