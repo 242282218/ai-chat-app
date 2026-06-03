@@ -104,7 +104,7 @@ class GenerationControllerTest {
 
     @Test
     fun toolCallExecutesToolAndContinuesGeneration() = runTest(mainDispatcherRule.testDispatcher) {
-        val provider = provider("openai", ProviderType.OpenAI)
+        val provider = provider("compatible", ProviderType.OpenAICompatible)
         val conversationRepository = GenerationControllerConversationRepository(clock)
         val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
         val toolRepository = GenerationControllerToolInvocationRepository()
@@ -121,7 +121,7 @@ class GenerationControllerTest {
             conversationManager = ConversationManager(conversationRepository, clock),
             conversationCompactor = ConversationCompactor(conversationRepository, clock),
             providerRegistry = ProviderRegistry().apply {
-                register(ProviderType.OpenAI.value, chatProvider)
+                register(ProviderType.OpenAICompatible.value, chatProvider)
             },
             toolExecutor = toolExecutor(clock, toolRepository),
             clock = clock,
@@ -170,7 +170,7 @@ class GenerationControllerTest {
 
     @Test
     fun failedToolCallPersistsReadableErrorSummary() = runTest(mainDispatcherRule.testDispatcher) {
-        val provider = provider("openai", ProviderType.OpenAI)
+        val provider = provider("compatible", ProviderType.OpenAICompatible)
         val conversationRepository = GenerationControllerConversationRepository(clock)
         val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
         val toolRepository = GenerationControllerToolInvocationRepository()
@@ -187,7 +187,7 @@ class GenerationControllerTest {
             conversationManager = ConversationManager(conversationRepository, clock),
             conversationCompactor = ConversationCompactor(conversationRepository, clock),
             providerRegistry = ProviderRegistry().apply {
-                register(ProviderType.OpenAI.value, chatProvider)
+                register(ProviderType.OpenAICompatible.value, chatProvider)
             },
             toolExecutor = toolExecutor(clock, toolRepository),
             clock = clock,

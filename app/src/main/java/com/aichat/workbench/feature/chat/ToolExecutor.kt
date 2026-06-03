@@ -21,13 +21,13 @@ import java.net.URI
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 data class ToolExecution(
     val result: ToolResult,
@@ -60,6 +60,15 @@ class ToolExecutor(
     ): ToolExecution {
         val toolDescriptor = descriptor
             ?: return saveFailure(conversationId, toolCall, ToolPermissionLevel.HighRisk, "unknown_tool", "未知工具。")
+        if (toolDescriptor.source == ToolSource.Official) {
+            return saveFailure(
+                conversationId = conversationId,
+                toolCall = toolCall,
+                permissionLevel = toolDescriptor.permissionLevel,
+                code = "hosted_tool_not_executable_locally",
+                message = "官方 Hosted Tool 由 Provider 执行，本地不执行。",
+            )
+        }
         val startedAt = clock.instant()
         return runCatching {
             when (toolCall.name) {

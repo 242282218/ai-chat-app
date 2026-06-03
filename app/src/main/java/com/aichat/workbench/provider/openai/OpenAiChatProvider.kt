@@ -26,11 +26,13 @@ import com.aichat.workbench.provider.api.ResponsesRequest
 import com.aichat.workbench.provider.api.ResponsesResponse
 import com.aichat.workbench.provider.api.ResponsesSseEvent
 import com.aichat.workbench.provider.api.ResponsesTool
+import com.aichat.workbench.provider.api.ResponsesToolContainer
 import com.aichat.workbench.provider.api.ToolChoice
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.http.parseSse
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -55,7 +57,7 @@ open class OpenAiChatProvider(
     private val useResponsesApi: Boolean = true,
 ) : ChatProvider {
     override suspend fun complete(request: ChatProviderRequest): ProviderTextResponse {
-        if (!useResponsesApi || request.tools.isNotEmpty() || request.hasImageInput()) {
+        if (!useResponsesApi || request.hasImageInput() || request.hasLocalFunctionTools()) {
             return executeChatCompletion(request, stream = false)
         }
         val response = execute(request.toResponsesRequest(stream = false))
@@ -70,7 +72,7 @@ open class OpenAiChatProvider(
 
     override fun stream(request: ChatProviderRequest): Flow<ProviderStreamEvent> =
         flow {
-            if (!useResponsesApi || request.tools.isNotEmpty() || request.hasImageInput()) {
+            if (!useResponsesApi || request.hasImageInput() || request.hasLocalFunctionTools()) {
                 emitChatCompletionStream(request)
                 return@flow
             }
@@ -81,8 +83,15 @@ open class OpenAiChatProvider(
                     return@flow
                 }
                 it.requireSuccessful()
+                var terminalEventReceived = false
                 for (event in parseSse(it.requireBody().byteStream())) {
-                    mapResponsesSse(event.data)?.let { mapped -> emit(mapped) }
+                    mapResponsesSse(event.data)?.let { mapped ->
+                        terminalEventReceived = terminalEventReceived || mapped.isTerminal()
+                        emit(mapped)
+                    }
+                }
+                if (!terminalEventReceived) {
+                    emit(ProviderStreamEvent.Completed)
                 }
             }
         }.flowOn(Dispatchers.IO)
@@ -105,10 +114,15 @@ open class OpenAiChatProvider(
         response.use {
             it.requireSuccessful()
             val toolCalls = ChatToolCallAccumulator()
+            var terminalEventReceived = false
             for (event in parseSse(it.requireBody().byteStream())) {
                 for (mapped in mapChatCompletionSse(event.data, toolCalls)) {
+                    terminalEventReceived = terminalEventReceived || mapped.isTerminal()
                     emit(mapped)
                 }
+            }
+            if (!terminalEventReceived) {
+                emit(ProviderStreamEvent.Completed)
             }
         }
     }
@@ -130,6 +144,7 @@ open class OpenAiChatProvider(
     }
 
     private fun ChatProviderRequest.toChatCompletionsRequest(stream: Boolean): Request {
+        val chatTools = tools.toChatTools()
         val body = ChatCompletionsRequest(
             model = model,
             messages = messages.toChatMessages(systemPrompt),
@@ -138,9 +153,9 @@ open class OpenAiChatProvider(
             temperature = parameters.temperature,
             topP = parameters.topP,
             maxTokens = parameters.maxTokens,
-            tools = tools.toChatTools(),
+            tools = chatTools,
             toolChoice = toolChoice.toChatToolChoice(),
-            parallelToolCalls = tools.takeIf { it.isNotEmpty() }?.let { false },
+            parallelToolCalls = chatTools?.let { false },
         )
 
         return postJson("${provider.openAiApiBaseUrl()}/chat/completions", providerJson.encodeToString(body), stream)
@@ -230,6 +245,9 @@ open class OpenAiChatProvider(
     private fun ChatProviderRequest.hasImageInput(): Boolean =
         messages.any { message -> message.contentParts.any { it is MessagePart.Image } }
 
+    private fun ChatProviderRequest.hasLocalFunctionTools(): Boolean =
+        tools.any { it.source != ToolSource.Official }
+
     private fun ToolCall.toChatToolCall(): ChatCompletionToolCall =
         ChatCompletionToolCall(
             id = id.value,
@@ -249,17 +267,30 @@ open class OpenAiChatProvider(
         }
 
     private fun List<ToolDescriptor>.toResponsesTools(): List<ResponsesTool>? =
-        takeIf { it.isNotEmpty() }?.map { tool ->
-            ResponsesTool(
-                name = tool.name,
-                description = tool.description,
-                parameters = tool.inputSchemaJson.toJsonElementOrNull(),
-                strict = false,
-            )
+        takeIf { it.isNotEmpty() }?.mapNotNull { tool ->
+            if (tool.source == ToolSource.Official) {
+                when (tool.name) {
+                    "web_search" -> ResponsesTool(type = "web_search_preview")
+                    "code_interpreter" -> ResponsesTool(
+                        type = "code_interpreter",
+                        container = ResponsesToolContainer(type = "auto"),
+                    )
+                    "image_generation" -> ResponsesTool(type = "image_generation")
+                    else -> null
+                }
+            } else {
+                ResponsesTool(
+                    type = "function",
+                    name = tool.name,
+                    description = tool.description,
+                    parameters = tool.inputSchemaJson.toJsonElementOrNull(),
+                    strict = false,
+                )
+            }
         }
 
     private fun List<ToolDescriptor>.toChatTools(): List<ChatCompletionTool>? =
-        takeIf { it.isNotEmpty() }?.map { tool ->
+        filter { it.source != ToolSource.Official }.takeIf { it.isNotEmpty() }?.map { tool ->
             ChatCompletionTool(
                 function = ChatCompletionFunction(
                     name = tool.name,
@@ -284,10 +315,18 @@ open class OpenAiChatProvider(
         val response = providerJson.decodeFromString<ResponsesResponse>(body)
         response.outputText?.takeIf { it.isNotBlank() }?.let { return it }
         return response.output
-            .flatMap { it.content }
-            .filter { it.type == "output_text" }
-            .joinToString(separator = "") { it.text.orEmpty() }
+            .flatMap { item -> item.toTextParts() }
+            .joinToString(separator = "")
     }
+
+    private fun com.aichat.workbench.provider.api.ResponsesOutputItem.toTextParts(): List<String> =
+        when (type) {
+            "message" -> content
+                .filter { it.type == "output_text" }
+                .map { it.text.orEmpty() }
+            "image_generation_call" -> listOfNotNull(result?.takeIf { it.isNotBlank() }?.let { "![generated image](data:image/png;base64,$it)" })
+            else -> emptyList()
+        }
 
     private fun parseChatCompletionText(body: String): String =
         providerJson.decodeFromString<ChatCompletionsResponse>(body)
@@ -370,6 +409,9 @@ open class OpenAiChatProvider(
 
     private fun execute(request: Request): Response =
         client.newCall(request).execute()
+
+    private fun ProviderStreamEvent.isTerminal(): Boolean =
+        this is ProviderStreamEvent.Completed || this is ProviderStreamEvent.Failed
 
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()

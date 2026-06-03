@@ -290,6 +290,38 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun executeWithOfficialDescriptorDoesNotCreateGatewayClient() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = ToolExecutor(
+            gatewaySettingsProvider = { GatewaySettings(enabled = true, baseUrl = "http://127.0.0.1:8080", apiToken = "token") },
+            gatewayClientProvider = { error("Official hosted tools should not create GatewayClient") },
+            toolInvocationRepository = repository,
+            clock = clock,
+        )
+        val descriptor = ToolDescriptor(
+            name = "web_search",
+            displayName = "Web Search",
+            description = "Official hosted web search.",
+            permissionLevel = ToolPermissionLevel.ReadOnly,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = null,
+            source = ToolSource.Official,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_official"), "web_search", "{}"),
+            descriptor = descriptor,
+        )
+
+        assertEquals(ToolPermissionLevel.ReadOnly, execution.result.permissionLevel)
+        assertEquals("hosted_tool_not_executable_locally", execution.result.error?.code)
+        assertEquals("官方 Hosted Tool 由 Provider 执行，本地不执行。", execution.result.error?.message)
+        assertEquals(1, repository.savedResults.value.size)
+    }
+
+    @Test
     fun executeSearchReportsInvalidGatewayUrlBeforeCreatingGatewayClient() = runTest {
         val repository = RecordingToolInvocationRepository()
         val executor = ToolExecutor(

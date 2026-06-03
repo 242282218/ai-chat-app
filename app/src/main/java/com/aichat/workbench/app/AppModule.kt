@@ -13,8 +13,10 @@ import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
 import com.aichat.workbench.data.repository.RoomToolInvocationRepository
 import com.aichat.workbench.data.settings.GatewaySettingsRepository
+import com.aichat.workbench.data.settings.SharedPreferencesImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.PromptPresetRepository
@@ -92,6 +94,9 @@ val appModule: Module = module {
         RoomToolInvocationRepository(get<AiChatDatabase>().toolInvocationDao())
     }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
+    single<ImageGenerationPreferencesRepository> {
+        SharedPreferencesImageGenerationPreferencesRepository(androidContext())
+    }
     single { GatewaySettingsRepository(androidContext(), secretStore = get()) }
     single { OpenAiChatProvider(client = get(named("streamingHttpClient"))) }
     single<ChatProvider>(named("openai")) { get<OpenAiChatProvider>() }
@@ -176,6 +181,7 @@ val appModule: Module = module {
         ImageGenerationViewModel(
             imageRepository = get(),
             providerRepository = get(),
+            preferencesRepository = get(),
             imageProvider = get(),
             imageStorage = get(),
             clock = get(),

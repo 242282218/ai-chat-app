@@ -1066,6 +1066,7 @@ private fun ToolSource.displayLabel(): String =
     when (this) {
         ToolSource.BuiltIn -> "内置"
         ToolSource.Gateway -> "Gateway"
+        ToolSource.Official -> "官方"
     }
 
 private fun searchPanelStatus(state: ToolsUiState): Pair<String, StatusTone> =

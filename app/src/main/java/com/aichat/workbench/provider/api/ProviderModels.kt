@@ -26,11 +26,17 @@ internal data class ResponsesRequest(
 
 @Serializable
 internal data class ResponsesTool(
-    val type: String = "function",
-    val name: String,
-    val description: String,
+    val type: String,
+    val name: String? = null,
+    val description: String? = null,
     val parameters: JsonElement? = null,
-    val strict: Boolean = false,
+    val strict: Boolean? = null,
+    val container: ResponsesToolContainer? = null,
+)
+
+@Serializable
+internal data class ResponsesToolContainer(
+    val type: String,
 )
 
 @Serializable
@@ -53,6 +59,7 @@ internal data class ResponsesOutputItem(
     val name: String? = null,
     val arguments: String? = null,
     val content: List<ResponsesContentPart> = emptyList(),
+    val result: String? = null,
 )
 
 @Serializable

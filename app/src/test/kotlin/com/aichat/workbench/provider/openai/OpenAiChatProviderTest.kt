@@ -117,6 +117,26 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun compatibleProvider_marksStreamCompletedWhenConnectionClosesWithoutDoneFrame() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiCompatibleChatProvider()
+
+        val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
+
+        assertEquals(listOf(ProviderStreamEvent.TextDelta("Hi"), ProviderStreamEvent.Completed), events)
+    }
+
+    @Test
     fun compatibleProvider_appendsV1ForRootBaseUrl() = runTest {
         server.enqueue(
             MockResponse()
@@ -138,7 +158,44 @@ class OpenAiChatProviderTest {
     }
 
     @Test
-    fun stream_aggregatesChatCompletionsToolCallDeltas() = runTest {
+    fun stream_withOfficialHostedToolsUsesResponsesApi() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    event: response.output_text.delta
+                    data: {"type":"response.output_text.delta","delta":"Found news"}
+
+                    event: response.completed
+                    data: {"type":"response.completed"}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider()
+        val tools = listOf(
+            hostedTool("web_search", ToolPermissionLevel.ReadOnly),
+            hostedTool("code_interpreter", ToolPermissionLevel.ReadOnly),
+            hostedTool("image_generation", ToolPermissionLevel.ReadOnly),
+        )
+
+        val events = provider.stream(openAiRequest(tools = tools)).toList()
+        val recorded = server.takeRequest()
+        val body = recorded.body.readUtf8()
+
+        assertEquals("/v1/responses", recorded.path)
+        assertTrue(body.contains(""""type":"web_search_preview""""))
+        assertTrue(body.contains(""""type":"code_interpreter""""))
+        assertTrue(body.contains(""""container""""))
+        assertTrue(body.contains(""""type":"auto""""))
+        assertTrue(body.contains(""""type":"image_generation""""))
+        assertEquals(listOf(ProviderStreamEvent.TextDelta("Found news"), ProviderStreamEvent.Completed), events)
+    }
+
+    @Test
+    fun stream_withGatewayFunctionToolsUsesChatCompletionsAndAggregatesToolDeltas() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -155,15 +212,10 @@ class OpenAiChatProviderTest {
                 ),
         )
         val provider = OpenAiChatProvider()
-        val tool = ToolDescriptor(
+        val tool = gatewayTool(
             name = "web_search",
-            displayName = "Web search",
-            description = "Search the web.",
             permissionLevel = ToolPermissionLevel.Network,
             inputSchemaJson = """{"type":"object","properties":{"query":{"type":"string"}}}""",
-            outputSchemaJson = null,
-            timeoutSeconds = null,
-            source = ToolSource.Gateway,
         )
 
         val events = provider.stream(openAiRequest(tools = listOf(tool))).toList()
@@ -242,6 +294,34 @@ class OpenAiChatProviderTest {
         assertEquals("bad key", error.error.message)
         assertEquals(401, error.error.statusCode)
     }
+
+    private fun hostedTool(name: String, permissionLevel: ToolPermissionLevel): ToolDescriptor =
+        ToolDescriptor(
+            name = name,
+            displayName = name,
+            description = name,
+            permissionLevel = permissionLevel,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = null,
+            source = ToolSource.Official,
+        )
+
+    private fun gatewayTool(
+        name: String,
+        permissionLevel: ToolPermissionLevel,
+        inputSchemaJson: String = "{}",
+    ): ToolDescriptor =
+        ToolDescriptor(
+            name = name,
+            displayName = name,
+            description = name,
+            permissionLevel = permissionLevel,
+            inputSchemaJson = inputSchemaJson,
+            outputSchemaJson = null,
+            timeoutSeconds = null,
+            source = ToolSource.Gateway,
+        )
 
     private fun openAiRequest(
         type: ProviderType = ProviderType.OpenAI,

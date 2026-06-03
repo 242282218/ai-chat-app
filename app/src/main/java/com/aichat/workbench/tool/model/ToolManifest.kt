@@ -23,6 +23,7 @@ data class ToolDescriptor(
 enum class ToolSource {
     BuiltIn,
     Gateway,
+    Official,
 }
 
 fun ToolPermissionLevel.requiresConfirmation(): Boolean =

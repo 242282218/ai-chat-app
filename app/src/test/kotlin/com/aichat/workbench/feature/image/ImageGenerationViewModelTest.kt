@@ -6,6 +6,8 @@ import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.repository.ImageGenerationPreferences
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -187,15 +189,93 @@ class ImageGenerationViewModelTest {
         assertEquals("gpt-image-1", viewModel.state.value.model)
     }
 
+    @Test
+    fun loadsSavedImageProviderAndModel() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val newApiProvider = provider("new-api", ProviderType.NewApi)
+        val preferencesRepository = FakeImageGenerationPreferencesRepository(
+            ImageGenerationPreferences(providerId = newApiProvider.id.value, model = "dall-e-3"),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider, newApiProvider)),
+            preferencesRepository = preferencesRepository,
+        )
+        advanceUntilIdle()
+
+        assertEquals(newApiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("dall-e-3", viewModel.state.value.model)
+    }
+
+    @Test
+    fun selectProviderPersistsImageProviderAndDefaultModel() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val newApiProvider = provider("new-api", ProviderType.NewApi)
+        val preferencesRepository = FakeImageGenerationPreferencesRepository()
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider, newApiProvider)),
+            preferencesRepository = preferencesRepository,
+        )
+        advanceUntilIdle()
+
+        viewModel.selectProvider(newApiProvider.id.value)
+        advanceUntilIdle()
+
+        assertEquals(newApiProvider.id.value, preferencesRepository.preferences.value.providerId)
+        assertEquals("new-api-model", preferencesRepository.preferences.value.model)
+    }
+
+    @Test
+    fun updateModelPersistsImageProviderAndModel() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val preferencesRepository = FakeImageGenerationPreferencesRepository()
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+            preferencesRepository = preferencesRepository,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateModel("gpt-image-custom")
+        advanceUntilIdle()
+
+        assertEquals(openAiProvider.id.value, preferencesRepository.preferences.value.providerId)
+        assertEquals("gpt-image-custom", preferencesRepository.preferences.value.model)
+    }
+
+    @Test
+    fun fallsBackWhenSavedImageProviderIsUnavailable() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI)
+        val preferencesRepository = FakeImageGenerationPreferencesRepository(
+            ImageGenerationPreferences(providerId = "deleted-provider", model = "deleted-model"),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+            preferencesRepository = preferencesRepository,
+        )
+        advanceUntilIdle()
+
+        assertEquals(openAiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-image-1", viewModel.state.value.model)
+    }
+
     private fun viewModel(
         repository: ImageGenerationRepository,
         storage: ImageStorage,
         providerRepository: ProviderConfigRepository = FakeProviderConfigRepository(emptyList()),
+        preferencesRepository: ImageGenerationPreferencesRepository = FakeImageGenerationPreferencesRepository(),
         imageProvider: ImageGenerationProvider = NoopImageProvider(),
     ): ImageGenerationViewModel =
         ImageGenerationViewModel(
             imageRepository = repository,
             providerRepository = providerRepository,
+            preferencesRepository = preferencesRepository,
             imageProvider = imageProvider,
             imageStorage = storage,
             clock = clock,
@@ -327,6 +407,21 @@ private class FakeProviderConfigRepository(
 
     override suspend fun deleteProvider(id: ProviderId) {
         providers.value = providers.value.filterNot { it.id == id }
+    }
+}
+
+private class FakeImageGenerationPreferencesRepository(
+    initialPreferences: ImageGenerationPreferences = ImageGenerationPreferences(),
+) : ImageGenerationPreferencesRepository {
+    val preferences = MutableStateFlow(initialPreferences)
+
+    override fun observePreferences(): MutableStateFlow<ImageGenerationPreferences> = preferences
+
+    override suspend fun savePreferences(providerId: String?, model: String?) {
+        preferences.value = ImageGenerationPreferences(
+            providerId = providerId?.takeIf { it.isNotBlank() },
+            model = model?.takeIf { it.isNotBlank() },
+        )
     }
 }
 

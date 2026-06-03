@@ -6,7 +6,9 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolCall
+import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.SendMessageUseCase
@@ -15,6 +17,7 @@ import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.requiresConfirmation
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
@@ -114,11 +117,11 @@ class GenerationController(
 
             val model = conversationManager.modelFor(current, provider, conversation, retryFailedMessage)
             requireImageSupported(provider, model, current.imageDrafts, descriptor.capabilities.vision)
-            val tools = if (provider.supportsToolCalling(model, descriptor.capabilities.toolCalling)) {
-                toolExecutor.availableTools()
-            } else {
-                emptyList()
-            }
+            val tools = provider.chatToolsFor(
+                model = model,
+                providerSupportsTools = descriptor.capabilities.toolCalling,
+                hasImageInput = current.imageDrafts.isNotEmpty(),
+            )
             val chatProvider = providerClient(provider)
             val userContentParts = userText?.let { text ->
                 buildList {
@@ -331,6 +334,50 @@ class GenerationController(
         val supportsVision = capability?.vision ?: providerSupportsVision
         require(supportsVision) { "当前模型不支持图片输入，请切换到视觉模型。" }
     }
+
+    private suspend fun ProviderConfig.chatToolsFor(
+        model: String,
+        providerSupportsTools: Boolean,
+        hasImageInput: Boolean,
+    ): List<ToolDescriptor> {
+        if (!supportsToolCalling(model, providerSupportsTools)) return emptyList()
+        if (type == ProviderType.OpenAI && !hasImageInput) return officialHostedTools()
+        return toolExecutor.availableTools()
+    }
+
+    private fun officialHostedTools(): List<ToolDescriptor> =
+        listOf(
+            ToolDescriptor(
+                name = "web_search",
+                displayName = "Web Search",
+                description = "Search the web using the provider's official hosted search tool.",
+                permissionLevel = ToolPermissionLevel.ReadOnly,
+                inputSchemaJson = "{}",
+                outputSchemaJson = null,
+                timeoutSeconds = null,
+                source = ToolSource.Official,
+            ),
+            ToolDescriptor(
+                name = "code_interpreter",
+                displayName = "Code Interpreter",
+                description = "Run small code tasks using the provider's official hosted code interpreter.",
+                permissionLevel = ToolPermissionLevel.ReadOnly,
+                inputSchemaJson = "{}",
+                outputSchemaJson = null,
+                timeoutSeconds = null,
+                source = ToolSource.Official,
+            ),
+            ToolDescriptor(
+                name = "image_generation",
+                displayName = "Image Generation",
+                description = "Generate images using the provider's official hosted image generation tool.",
+                permissionLevel = ToolPermissionLevel.ReadOnly,
+                inputSchemaJson = "{}",
+                outputSchemaJson = null,
+                timeoutSeconds = null,
+                source = ToolSource.Official,
+            ),
+        )
 
     private fun ProviderConfig.supportsToolCalling(model: String, providerSupportsTools: Boolean): Boolean {
         val capability = models.firstOrNull { it.id == model }?.capability

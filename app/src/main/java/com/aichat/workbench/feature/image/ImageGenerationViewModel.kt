@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.repository.ImageGenerationPreferences
+import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -18,6 +20,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -46,6 +49,7 @@ data class ImageGenerationUiState(
 class ImageGenerationViewModel(
     private val imageRepository: ImageGenerationRepository,
     private val providerRepository: ProviderConfigRepository,
+    private val preferencesRepository: ImageGenerationPreferencesRepository,
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
     private val clock: Clock,
@@ -61,34 +65,29 @@ class ImageGenerationViewModel(
             }
         }
         viewModelScope.launch {
-            providerRepository.observeProviders().collect { providers ->
-                _state.update { current ->
-                    val imageProviders = providers.filter { it.supportsImageGeneration() }
-                    val selected = current.selectedProviderId
-                        ?.let { id -> imageProviders.firstOrNull { it.id.value == id && it.enabled } }
-                    val fallback = selected ?: imageProviders.firstOrNull { it.enabled }
-                    val selectedProviderChanged = current.selectedProviderId != fallback?.id?.value
-                    current.copy(
-                        providers = imageProviders,
-                        selectedProviderId = fallback?.id?.value,
-                        model = when {
-                            fallback == null -> current.model
-                            selectedProviderChanged -> fallback.defaultImageModel()
-                            else -> current.model.ifBlank { fallback.defaultImageModel() }
-                        },
-                    )
+            combine(
+                providerRepository.observeProviders(),
+                preferencesRepository.observePreferences(),
+            ) { providers, preferences -> providers to preferences }
+                .collect { (providers, preferences) ->
+                    _state.update { current ->
+                        current.withImageProviderSelection(providers, preferences)
+                    }
                 }
-            }
         }
     }
 
     fun selectProvider(id: String) {
         val provider = _state.value.providers.firstOrNull { it.id.value == id }
+        val model = provider?.defaultImageModel().orEmpty().ifBlank { _state.value.model }
         _state.update {
             it.copy(
                 selectedProviderId = id,
-                model = provider?.defaultImageModel().orEmpty().ifBlank { it.model },
+                model = model,
             )
+        }
+        viewModelScope.launch {
+            preferencesRepository.savePreferences(providerId = id, model = model)
         }
     }
 
@@ -98,6 +97,12 @@ class ImageGenerationViewModel(
 
     fun updateModel(value: String) {
         _state.update { it.copy(model = value) }
+        viewModelScope.launch {
+            preferencesRepository.savePreferences(
+                providerId = _state.value.selectedProviderId,
+                model = value,
+            )
+        }
     }
 
     fun updateSize(value: String) {
@@ -191,6 +196,36 @@ class ImageGenerationViewModel(
             }
         }
     }
+
+    private fun ImageGenerationUiState.withImageProviderSelection(
+        providers: List<ProviderConfig>,
+        preferences: ImageGenerationPreferences,
+    ): ImageGenerationUiState {
+        val imageProviders = providers.filter { it.supportsImageGeneration() }
+        val preferred = preferences.providerId
+            ?.let { id -> imageProviders.firstOrNull { it.id.value == id && it.enabled } }
+        val selected = selectedProviderId
+            ?.let { id -> imageProviders.firstOrNull { it.id.value == id && it.enabled } }
+        val fallback = preferred ?: selected ?: imageProviders.firstOrNull { it.enabled }
+        val selectedProviderChanged = selectedProviderId != fallback?.id?.value
+        return copy(
+            providers = imageProviders,
+            selectedProviderId = fallback?.id?.value,
+            model = selectedImageModel(fallback, selectedProviderChanged, preferences),
+        )
+    }
+
+    private fun ImageGenerationUiState.selectedImageModel(
+        provider: ProviderConfig?,
+        selectedProviderChanged: Boolean,
+        preferences: ImageGenerationPreferences,
+    ): String =
+        when {
+            provider == null -> model
+            preferences.providerId == provider.id.value && !preferences.model.isNullOrBlank() -> preferences.model
+            selectedProviderChanged -> provider.defaultImageModel()
+            else -> model.ifBlank { provider.defaultImageModel() }
+        }
 
     private fun ProviderConfig.defaultImageModel(): String =
         models.firstOrNull { it.capability?.imageGeneration == true }?.id
