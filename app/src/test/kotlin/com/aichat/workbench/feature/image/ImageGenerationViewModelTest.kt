@@ -209,7 +209,21 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
-    fun selectProviderPersistsImageProviderAndDefaultModel() = runTest(mainDispatcherRule.testDispatcher) {
+    fun imageProviderDefaultsToImageModelInsteadOfChatDefaultModel() = runTest(mainDispatcherRule.testDispatcher) {
+        val newApiProvider = provider("new-api", ProviderType.NewApi, defaultModel = "codex-auto-review")
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(newApiProvider)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(newApiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("gpt-image-1", viewModel.state.value.model)
+    }
+
+    @Test
+    fun selectProviderPersistsImageProviderAndDefaultImageModel() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val newApiProvider = provider("new-api", ProviderType.NewApi)
         val preferencesRepository = FakeImageGenerationPreferencesRepository()
@@ -225,7 +239,7 @@ class ImageGenerationViewModelTest {
         advanceUntilIdle()
 
         assertEquals(newApiProvider.id.value, preferencesRepository.preferences.value.providerId)
-        assertEquals("new-api-model", preferencesRepository.preferences.value.model)
+        assertEquals("gpt-image-1", preferencesRepository.preferences.value.model)
     }
 
     @Test
@@ -302,6 +316,7 @@ class ImageGenerationViewModelTest {
         id: String,
         type: ProviderType,
         apiKeyRef: String? = null,
+        defaultModel: String = "$id-model",
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
@@ -311,7 +326,7 @@ class ImageGenerationViewModelTest {
             apiKeyRef = apiKeyRef,
             headers = emptyMap(),
             models = emptyList(),
-            defaultModel = "$id-model",
+            defaultModel = defaultModel,
             enabled = true,
         )
 

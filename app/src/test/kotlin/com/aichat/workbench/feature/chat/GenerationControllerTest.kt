@@ -103,6 +103,94 @@ class GenerationControllerTest {
     }
 
     @Test
+    fun newApiAddsHostedWebSearchWhenGatewaySearchIsUnavailable() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("new-api", ProviderType.NewApi)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(flowOf(ProviderStreamEvent.TextDelta("Answer"), ProviderStreamEvent.Completed)),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.NewApi.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "new-api-model", input = "Search"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Search",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("time", "web_search"), chatProvider.requests.single().tools.map { it.name })
+    }
+
+    @Test
+    fun customProviderDoesNotAddHostedWebSearchAutomatically() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("custom", ProviderType.Custom)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(flowOf(ProviderStreamEvent.TextDelta("Answer"), ProviderStreamEvent.Completed)),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.Custom.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "custom-model", input = "Search"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Search",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("time"), chatProvider.requests.single().tools.map { it.name })
+    }
+
+    @Test
     fun toolCallExecutesToolAndContinuesGeneration() = runTest(mainDispatcherRule.testDispatcher) {
         val provider = provider("compatible", ProviderType.OpenAICompatible)
         val conversationRepository = GenerationControllerConversationRepository(clock)

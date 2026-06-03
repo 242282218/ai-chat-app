@@ -80,6 +80,12 @@ internal data class ChatCompletionsRequest(
     val tools: List<ChatCompletionTool>? = null,
     @SerialName("tool_choice") val toolChoice: JsonElement? = null,
     @SerialName("parallel_tool_calls") val parallelToolCalls: Boolean? = null,
+    @SerialName("web_search_options") val webSearchOptions: ChatCompletionWebSearchOptions? = null,
+)
+
+@Serializable
+internal data class ChatCompletionWebSearchOptions(
+    @SerialName("search_context_size") val searchContextSize: String = "medium",
 )
 
 @Serializable

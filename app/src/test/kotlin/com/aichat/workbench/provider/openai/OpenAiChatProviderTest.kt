@@ -158,6 +158,39 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun compatibleProvider_sendsHostedWebSearchOptionsForOfficialSearchTool() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"delta":{"content":"News"},"finish_reason":null}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiCompatibleChatProvider()
+
+        val events = provider.stream(
+            openAiRequest(
+                type = ProviderType.NewApi,
+                tools = listOf(hostedTool("web_search", ToolPermissionLevel.ReadOnly)),
+            ),
+        ).toList()
+        val recorded = server.takeRequest()
+        val body = recorded.body.readUtf8()
+
+        assertEquals("/v1/chat/completions", recorded.path)
+        assertTrue(body.contains(""""web_search_options""""))
+        assertTrue(body.contains(""""search_context_size":"medium""""))
+        assertTrue(!body.contains(""""web_search_preview""""))
+        assertEquals(listOf(ProviderStreamEvent.TextDelta("News"), ProviderStreamEvent.Completed), events)
+    }
+
+    @Test
     fun stream_withOfficialHostedToolsUsesResponsesApi() = runTest {
         server.enqueue(
             MockResponse()

@@ -13,6 +13,7 @@ import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.isLikelyImageGenerationModel
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
 import kotlinx.coroutines.Job
@@ -228,13 +229,22 @@ class ImageGenerationViewModel(
         }
 
     private fun ProviderConfig.defaultImageModel(): String =
-        models.firstOrNull { it.capability?.imageGeneration == true }?.id
-            ?: if (type == ProviderType.OpenAI) DEFAULT_OPENAI_IMAGE_MODEL else null
-            ?: defaultModel?.takeIf { it.isNotBlank() }
-            ?: if (supportsImageGeneration()) DEFAULT_OPENAI_IMAGE_MODEL else ""
+        models.firstOrNull { it.capability?.imageGeneration == true && it.id.isLikelyImageGenerationModel() }?.id
+            ?: defaultModel?.takeIf { it.isLikelyImageGenerationModel() }
+            ?: if (type.supportsOpenAiCompatibleImageGeneration() || supportsImageGeneration()) {
+                DEFAULT_OPENAI_IMAGE_MODEL
+            } else {
+                ""
+            }
 
     private fun ProviderConfig.supportsImageGeneration(): Boolean =
         ProviderRegistry.builtInDescriptor(type)?.capabilities?.imageGeneration == true
+
+    private fun ProviderType.supportsOpenAiCompatibleImageGeneration(): Boolean =
+        this == ProviderType.OpenAI ||
+            this == ProviderType.NewApi ||
+            this == ProviderType.Sub2Api ||
+            this == ProviderType.Custom
 }
 
 private const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"

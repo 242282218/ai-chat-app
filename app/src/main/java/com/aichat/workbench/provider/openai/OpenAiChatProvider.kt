@@ -13,6 +13,7 @@ import com.aichat.workbench.provider.api.ChatCompletionsResponse
 import com.aichat.workbench.provider.api.ChatCompletionTool
 import com.aichat.workbench.provider.api.ChatCompletionToolCall
 import com.aichat.workbench.provider.api.ChatCompletionToolCallFunction
+import com.aichat.workbench.provider.api.ChatCompletionWebSearchOptions
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderErrorBody
@@ -156,6 +157,7 @@ open class OpenAiChatProvider(
             tools = chatTools,
             toolChoice = toolChoice.toChatToolChoice(),
             parallelToolCalls = chatTools?.let { false },
+            webSearchOptions = tools.toChatCompletionsWebSearchOptions(),
         )
 
         return postJson("${provider.openAiApiBaseUrl()}/chat/completions", providerJson.encodeToString(body), stream)
@@ -300,6 +302,10 @@ open class OpenAiChatProvider(
                 ),
             )
         }
+
+    private fun List<ToolDescriptor>.toChatCompletionsWebSearchOptions(): ChatCompletionWebSearchOptions? =
+        firstOrNull { it.source == ToolSource.Official && it.name == "web_search" }
+            ?.let { ChatCompletionWebSearchOptions() }
 
     private fun ToolChoice.toChatToolChoice(): JsonElement? =
         when (this) {

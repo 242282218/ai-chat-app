@@ -342,21 +342,20 @@ class GenerationController(
     ): List<ToolDescriptor> {
         if (!supportsToolCalling(model, providerSupportsTools)) return emptyList()
         if (type == ProviderType.OpenAI && !hasImageInput) return officialHostedTools()
-        return toolExecutor.availableTools()
+        val executableTools = toolExecutor.availableTools()
+        if (hasImageInput || executableTools.any { it.name == "web_search" }) {
+            return executableTools
+        }
+        return if (type.supportsChatCompletionsHostedWebSearch()) {
+            executableTools + officialHostedWebSearchTool()
+        } else {
+            executableTools
+        }
     }
 
     private fun officialHostedTools(): List<ToolDescriptor> =
         listOf(
-            ToolDescriptor(
-                name = "web_search",
-                displayName = "Web Search",
-                description = "Search the web using the provider's official hosted search tool.",
-                permissionLevel = ToolPermissionLevel.ReadOnly,
-                inputSchemaJson = "{}",
-                outputSchemaJson = null,
-                timeoutSeconds = null,
-                source = ToolSource.Official,
-            ),
+            officialHostedWebSearchTool(),
             ToolDescriptor(
                 name = "code_interpreter",
                 displayName = "Code Interpreter",
@@ -378,6 +377,22 @@ class GenerationController(
                 source = ToolSource.Official,
             ),
         )
+
+    private fun officialHostedWebSearchTool(): ToolDescriptor =
+        ToolDescriptor(
+            name = "web_search",
+            displayName = "Web Search",
+            description = "Search the web using the provider's official hosted search tool.",
+            permissionLevel = ToolPermissionLevel.ReadOnly,
+            inputSchemaJson = "{}",
+            outputSchemaJson = null,
+            timeoutSeconds = null,
+            source = ToolSource.Official,
+        )
+
+    private fun ProviderType.supportsChatCompletionsHostedWebSearch(): Boolean =
+        this == ProviderType.NewApi ||
+            this == ProviderType.Sub2Api
 
     private fun ProviderConfig.supportsToolCalling(model: String, providerSupportsTools: Boolean): Boolean {
         val capability = models.firstOrNull { it.id == model }?.capability

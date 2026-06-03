@@ -25,6 +25,28 @@ fun ProviderType.defaultModelCapability(
 
 fun ProviderType.discoveredModelCapability(model: String): ModelCapability? =
     defaultModelCapability(model, source = ModelCapabilitySource.ProviderDiscovery)
+        ?.let { capability ->
+            capability.copy(
+                imageGeneration = capability.imageGeneration && model.isLikelyImageGenerationModel(),
+            )
+        }
 
 fun ProviderConfig.preferredModel(): String =
     defaultModel ?: models.firstOrNull()?.id.orEmpty()
+
+fun String.isLikelyImageGenerationModel(): Boolean {
+    val normalized = trim().lowercase()
+    if (normalized.isBlank()) return false
+    return IMAGE_GENERATION_MODEL_MARKERS.any { marker -> normalized.contains(marker) }
+}
+
+private val IMAGE_GENERATION_MODEL_MARKERS = listOf(
+    "gpt-image",
+    "dall-e",
+    "imagen",
+    "flux",
+    "stable-diffusion",
+    "sdxl",
+    "midjourney",
+    "recraft",
+)

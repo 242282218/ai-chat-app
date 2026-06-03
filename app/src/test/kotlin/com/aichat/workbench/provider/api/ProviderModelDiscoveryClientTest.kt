@@ -69,6 +69,25 @@ class ProviderModelDiscoveryClientTest {
         assertEquals(null, recorded.getHeader("Authorization"))
     }
 
+    @Test
+    fun discover_doesNotMarkPlainChatModelsAsImageGenerationCapable() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"id":"codex-auto-review"},{"id":"gpt-image-1"}]}"""),
+        )
+        val client = ProviderModelDiscoveryClient(providerRegistry = registeredRegistry())
+
+        val result = client.discover(provider(type = ProviderType.NewApi), "test-key")
+
+        assertTrue(result.ok)
+        val chatModel = result.models.single { it.id == "codex-auto-review" }
+        val imageModel = result.models.single { it.id == "gpt-image-1" }
+        assertEquals(false, chatModel.capability?.imageGeneration)
+        assertEquals(true, imageModel.capability?.imageGeneration)
+        assertEquals(ModelCapabilitySource.ProviderDiscovery, chatModel.capability?.source)
+    }
+
     private fun provider(
         type: ProviderType = ProviderType.OpenAICompatible,
         baseUrl: String = server.url("/v1").toString().trimEnd('/'),
@@ -89,6 +108,7 @@ class ProviderModelDiscoveryClientTest {
         ProviderRegistry().apply {
             val provider = ProviderModelDiscoveryClientChatProvider()
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.OpenAICompatible)), provider)
+            register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.NewApi)), provider)
             register(requireNotNull(ProviderRegistry.builtInDescriptor(ProviderType.Ollama)), provider)
         }
 }
