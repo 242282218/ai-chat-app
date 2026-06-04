@@ -20,6 +20,11 @@ internal fun ToolsUiState.canSearch(): Boolean =
 internal fun ToolsUiState.canRunSandbox(): Boolean =
     sandboxActionStatus().isReady
 
+internal fun ToolsUiState.canSaveLocalSearchSettings(): Boolean =
+    !isLoading &&
+        (!localSearchEnabled || localSearchBaseUrlDraft.isValidGatewayBaseUrl()) &&
+        localSearchMaxResultsDraft.toIntOrNull()?.let { it in 1..20 } == true
+
 internal fun ToolsUiState.canSaveGatewaySettings(): Boolean =
     !isLoading &&
         (!gatewayEnabled || gatewayBaseUrlDraft.isValidGatewayBaseUrl())
@@ -36,11 +41,20 @@ internal fun ToolsUiState.canFetchGatewayManifest(): Boolean =
 internal fun ToolsUiState.searchActionStatus(): GatewayActionStatus =
     when {
         isLoading -> GatewayActionStatus(label = "处理中", isReady = false, isBusy = true)
+        localSearchEnabled && !localSearchBaseUrlDraft.isValidGatewayBaseUrl() ->
+            GatewayActionStatus(label = "搜索 URL 无效", isReady = false)
+        localSearchEnabled && localSearchApiKeyDraft.isBlank() ->
+            GatewayActionStatus(label = "需要搜索 Key", isReady = false)
+        localSearchEnabled && localSearchMaxResultsDraft.toIntOrNull()?.let { it in 1..20 } != true ->
+            GatewayActionStatus(label = "数量无效", isReady = false)
+        localSearchEnabled && searchQuery.isBlank() ->
+            GatewayActionStatus(label = "需要关键词", isReady = false)
+        localSearchEnabled -> GatewayActionStatus(label = "本地就绪", isReady = true)
         !gatewayEnabled -> GatewayActionStatus(label = "网关关闭", isReady = false)
         !gatewayBaseUrlDraft.isValidGatewayBaseUrl() ->
             GatewayActionStatus(label = gatewayBaseUrlDraft.gatewayUrlStatus().label, isReady = false)
         gatewayApiTokenDraft.isBlank() -> GatewayActionStatus(label = "需要 Token", isReady = false)
-        !hasSearchTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
+        !hasGatewaySearchTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
         searchQuery.isBlank() -> GatewayActionStatus(label = "需要关键词", isReady = false)
         else -> GatewayActionStatus(label = "就绪", isReady = true)
     }
@@ -58,6 +72,12 @@ internal fun ToolsUiState.sandboxActionStatus(): GatewayActionStatus =
     }
 
 internal fun ToolsUiState.hasSearchTool(): Boolean =
+    hasLocalSearchTool() || hasGatewaySearchTool()
+
+internal fun ToolsUiState.hasLocalSearchTool(): Boolean =
+    tools.any { it.name == "web_search_local" }
+
+internal fun ToolsUiState.hasGatewaySearchTool(): Boolean =
     remoteTools.any { it.name == "web_search" }
 
 internal fun ToolsUiState.hasSandboxTool(): Boolean =

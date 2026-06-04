@@ -4,6 +4,7 @@ import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
+import com.aichat.workbench.data.local.entity.ModelRolePreferenceEntity
 import com.aichat.workbench.data.local.entity.PromptPresetEntity
 import com.aichat.workbench.data.local.entity.ProviderConfigEntity
 import com.aichat.workbench.domain.model.Conversation
@@ -17,6 +18,9 @@ import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ModelPreference
 import com.aichat.workbench.domain.model.ModelPreferenceId
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
+import com.aichat.workbench.domain.model.ModelRolePreferenceId
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.model.ProviderConfig
@@ -137,6 +141,15 @@ fun ModelPreferenceEntity.toDomain(): ModelPreference =
         isFavorite = isFavorite,
         isDefault = isDefault,
         capability = capabilityJson?.let(::modelCapabilityFromJson),
+        updatedAt = Instant.ofEpochMilli(updatedAt),
+    )
+
+fun ModelRolePreferenceEntity.toDomain(): ModelRolePreference =
+    ModelRolePreference(
+        id = ModelRolePreferenceId(id),
+        providerId = ProviderId(providerId),
+        role = ModelRole.valueOf(role),
+        model = model,
         updatedAt = Instant.ofEpochMilli(updatedAt),
     )
 

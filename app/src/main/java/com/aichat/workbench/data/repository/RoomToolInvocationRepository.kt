@@ -40,12 +40,17 @@ class RoomToolInvocationRepository(
             startedAt = Instant.ofEpochMilli(startedAt),
             finishedAt = finishedAt?.let(Instant::ofEpochMilli),
             error = errorJson?.toToolError(),
+            conversationId = conversationId?.let(::ConversationId),
+            rawInputJson = rawInputJson,
+            rawOutputJson = rawOutputJson,
+            durationMs = durationMs,
+            canceledAt = canceledAt?.let(Instant::ofEpochMilli),
         )
 
     private fun ToolResult.toEntity(conversationId: ConversationId?): ToolInvocationEntity =
         ToolInvocationEntity(
             id = id.value,
-            conversationId = conversationId?.value,
+            conversationId = conversationId?.value ?: this.conversationId?.value,
             toolName = toolName,
             permissionLevel = permissionLevel.name,
             inputSummary = inputSummary,
@@ -54,6 +59,10 @@ class RoomToolInvocationRepository(
             startedAt = startedAt.toEpochMilli(),
             finishedAt = finishedAt?.toEpochMilli(),
             errorJson = error?.toJson(),
+            rawInputJson = rawInputJson,
+            rawOutputJson = rawOutputJson,
+            durationMs = durationMs,
+            canceledAt = canceledAt?.toEpochMilli(),
         )
 
     private fun ToolOutput.toJson(): String =

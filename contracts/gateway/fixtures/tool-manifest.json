@@ -6,6 +6,10 @@
       "name": "web_search",
       "description": "通过已配置的 Gateway search adapter 搜索网页或新闻来源。",
       "permissionLevel": "Network",
+      "riskLevel": "Medium",
+      "requiresNetwork": true,
+      "requiresFileAccess": false,
+      "defaultPermissionPolicy": "AskEveryTime",
       "inputSchema": {
         "type": "object",
         "required": ["query"],
@@ -25,6 +29,10 @@
       "name": "code_sandbox",
       "description": "启用后在远端 Sandbox 运行短代码片段。",
       "permissionLevel": "Execute",
+      "riskLevel": "High",
+      "requiresNetwork": true,
+      "requiresFileAccess": false,
+      "defaultPermissionPolicy": "AskEveryTime",
       "inputSchema": {
         "type": "object",
         "required": ["language", "code"],

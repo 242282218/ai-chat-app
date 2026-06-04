@@ -11,10 +11,12 @@ import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.provider.ProviderRegistry
-import com.aichat.workbench.provider.preferredModel
+import com.aichat.workbench.provider.preferredChatModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,7 @@ class ChatViewModel(
     private val savedStateHandle: SavedStateHandle,
     private val conversationRepository: ConversationRepository,
     private val providerRepository: ProviderConfigRepository,
+    private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
     private val promptPresetRepository: PromptPresetRepository,
     private val conversationManager: ConversationManager,
     private val generationController: GenerationController,
@@ -40,6 +43,7 @@ class ChatViewModel(
         viewModelScope.observeChatStateSources(
             conversationRepository,
             providerRepository,
+            modelRolePreferenceRepository,
             promptPresetRepository,
             conversationManager,
             providerRegistry,
@@ -82,13 +86,14 @@ class ChatViewModel(
         val provider = _state.value.providers.firstOrNull { it.id.value == id && it.enabled } ?: return
         updateState {
             val providerChanged = it.selectedProviderId != provider.id.value
+            val preferredModel = provider.preferredChatModel(it.modelRolePreferences)
             it.copy(
                 selectedProviderId = id,
                 draft = it.draft.copy(
                     model = if (providerChanged) {
-                        provider.preferredModel()
+                        preferredModel
                     } else {
-                        it.modelDraft.ifBlank { provider.preferredModel() }
+                        it.modelDraft.ifBlank { preferredModel }
                     },
                 ),
             )
@@ -167,6 +172,16 @@ class ChatViewModel(
 
     fun stopGeneration() = generationController.stop(viewModelScope, ::updateState)
     fun confirmToolCall() = generationController.confirmToolCall()
+    fun updatePendingToolArguments(arguments: String) {
+        generationController.updatePendingToolArguments(arguments)
+        updateState { state ->
+            state.copy(
+                pendingToolCall = state.pendingToolCall?.let { pending ->
+                    pending.copy(toolCall = pending.toolCall.copy(arguments = arguments))
+                },
+            )
+        }
+    }
     fun denyToolCall() = generationController.denyToolCall()
 
     private fun createConversation(title: String, temporary: Boolean) {

@@ -191,6 +191,7 @@ class AppBackupService(
         deleteChatRows()
         database.promptPresetDao().deleteAllPromptPresets()
         database.modelPreferenceDao().deleteAllModelPreferences()
+        database.modelRolePreferenceDao().deleteAllRolePreferences()
         database.imageGenerationDao().deleteAllImageGenerations()
         database.providerConfigDao().deleteAllProviders()
     }
@@ -203,11 +204,13 @@ class AppBackupService(
     private suspend fun deletePromptModelAndImageRows() {
         database.promptPresetDao().deleteAllPromptPresets()
         database.modelPreferenceDao().deleteAllModelPreferences()
+        database.modelRolePreferenceDao().deleteAllRolePreferences()
         database.imageGenerationDao().deleteAllImageGenerations()
     }
 
     private suspend fun deleteProviderRows() {
         database.modelPreferenceDao().deleteAllModelPreferences()
+        database.modelRolePreferenceDao().deleteAllRolePreferences()
         database.providerConfigDao().deleteAllProviders()
     }
 

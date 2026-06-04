@@ -94,6 +94,20 @@ class GatewayDraftsTest {
     }
 
     @Test
+    fun localSearchSettingsCanBeSavedDisabledWithInvalidUrl() {
+        val disabledInvalid = ToolsUiState(
+            localSearchEnabled = false,
+            localSearchBaseUrlDraft = "provider.local",
+            localSearchMaxResultsDraft = "5",
+        )
+
+        assertTrue(disabledInvalid.canSaveLocalSearchSettings())
+        assertFalse(disabledInvalid.copy(localSearchEnabled = true).canSaveLocalSearchSettings())
+        assertFalse(disabledInvalid.copy(localSearchMaxResultsDraft = "0").canSaveLocalSearchSettings())
+        assertFalse(disabledInvalid.copy(isLoading = true).canSaveLocalSearchSettings())
+    }
+
+    @Test
     fun gatewayHealthCanRunDisabledButManifestRequiresEnabled() {
         val enabledValid = ToolsUiState(
             gatewayEnabled = true,
@@ -143,6 +157,42 @@ class GatewayDraftsTest {
         assertEquals(
             GatewayActionStatus(label = "需要工具清单", isReady = false),
             ready.copy(remoteTools = emptyList()).searchActionStatus(),
+        )
+        assertEquals(
+            GatewayActionStatus(label = "需要关键词", isReady = false),
+            ready.copy(searchQuery = "").searchActionStatus(),
+        )
+    }
+
+    @Test
+    fun localSearchActionStatusExplainsPrimaryMissingRequirement() {
+        val ready = ToolsUiState(
+            localSearchEnabled = true,
+            localSearchBaseUrlDraft = "https://api.tavily.com",
+            localSearchApiKeyDraft = "search-key",
+            localSearchMaxResultsDraft = "5",
+            searchQuery = "release notes",
+        )
+
+        assertEquals(
+            GatewayActionStatus(label = "本地就绪", isReady = true),
+            ready.searchActionStatus(),
+        )
+        assertEquals(
+            GatewayActionStatus(label = "处理中", isReady = false, isBusy = true),
+            ready.copy(isLoading = true).searchActionStatus(),
+        )
+        assertEquals(
+            GatewayActionStatus(label = "搜索 URL 无效", isReady = false),
+            ready.copy(localSearchBaseUrlDraft = "api.tavily.com").searchActionStatus(),
+        )
+        assertEquals(
+            GatewayActionStatus(label = "需要搜索 Key", isReady = false),
+            ready.copy(localSearchApiKeyDraft = "").searchActionStatus(),
+        )
+        assertEquals(
+            GatewayActionStatus(label = "数量无效", isReady = false),
+            ready.copy(localSearchMaxResultsDraft = "21").searchActionStatus(),
         )
         assertEquals(
             GatewayActionStatus(label = "需要关键词", isReady = false),

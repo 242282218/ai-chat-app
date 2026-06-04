@@ -5,14 +5,17 @@ import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
-import com.aichat.workbench.provider.preferredModel
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
+import com.aichat.workbench.provider.preferredChatModel
 import com.aichat.workbench.provider.supportsTextGeneration
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 internal fun CoroutineScope.observeChatStateSources(
     conversationRepository: ConversationRepository,
     providerRepository: ProviderConfigRepository,
+    modelRolePreferenceRepository: ModelRolePreferenceRepository,
     promptPresetRepository: PromptPresetRepository,
     conversationManager: ConversationManager,
     providerRegistry: ProviderRegistry,
@@ -35,7 +38,12 @@ internal fun CoroutineScope.observeChatStateSources(
         }
     }
     launch {
-        providerRepository.observeProviders().collect { providers ->
+        combine(
+            providerRepository.observeProviders(),
+            modelRolePreferenceRepository.observeAllRolePreferences(),
+        ) { providers, rolePreferences ->
+            providers to rolePreferences
+        }.collect { (providers, rolePreferences) ->
             updateState { current ->
                 val chatProviders = providers.filter {
                     providerRegistry.isRegistered(it.type) && it.supportsTextGeneration()
@@ -46,12 +54,13 @@ internal fun CoroutineScope.observeChatStateSources(
                 val selectedProviderChanged = current.selectedProviderId != fallback?.id?.value
                 current.copy(
                     providers = chatProviders,
+                    modelRolePreferences = rolePreferences,
                     selectedProviderId = fallback?.id?.value,
                     draft = current.draft.copy(
                         model = when {
                             fallback == null -> current.modelDraft
-                            selectedProviderChanged -> fallback.preferredModel()
-                            else -> current.modelDraft.ifBlank { fallback.preferredModel() }
+                            selectedProviderChanged -> fallback.preferredChatModel(rolePreferences)
+                            else -> current.modelDraft.ifBlank { fallback.preferredChatModel(rolePreferences) }
                         },
                     ),
                 )

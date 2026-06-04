@@ -3,7 +3,14 @@ package com.aichat.workbench.tool.gateway
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolManifest
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
+import com.aichat.workbench.tool.model.canonicalToolName
+import com.aichat.workbench.tool.model.defaultPermissionPolicy
+import com.aichat.workbench.tool.model.defaultRiskLevel
+import com.aichat.workbench.tool.search.SearchResponse
+import com.aichat.workbench.tool.search.SearchResult
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -24,20 +31,6 @@ data class GatewayHealth(
     val service: String,
     val version: String,
     val time: Instant?,
-)
-
-data class SearchResponse(
-    val query: String,
-    val fetchedAt: Instant,
-    val results: List<SearchResult>,
-)
-
-data class SearchResult(
-    val title: String,
-    val summary: String,
-    val url: String,
-    val source: String,
-    val publishedAt: Instant?,
 )
 
 data class SandboxRunResponse(
@@ -109,15 +102,21 @@ class GatewayClient(
             version = json.version,
             generatedAt = Instant.parse(json.generatedAt),
             tools = json.tools.map { tool ->
+                val permissionLevel = tool.permissionLevel.toToolPermissionLevel()
                 ToolDescriptor(
                     name = tool.name,
                     displayName = tool.name.toDisplayName(),
                     description = tool.description.orEmpty(),
-                    permissionLevel = tool.permissionLevel.toToolPermissionLevel(),
+                    permissionLevel = permissionLevel,
                     inputSchemaJson = gatewayJson.encodeToString(tool.inputSchema),
                     outputSchemaJson = tool.outputSchema?.let { gatewayJson.encodeToString(it) },
                     timeoutSeconds = tool.timeoutSeconds?.takeIf { it > 0 },
                     source = ToolSource.Gateway,
+                    riskLevel = tool.riskLevel?.toToolRiskLevel() ?: permissionLevel.defaultRiskLevel(),
+                    requiresNetwork = tool.requiresNetwork ?: tool.name.requiresNetworkByDefault(permissionLevel),
+                    requiresFileAccess = tool.requiresFileAccess ?: false,
+                    defaultPermissionPolicy = tool.defaultPermissionPolicy?.toToolPermissionPolicy()
+                        ?: permissionLevel.defaultPermissionPolicy(),
                 )
             },
         )
@@ -226,6 +225,18 @@ class GatewayClient(
             .firstOrNull { it.name.equals(trim(), ignoreCase = true) }
             ?: ToolPermissionLevel.HighRisk
 
+    private fun String.toToolRiskLevel(): ToolRiskLevel? =
+        ToolRiskLevel.values()
+            .firstOrNull { it.name.equals(trim(), ignoreCase = true) }
+
+    private fun String.toToolPermissionPolicy(): ToolPermissionPolicy? =
+        ToolPermissionPolicy.values()
+            .firstOrNull { it.name.equals(trim(), ignoreCase = true) }
+
+    private fun String.requiresNetworkByDefault(permissionLevel: ToolPermissionLevel): Boolean =
+        permissionLevel == ToolPermissionLevel.Network ||
+            canonicalToolName() in setOf("web_search", "code_sandbox")
+
     private fun String.toGatewayErrorOrNull(): GatewayErrorResponse? =
         runCatching {
             val json = gatewayJson.decodeFromString<GatewayErrorJson>(this)
@@ -294,6 +305,10 @@ private data class ToolDescriptorJson(
     val inputSchema: JsonElement,
     val outputSchema: JsonElement? = null,
     val timeoutSeconds: Int? = null,
+    val riskLevel: String? = null,
+    val requiresNetwork: Boolean? = null,
+    val requiresFileAccess: Boolean? = null,
+    val defaultPermissionPolicy: String? = null,
 )
 
 @Serializable

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.aichat.workbench.data.local.dao.ConversationDao
 import com.aichat.workbench.data.local.dao.ImageGenerationDao
 import com.aichat.workbench.data.local.dao.ModelPreferenceDao
+import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
 import com.aichat.workbench.data.local.dao.PromptPresetDao
 import com.aichat.workbench.data.local.dao.ProviderConfigDao
 import com.aichat.workbench.data.local.dao.ToolInvocationDao
@@ -15,6 +16,7 @@ import com.aichat.workbench.data.local.entity.ImageGenerationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.local.entity.MessageFts
 import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
+import com.aichat.workbench.data.local.entity.ModelRolePreferenceEntity
 import com.aichat.workbench.data.local.entity.PromptPresetEntity
 import com.aichat.workbench.data.local.entity.ProviderConfigEntity
 import com.aichat.workbench.data.local.entity.ToolInvocationEntity
@@ -27,10 +29,11 @@ import com.aichat.workbench.data.local.entity.ToolInvocationEntity
         ProviderConfigEntity::class,
         PromptPresetEntity::class,
         ModelPreferenceEntity::class,
+        ModelRolePreferenceEntity::class,
         ToolInvocationEntity::class,
         ImageGenerationEntity::class,
     ],
-    version = 7,
+    version = 9,
     exportSchema = true,
 )
 abstract class AiChatDatabase : RoomDatabase() {
@@ -39,6 +42,8 @@ abstract class AiChatDatabase : RoomDatabase() {
     abstract fun promptPresetDao(): PromptPresetDao
 
     abstract fun modelPreferenceDao(): ModelPreferenceDao
+
+    abstract fun modelRolePreferenceDao(): ModelRolePreferenceDao
 
     abstract fun providerConfigDao(): ProviderConfigDao
 
@@ -153,6 +158,39 @@ abstract class AiChatDatabase : RoomDatabase() {
                     END
                     """.trimIndent(),
                 )
+            }
+        }
+
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS model_role_preferences (
+                        id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_model_role_preferences_provider_id_role ON model_role_preferences(provider_id, role)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_model_role_preferences_provider_id ON model_role_preferences(provider_id)",
+                )
+            }
+        }
+
+        val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tool_invocations ADD COLUMN raw_input_json TEXT")
+                db.execSQL("ALTER TABLE tool_invocations ADD COLUMN raw_output_json TEXT")
+                db.execSQL("ALTER TABLE tool_invocations ADD COLUMN duration_ms INTEGER")
+                db.execSQL("ALTER TABLE tool_invocations ADD COLUMN canceled_at INTEGER")
             }
         }
     }

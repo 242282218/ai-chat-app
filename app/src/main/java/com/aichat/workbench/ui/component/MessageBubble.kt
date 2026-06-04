@@ -27,6 +27,7 @@ import com.aichat.workbench.ui.theme.Neutral150
 fun MessageBubble(
     message: Message,
     modifier: Modifier = Modifier,
+    onGenerateDiff: ((com.aichat.workbench.ui.markdown.CodeArtifact) -> Unit)? = null,
 ) {
     val isUser = message.role == MessageRole.User
     Row(
@@ -47,7 +48,10 @@ fun MessageBubble(
                 .background(if (isUser) AccentContainer else Neutral150)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            MarkdownMessageContent(text = message.content.ifBlank { "..." })
+            MarkdownMessageContent(
+                text = message.content.ifBlank { "..." },
+                onGenerateDiff = onGenerateDiff,
+            )
         }
     }
 }

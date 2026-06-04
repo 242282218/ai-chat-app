@@ -41,4 +41,12 @@ data class ToolInvocationEntity(
     val finishedAt: Long?,
     @ColumnInfo(name = "error_json")
     val errorJson: String?,
+    @ColumnInfo(name = "raw_input_json")
+    val rawInputJson: String?,
+    @ColumnInfo(name = "raw_output_json")
+    val rawOutputJson: String?,
+    @ColumnInfo(name = "duration_ms")
+    val durationMs: Long?,
+    @ColumnInfo(name = "canceled_at")
+    val canceledAt: Long?,
 )

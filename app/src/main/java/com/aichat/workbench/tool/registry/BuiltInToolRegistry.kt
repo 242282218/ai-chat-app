@@ -2,9 +2,15 @@ package com.aichat.workbench.tool.registry
 
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.tool.local.CodeDiffPreviewToolDescriptor
+import com.aichat.workbench.tool.local.FileReadToolDescriptor
+import com.aichat.workbench.tool.local.LocalJsToolDescriptor
+import com.aichat.workbench.tool.local.LocalWebSearchToolDescriptor
+import com.aichat.workbench.tool.local.ProviderConnectionTestToolDescriptor
 import com.aichat.workbench.tool.local.TextTransformToolDescriptor
 import com.aichat.workbench.tool.local.TimeToolDescriptor
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
 
 object BuiltInToolRegistry {
@@ -12,6 +18,10 @@ object BuiltInToolRegistry {
         TimeToolDescriptor,
         TextTransformToolDescriptor,
         CodeDiffPreviewToolDescriptor,
+        LocalWebSearchToolDescriptor,
+        LocalJsToolDescriptor,
+        FileReadToolDescriptor,
+        ProviderConnectionTestToolDescriptor,
         ToolDescriptor(
             name = "image_generation",
             displayName = "图片生成",
@@ -50,6 +60,10 @@ object BuiltInToolRegistry {
             outputSchemaJson = """{"type":"object"}""",
             timeoutSeconds = null,
             source = ToolSource.BuiltIn,
+            riskLevel = ToolRiskLevel.Medium,
+            requiresNetwork = true,
+            requiresFileAccess = false,
+            defaultPermissionPolicy = ToolPermissionPolicy.AskEveryTime,
         ),
     )
 }

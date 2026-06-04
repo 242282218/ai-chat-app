@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.ModelRole
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolCall
@@ -19,7 +20,7 @@ import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.canonicalToolName
-import com.aichat.workbench.tool.model.requiresConfirmation
+import com.aichat.workbench.provider.rolePreferenceModel
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -38,7 +39,8 @@ class GenerationController(
 ) {
     private var generationJob: Job? = null
     private var activeAssistantMessage: Message? = null
-    private var pendingToolApproval: CompletableDeferred<Boolean>? = null
+    private var pendingToolApproval: CompletableDeferred<ToolApprovalDecision>? = null
+    private var activePendingToolCall: ToolCall? = null
 
     val isActive: Boolean
         get() = generationJob?.isActive == true
@@ -84,17 +86,22 @@ class GenerationController(
             }
         }
         activeAssistantMessage = null
-        pendingToolApproval?.complete(false)
+        pendingToolApproval?.complete(ToolApprovalDecision.Denied)
         pendingToolApproval = null
         onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
     }
 
     fun confirmToolCall() {
-        pendingToolApproval?.complete(true)
+        val toolCall = activePendingToolCall ?: return
+        pendingToolApproval?.complete(ToolApprovalDecision.Approved(toolCall))
+    }
+
+    fun updatePendingToolArguments(arguments: String) {
+        activePendingToolCall = activePendingToolCall?.copy(arguments = arguments)
     }
 
     fun denyToolCall() {
-        pendingToolApproval?.complete(false)
+        pendingToolApproval?.complete(ToolApprovalDecision.Denied)
     }
 
     private suspend fun runGeneration(
@@ -116,10 +123,23 @@ class GenerationController(
             }
             require(!descriptor.requiresApiKey || !apiKey.isNullOrBlank()) { "API Key 缺失。" }
 
-            val model = conversationManager.modelFor(current, provider, conversation, retryFailedMessage)
+            val chatModel = conversationManager.modelFor(current, provider, conversation, retryFailedMessage)
+            val model = provider.codeTaskModel(
+                current = current,
+                chatModel = chatModel,
+                taskText = routingTaskText(current, userText, retryFailedMessage),
+                providerSupportsText = descriptor.capabilities.text,
+                providerSupportsVision = descriptor.capabilities.vision,
+                hasImageInput = current.imageDrafts.isNotEmpty(),
+            )
             requireImageSupported(provider, model, current.imageDrafts, descriptor.capabilities.vision)
+            val toolModel = provider.toolPlanningModel(
+                current = current,
+                chatModel = model,
+                providerSupportsTools = descriptor.capabilities.toolCalling,
+            )
             val tools = provider.chatToolsFor(
-                model = model,
+                model = toolModel,
                 providerSupportsTools = descriptor.capabilities.toolCalling,
                 hasImageInput = current.imageDrafts.isNotEmpty(),
             )
@@ -171,7 +191,7 @@ class GenerationController(
                     conversation = conversation,
                     provider = provider,
                     apiKey = apiKey,
-                    model = model,
+                    model = toolModel,
                     systemPrompt = systemPrompt,
                     history = providerHistory,
                     parentMessageId = parentMessageId,
@@ -193,7 +213,7 @@ class GenerationController(
                     executeToolCall(
                         conversation = conversation,
                         provider = provider,
-                        model = model,
+                        model = toolModel,
                         assistant = assistant,
                         toolCall = toolCall,
                         tools = tools,
@@ -201,7 +221,7 @@ class GenerationController(
                     )
                 }
                 history = conversationRepository.getMessages(conversation.id)
-                    .compactForProvider(conversation, provider, apiKey, model, chatProvider, onStateChanged)
+                    .compactForProvider(conversation, provider, apiKey, toolModel, chatProvider, onStateChanged)
                 systemPrompt = history.systemPrompt
                 providerHistory = history.history
                 parentMessageId = assistant.id
@@ -267,13 +287,24 @@ class GenerationController(
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
         val descriptor = tools.firstOrNull { it.name == toolCall.name.canonicalToolName() }
-        val approved = if (descriptor?.permissionLevel?.requiresConfirmation() == true) {
+        val decision = if (descriptor != null && toolExecutor.requiresConfirmation(descriptor)) {
             awaitToolApproval(toolCall, descriptor, onStateChanged)
         } else {
-            true
+            ToolApprovalDecision.Approved(toolCall)
         }
-        val execution = if (approved) {
-            toolExecutor.execute(conversation.id, toolCall, descriptor)
+        val approvedToolCall = (decision as? ToolApprovalDecision.Approved)?.toolCall
+        val execution = if (approvedToolCall != null) {
+            if (approvedToolCall != toolCall) {
+                conversationRepository.saveMessage(
+                    assistant.copy(
+                        toolCalls = assistant.toolCalls.map {
+                            if (it.id == approvedToolCall.id) approvedToolCall else it
+                        },
+                        updatedAt = clock.instant(),
+                    ),
+                )
+            }
+            toolExecutor.execute(conversation.id, approvedToolCall, descriptor)
         } else {
             toolExecutor.deny(conversation.id, toolCall, descriptor)
         }
@@ -290,7 +321,7 @@ class GenerationController(
             provider = provider,
             model = model,
             parentMessageId = assistant.id,
-            toolCallId = toolCall.id,
+            toolCallId = approvedToolCall?.id ?: toolCall.id,
             toolResult = execution.messageContent,
             errorSummary = execution.result.error?.message,
             contentParts = execution.contentParts.ifEmpty { listOf(MessagePart.Text(execution.messageContent)) },
@@ -302,13 +333,14 @@ class GenerationController(
         toolCall: ToolCall,
         descriptor: ToolDescriptor,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
-    ): Boolean {
-        val approval = CompletableDeferred<Boolean>()
+    ): ToolApprovalDecision {
+        val approval = CompletableDeferred<ToolApprovalDecision>()
         pendingToolApproval = approval
+        activePendingToolCall = toolCall
         onStateChanged {
             it.copy(
                 pendingToolCall = PendingToolCall(
-                    toolCall = toolCall,
+                    toolCall = activePendingToolCall ?: toolCall,
                     displayName = descriptor.displayName,
                     permissionLevel = descriptor.permissionLevel,
                 ),
@@ -318,6 +350,7 @@ class GenerationController(
             approval.await()
         } finally {
             pendingToolApproval = null
+            activePendingToolCall = null
             onStateChanged { it.copy(pendingToolCall = null) }
         }
     }
@@ -397,6 +430,43 @@ class GenerationController(
         return capability?.toolCalling ?: providerSupportsTools
     }
 
+    private fun ProviderConfig.codeTaskModel(
+        current: ChatUiState,
+        chatModel: String,
+        taskText: String,
+        providerSupportsText: Boolean,
+        providerSupportsVision: Boolean,
+        hasImageInput: Boolean,
+    ): String {
+        if (!taskText.isLikelyCodeTask()) return chatModel
+        val roleModel = rolePreferenceModel(current.modelRolePreferences, ModelRole.Code)
+            ?: return chatModel
+        return roleModel.takeIf {
+            supportsTextGeneration(it, providerSupportsText) &&
+                (!hasImageInput || supportsVisionInput(it, providerSupportsVision))
+        } ?: chatModel
+    }
+
+    private fun ProviderConfig.supportsTextGeneration(model: String, providerSupportsText: Boolean): Boolean {
+        val capability = models.firstOrNull { it.id == model }?.capability
+        return capability?.text ?: providerSupportsText
+    }
+
+    private fun ProviderConfig.supportsVisionInput(model: String, providerSupportsVision: Boolean): Boolean {
+        val capability = models.firstOrNull { it.id == model }?.capability
+        return capability?.vision ?: providerSupportsVision
+    }
+
+    private fun ProviderConfig.toolPlanningModel(
+        current: ChatUiState,
+        chatModel: String,
+        providerSupportsTools: Boolean,
+    ): String {
+        val roleModel = rolePreferenceModel(current.modelRolePreferences, ModelRole.Tool)
+            ?: return chatModel
+        return roleModel.takeIf { supportsToolCalling(it, providerSupportsTools) } ?: chatModel
+    }
+
     private fun ProviderType.supportsChatCompletionsHostedWebSearch(): Boolean =
         this == ProviderType.NewApi ||
             this == ProviderType.Sub2Api
@@ -413,6 +483,24 @@ class GenerationController(
         failedMessage: Message,
     ): List<Message> =
         messages.takeWhile { it.id != failedMessage.id }
+
+    private fun routingTaskText(
+        current: ChatUiState,
+        userText: String?,
+        retryFailedMessage: Message?,
+    ): String =
+        userText?.takeIf { it.isNotBlank() }
+            ?: retryFailedMessage?.parentMessageId
+                ?.let { parentId -> current.messages.lastOrNull { it.id == parentId }?.content }
+                ?.takeIf { it.isNotBlank() }
+            ?: retryFailedMessage?.content.orEmpty()
+
+    private fun String.isLikelyCodeTask(): Boolean {
+        val normalized = lowercase()
+        return CODE_TASK_PHRASES.any { marker -> normalized.contains(marker) } ||
+            CODE_TASK_WORD_PATTERN.containsMatchIn(normalized) ||
+            CODE_BLOCK_PATTERN.containsMatchIn(this)
+    }
 
     private suspend fun List<Message>.compactForProvider(
         conversation: Conversation,
@@ -453,7 +541,52 @@ class GenerationController(
     private fun List<Message>.upsertSorted(message: Message): List<Message> =
         upsert(message).sortedWith(compareBy<Message> { it.createdAt }.thenBy { it.id.value })
 
+    private sealed interface ToolApprovalDecision {
+        data class Approved(val toolCall: ToolCall) : ToolApprovalDecision
+        data object Denied : ToolApprovalDecision
+    }
+
     private companion object {
         const val MAX_TOOL_DEPTH = 5
+        val CODE_TASK_PHRASES = listOf(
+            "代码",
+            "函数",
+            "报错",
+            "异常",
+            "堆栈",
+            "编译",
+            "构建失败",
+            "测试失败",
+            "重构",
+            "解释代码",
+            "生成代码",
+            "写一段代码",
+            "写段代码",
+            "实现一个",
+            "修复 bug",
+            "补丁",
+            "正则",
+            "go 语言",
+            "go语言",
+            "jetpack compose",
+            "react component",
+            "react 组件",
+            "diff",
+            "patch",
+            "code",
+            "function",
+            "error",
+            "exception",
+            "stack trace",
+            "compile",
+            "build failed",
+            "refactor",
+            "debug",
+            "unit test",
+        )
+        val CODE_TASK_WORD_PATTERN = Regex(
+            """\b(kotlin|java|golang|rust|python|typescript|javascript|sql|json|yaml|gradle|android|vue|regex)\b""",
+        )
+        val CODE_BLOCK_PATTERN = Regex("""```|\b(class|fun|func|def|fn|const|let|var|package|import|interface|struct|enum)\b""")
     }
 }

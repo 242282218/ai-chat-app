@@ -3,16 +3,21 @@ package com.aichat.workbench.feature.image
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.DEFAULT_OPENAI_IMAGE_MODEL
 import com.aichat.workbench.provider.defaultImageModel
+import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.provider.image.ImageGenerationProvider
@@ -52,6 +57,7 @@ class ImageGenerationViewModel(
     private val imageRepository: ImageGenerationRepository,
     private val providerRepository: ProviderConfigRepository,
     private val preferencesRepository: ImageGenerationPreferencesRepository,
+    private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
     private val clock: Clock,
@@ -70,10 +76,12 @@ class ImageGenerationViewModel(
             combine(
                 providerRepository.observeProviders(),
                 preferencesRepository.observePreferences(),
-            ) { providers, preferences -> providers to preferences }
-                .collect { (providers, preferences) ->
+                modelRolePreferenceRepository.observeAllRolePreferences(),
+            ) { providers, preferences, rolePreferences ->
+                Triple(providers, preferences, rolePreferences)
+            }.collect { (providers, preferences, rolePreferences) ->
                     _state.update { current ->
-                        current.withImageProviderSelection(providers, preferences)
+                        current.withImageProviderSelection(providers, preferences, rolePreferences)
                     }
                 }
         }
@@ -202,6 +210,7 @@ class ImageGenerationViewModel(
     private fun ImageGenerationUiState.withImageProviderSelection(
         providers: List<ProviderConfig>,
         preferences: ImageGenerationPreferences,
+        rolePreferences: List<ModelRolePreference>,
     ): ImageGenerationUiState {
         val imageProviders = providers.filter { it.supportsImageGeneration() }
         val preferred = preferences.providerId
@@ -213,7 +222,7 @@ class ImageGenerationViewModel(
         return copy(
             providers = imageProviders,
             selectedProviderId = fallback?.id?.value,
-            model = selectedImageModel(fallback, selectedProviderChanged, preferences),
+            model = selectedImageModel(fallback, selectedProviderChanged, preferences, rolePreferences),
         )
     }
 
@@ -221,9 +230,12 @@ class ImageGenerationViewModel(
         provider: ProviderConfig?,
         selectedProviderChanged: Boolean,
         preferences: ImageGenerationPreferences,
+        rolePreferences: List<ModelRolePreference>,
     ): String =
         when {
             provider == null -> model
+            provider.rolePreferenceModel(rolePreferences, ModelRole.Image) != null ->
+                requireNotNull(provider.rolePreferenceModel(rolePreferences, ModelRole.Image))
             preferences.providerId == provider.id.value && !preferences.model.isNullOrBlank() -> preferences.model
             selectedProviderChanged -> provider.defaultImageModel()
             else -> model.ifBlank { provider.defaultImageModel() }

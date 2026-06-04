@@ -112,6 +112,26 @@ class OpenAiImageGenerationProviderTest {
         assertEquals(429, error.error.statusCode)
     }
 
+    @Test
+    fun generate_mapsProviderServerErrorsAsRetryable() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setBody("""{"error":{"message":"temporary outage"}}"""),
+        )
+        val provider = OpenAiImageGenerationProvider()
+
+        val error = runCatching {
+            provider.generate(request())
+        }.exceptionOrNull()
+
+        require(error is ProviderHttpException)
+        assertEquals("provider_unavailable", error.error.code)
+        assertEquals("temporary outage", error.error.message)
+        assertEquals(500, error.error.statusCode)
+        assertEquals(true, error.error.retryable)
+    }
+
     private fun request(
         type: ProviderType = ProviderType.OpenAI,
         baseUrl: String = server.url("/v1").toString().trimEnd('/'),

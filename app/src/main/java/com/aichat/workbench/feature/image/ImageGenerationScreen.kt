@@ -616,7 +616,7 @@ private fun ImageGenerationRow(
                         icon = Icons.Filled.Replay,
                         label = "重新生成",
                         onClick = onRegenerate,
-                        enabled = generation.status == ImageGenerationStatus.Completed,
+                        enabled = generation.canRegenerate(),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -679,6 +679,9 @@ private fun ImageGeneration.statusTone(): StatusTone =
         ImageGenerationStatus.Cancelled -> StatusTone.Warning
         ImageGenerationStatus.Pending -> StatusTone.Accent
     }
+
+private fun ImageGeneration.canRegenerate(): Boolean =
+    status == ImageGenerationStatus.Completed || status == ImageGenerationStatus.Failed
 
 private fun ImageGenerationStatus.displayLabel(): String =
     when (this) {

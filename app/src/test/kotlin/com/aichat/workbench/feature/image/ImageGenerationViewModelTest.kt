@@ -5,6 +5,9 @@ import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelConfig
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
+import com.aichat.workbench.domain.model.ModelRolePreferenceId
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
@@ -12,6 +15,7 @@ import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.provider.image.GeneratedImage
@@ -211,6 +215,43 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun loadsImageRoleModelBeforeSavedImagePreferences() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider(
+            id = "openai",
+            type = ProviderType.OpenAI,
+            models = listOf(
+                model("gpt-image-1", text = false, imageGeneration = true),
+                model("role-image-model", text = false, imageGeneration = true),
+            ),
+        )
+        val preferencesRepository = FakeImageGenerationPreferencesRepository(
+            ImageGenerationPreferences(providerId = openAiProvider.id.value, model = "gpt-image-1"),
+        )
+        val roleRepository = FakeModelRolePreferenceRepository(
+            listOf(
+                ModelRolePreference(
+                    id = ModelRolePreferenceId("openai:Image"),
+                    providerId = openAiProvider.id,
+                    role = ModelRole.Image,
+                    model = "role-image-model",
+                    updatedAt = clock.instant(),
+                ),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+            preferencesRepository = preferencesRepository,
+            modelRolePreferenceRepository = roleRepository,
+        )
+        advanceUntilIdle()
+
+        assertEquals(openAiProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("role-image-model", viewModel.state.value.model)
+    }
+
+    @Test
     fun imageProviderDefaultsToImageModelInsteadOfChatDefaultModel() = runTest(mainDispatcherRule.testDispatcher) {
         val newApiProvider = provider("new-api", ProviderType.NewApi, defaultModel = "codex-auto-review")
         val viewModel = viewModel(
@@ -315,12 +356,14 @@ class ImageGenerationViewModelTest {
         storage: ImageStorage,
         providerRepository: ProviderConfigRepository = FakeProviderConfigRepository(emptyList()),
         preferencesRepository: ImageGenerationPreferencesRepository = FakeImageGenerationPreferencesRepository(),
+        modelRolePreferenceRepository: ModelRolePreferenceRepository = FakeModelRolePreferenceRepository(),
         imageProvider: ImageGenerationProvider = NoopImageProvider(),
     ): ImageGenerationViewModel =
         ImageGenerationViewModel(
             imageRepository = repository,
             providerRepository = providerRepository,
             preferencesRepository = preferencesRepository,
+            modelRolePreferenceRepository = modelRolePreferenceRepository,
             imageProvider = imageProvider,
             imageStorage = storage,
             clock = clock,
@@ -489,6 +532,39 @@ private class FakeImageGenerationPreferencesRepository(
             providerId = providerId?.takeIf { it.isNotBlank() },
             model = model?.takeIf { it.isNotBlank() },
         )
+    }
+}
+
+private class FakeModelRolePreferenceRepository(
+    initialPreferences: List<ModelRolePreference> = emptyList(),
+) : ModelRolePreferenceRepository {
+    private val preferences = MutableStateFlow(initialPreferences)
+
+    override fun observeRolePreferences(providerId: ProviderId): Flow<List<ModelRolePreference>> =
+        preferences
+
+    override fun observeAllRolePreferences(): Flow<List<ModelRolePreference>> = preferences
+
+    override suspend fun getRoleModel(providerId: ProviderId, role: ModelRole): String? =
+        preferences.value.firstOrNull { it.providerId == providerId && it.role == role }?.model
+
+    override suspend fun setRoleModel(providerId: ProviderId, role: ModelRole, model: String?) {
+        preferences.value = preferences.value.filterNot { it.providerId == providerId && it.role == role } +
+            listOfNotNull(
+                model?.trim()?.takeIf { it.isNotBlank() }?.let {
+                    ModelRolePreference(
+                        id = ModelRolePreferenceId("${providerId.value}:${role.name}"),
+                        providerId = providerId,
+                        role = role,
+                        model = it,
+                        updatedAt = Instant.parse("2026-06-01T00:00:00Z"),
+                    )
+                },
+            )
+    }
+
+    override suspend fun deleteForProvider(providerId: ProviderId) {
+        preferences.value = preferences.value.filterNot { it.providerId == providerId }
     }
 }
 

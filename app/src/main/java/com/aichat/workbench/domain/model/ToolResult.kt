@@ -12,6 +12,11 @@ data class ToolResult(
     val startedAt: Instant,
     val finishedAt: Instant?,
     val error: ToolError?,
+    val conversationId: ConversationId? = null,
+    val rawInputJson: String? = null,
+    val rawOutputJson: String? = null,
+    val durationMs: Long? = null,
+    val canceledAt: Instant? = null,
 )
 
 enum class ToolPermissionLevel {
@@ -22,10 +27,15 @@ enum class ToolPermissionLevel {
 }
 
 enum class ToolStatus {
+    Queued,
     Pending,
+    NeedsApproval,
     Running,
+    Streaming,
     Completed,
     Failed,
+    Denied,
+    Canceled,
     Cancelled,
 }
 

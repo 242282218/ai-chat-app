@@ -4,10 +4,24 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.settings.GatewaySettingsRepository
+import com.aichat.workbench.data.settings.SearchSettingsRepository
+import com.aichat.workbench.data.settings.ToolSettingsRepository
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.ToolCallId
+import com.aichat.workbench.domain.model.ToolError
+import com.aichat.workbench.domain.model.ToolOutput
+import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolResult
+import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.tool.gateway.GatewayClient
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.runtimeSettingFor
+import com.aichat.workbench.tool.search.LocalSearchClient
+import com.aichat.workbench.tool.search.SearchConfig
+import com.aichat.workbench.tool.search.SearchProvider
+import com.aichat.workbench.tool.search.SearchResponse
+import com.aichat.workbench.tool.search.SearchResult
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -28,6 +42,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -45,18 +60,26 @@ class ToolsViewModelTest {
     val mainDispatcherRule = ToolsMainDispatcherRule()
 
     private lateinit var context: Context
-    private lateinit var preferences: android.content.SharedPreferences
+    private lateinit var gatewayPreferences: android.content.SharedPreferences
+    private lateinit var searchPreferences: android.content.SharedPreferences
+    private lateinit var toolPreferences: android.content.SharedPreferences
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        preferences = context.getSharedPreferences("gateway_settings", Context.MODE_PRIVATE)
-        preferences.edit().clear().commit()
+        gatewayPreferences = context.getSharedPreferences("gateway_settings", Context.MODE_PRIVATE)
+        searchPreferences = context.getSharedPreferences("search_settings", Context.MODE_PRIVATE)
+        toolPreferences = context.getSharedPreferences("tool_settings", Context.MODE_PRIVATE)
+        gatewayPreferences.edit().clear().commit()
+        searchPreferences.edit().clear().commit()
+        toolPreferences.edit().clear().commit()
     }
 
     @After
     fun tearDown() {
-        preferences.edit().clear().commit()
+        gatewayPreferences.edit().clear().commit()
+        searchPreferences.edit().clear().commit()
+        toolPreferences.edit().clear().commit()
     }
 
     @Test
@@ -123,11 +146,193 @@ class ToolsViewModelTest {
         }
     }
 
-    private fun viewModel(): ToolsViewModel =
+    @Test
+    fun requestLocalSearchRequiresApiKey() = runTest(mainDispatcherRule.testDispatcher) {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        viewModel.updateLocalSearchEnabled(true)
+        viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+        viewModel.updateSearchQuery("release notes")
+        viewModel.requestSearch()
+
+        assertEquals("搜索 API Key 未配置。", viewModel.state.value.status)
+        assertEquals("local_search_key_required", viewModel.state.value.searchError?.code)
+        assertNull(viewModel.state.value.pendingConfirmation)
+    }
+
+    @Test
+    fun localSearchExecutesAndSavesToolResult() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = RecordingToolInvocationRepository()
+        val localSearchClient = RecordingLocalSearchClient()
+        val viewModel = viewModel(
+            toolInvocationRepository = repository,
+            localSearchClient = localSearchClient,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateLocalSearchEnabled(true)
+        viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.updateLocalSearchMaxResults("3")
+        viewModel.updateLocalSearchDepth("advanced")
+        viewModel.updateLocalSearchTopic("news")
+        viewModel.updateSearchQuery("AI release notes")
+        viewModel.requestSearch()
+
+        assertEquals("web_search_local", viewModel.state.value.pendingConfirmation?.name)
+
+        viewModel.confirmPermission()
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+
+        val request = localSearchClient.requests.single()
+        assertEquals("AI release notes", request.query)
+        assertEquals(SearchProvider.Tavily, request.config.provider)
+        assertEquals("https://api.tavily.com", request.config.baseUrl)
+        assertEquals("test-search-key", request.config.apiKey)
+        assertEquals(3, request.config.maxResults)
+        assertEquals("advanced", request.config.searchDepth)
+        assertEquals("news", request.config.topic)
+        assertEquals("本地搜索返回 1 个来源", viewModel.state.value.status)
+        assertEquals("Result title", viewModel.state.value.searchResults.single().title)
+
+        val saved = repository.savedResults.value.single()
+        assertEquals("web_search_local", saved.toolName)
+        assertEquals(ToolPermissionLevel.Network, saved.permissionLevel)
+        assertEquals(ToolStatus.Completed, saved.status)
+        assertNull(saved.error)
+        assertEquals("""{"query":"AI release notes"}""", saved.rawInputJson)
+        assertTrue(saved.rawOutputJson.orEmpty().contains("Result title"))
+        assertEquals(0L, saved.durationMs)
+    }
+
+    @Test
+    fun localSearchSkipsConfirmationWhenPolicyAllows() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = RecordingToolInvocationRepository()
+        val localSearchClient = RecordingLocalSearchClient()
+        val viewModel = viewModel(
+            toolInvocationRepository = repository,
+            localSearchClient = localSearchClient,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateToolPermissionPolicy("local-search", ToolPermissionPolicy.AllowWithoutPrompt)
+        advanceUntilIdle()
+        viewModel.updateLocalSearchEnabled(true)
+        viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.updateSearchQuery("AI release notes")
+        viewModel.requestSearch()
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+
+        assertNull(viewModel.state.value.pendingConfirmation)
+        assertEquals("AI release notes", localSearchClient.requests.single().query)
+        assertEquals("本地搜索返回 1 个来源", viewModel.state.value.status)
+        assertEquals("web_search_local", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
+    fun requestLocalSearchStopsWhenToolIsDisabled() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = RecordingToolInvocationRepository()
+        val localSearchClient = RecordingLocalSearchClient()
+        val viewModel = viewModel(
+            toolInvocationRepository = repository,
+            localSearchClient = localSearchClient,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateToolEnabled("local-search", false)
+        advanceUntilIdle()
+        viewModel.updateLocalSearchEnabled(true)
+        viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.updateSearchQuery("AI release notes")
+        viewModel.requestSearch()
+        advanceUntilIdle()
+
+        assertEquals("本地搜索工具已禁用。", viewModel.state.value.status)
+        assertNull(viewModel.state.value.pendingConfirmation)
+        assertEquals(emptyList<LocalSearchRequest>(), localSearchClient.requests)
+        assertEquals(emptyList<ToolResult>(), repository.savedResults.value)
+    }
+
+    @Test
+    fun observesAndUpdatesToolSettings() = runTest(mainDispatcherRule.testDispatcher) {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        viewModel.updateToolEnabled("local-search", false)
+        viewModel.updateToolPermissionPolicy("local-search", ToolPermissionPolicy.AllowWithoutPrompt)
+        advanceUntilIdle()
+
+        val setting = viewModel.state.value.toolSettings.runtimeSettingFor("web_search_local")
+        assertEquals(false, setting.enabled)
+        assertEquals(ToolPermissionPolicy.AllowWithoutPrompt, setting.permissionPolicy)
+        assertEquals(false, viewModel.state.value.enabledTools.any { it.name == "web_search_local" })
+
+        val nextViewModel = viewModel()
+        advanceUntilIdle()
+
+        val persisted = nextViewModel.state.value.toolSettings.runtimeSettingFor("web-search-local")
+        assertEquals(false, persisted.enabled)
+        assertEquals(ToolPermissionPolicy.AllowWithoutPrompt, persisted.permissionPolicy)
+    }
+
+    @Test
+    fun observesAndFiltersToolHistory() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = RecordingToolInvocationRepository()
+        val viewModel = viewModel(toolInvocationRepository = repository)
+        advanceUntilIdle()
+
+        val completedSearch = toolResult(
+            id = "search-1",
+            toolName = "web_search_local",
+            status = ToolStatus.Completed,
+        )
+        val failedSearch = toolResult(
+            id = "search-2",
+            toolName = "web_search_local",
+            status = ToolStatus.Failed,
+            error = ToolError(code = "local_search_http_429", message = "Rate limit exceeded"),
+        )
+        val completedTime = toolResult(
+            id = "time-1",
+            toolName = "time",
+            status = ToolStatus.Completed,
+        )
+        repository.savedResults.value = listOf(completedSearch, failedSearch, completedTime)
+        advanceUntilIdle()
+
+        assertEquals(listOf(completedSearch, failedSearch, completedTime), viewModel.state.value.toolHistory)
+        assertEquals(listOf(completedSearch, failedSearch, completedTime), viewModel.state.value.filteredToolHistory)
+
+        viewModel.updateToolHistoryToolFilter("web_search_local")
+
+        assertEquals(listOf(completedSearch, failedSearch), viewModel.state.value.filteredToolHistory)
+
+        viewModel.updateToolHistoryStatusFilter(ToolStatus.Failed)
+
+        assertEquals(listOf(failedSearch), viewModel.state.value.filteredToolHistory)
+
+        viewModel.updateToolHistoryToolFilter(null)
+
+        assertEquals(listOf(failedSearch), viewModel.state.value.filteredToolHistory)
+    }
+
+    private fun viewModel(
+        secretStore: FakeSecretStore = FakeSecretStore(),
+        toolInvocationRepository: ToolInvocationRepository = RecordingToolInvocationRepository(),
+        localSearchClient: LocalSearchClient = RecordingLocalSearchClient(),
+    ): ToolsViewModel =
         ToolsViewModel(
-            settingsRepository = GatewaySettingsRepository(context, FakeSecretStore()),
+            settingsRepository = GatewaySettingsRepository(context, secretStore),
+            searchSettingsRepository = SearchSettingsRepository(context, secretStore),
+            toolSettingsRepository = ToolSettingsRepository(context),
             gatewayClient = GatewayClient(),
-            toolInvocationRepository = RecordingToolInvocationRepository(),
+            localSearchClient = localSearchClient,
+            toolInvocationRepository = toolInvocationRepository,
             clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
         )
 }
@@ -158,12 +363,64 @@ private fun manifestResponse(toolName: String): MockResponse =
         """.trimIndent(),
     )
 
+private fun toolResult(
+    id: String,
+    toolName: String,
+    status: ToolStatus,
+    error: ToolError? = null,
+): ToolResult =
+    ToolResult(
+        id = ToolCallId(id),
+        toolName = toolName,
+        permissionLevel = ToolPermissionLevel.Network,
+        inputSummary = "input for $toolName",
+        output = ToolOutput.Json("""{"ok":true}"""),
+        status = status,
+        startedAt = Instant.parse("2026-06-01T00:00:00Z"),
+        finishedAt = Instant.parse("2026-06-01T00:00:01Z"),
+        error = error,
+    )
+
 private class FakeSecretStore : SecretStore {
-    override suspend fun putSecret(ref: String, value: String) = Unit
+    private val secrets = mutableMapOf<String, String>()
 
-    override suspend fun getSecret(ref: String): String? = null
+    override suspend fun putSecret(ref: String, value: String) {
+        secrets[ref] = value
+    }
 
-    override suspend fun deleteSecret(ref: String) = Unit
+    override suspend fun getSecret(ref: String): String? = secrets[ref]
+
+    override suspend fun deleteSecret(ref: String) {
+        secrets.remove(ref)
+    }
+}
+
+private data class LocalSearchRequest(
+    val query: String,
+    val config: SearchConfig,
+)
+
+private class RecordingLocalSearchClient(
+    private val response: SearchResponse = SearchResponse(
+        query = "AI release notes",
+        fetchedAt = Instant.parse("2026-06-01T00:00:01Z"),
+        results = listOf(
+            SearchResult(
+                title = "Result title",
+                summary = "Result summary",
+                url = "https://example.com/result",
+                source = "example.com",
+                publishedAt = Instant.parse("2026-05-31T00:00:00Z"),
+            ),
+        ),
+    ),
+) : LocalSearchClient {
+    val requests = mutableListOf<LocalSearchRequest>()
+
+    override suspend fun search(query: String, config: SearchConfig): SearchResponse {
+        requests += LocalSearchRequest(query, config)
+        return response.copy(query = query)
+    }
 }
 
 private class RecordingToolInvocationRepository : ToolInvocationRepository {

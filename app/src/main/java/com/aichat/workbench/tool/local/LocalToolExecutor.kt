@@ -4,8 +4,11 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolOutput
+import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.canonicalToolName
+import com.aichat.workbench.tool.search.LocalSearchClient
+import com.aichat.workbench.tool.search.SearchConfig
 import java.time.Clock
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
@@ -63,9 +66,45 @@ val localToolJson: Json = Json {
     encodeDefaults = true
 }
 
-fun defaultLocalTools(clock: Clock = Clock.systemUTC()): List<LocalTool> =
-    listOf(
-        TimeTool(clock),
-        TextTransformTool(),
-        CodeDiffPreviewTool(),
-    )
+fun defaultLocalTools(
+    clock: Clock = Clock.systemUTC(),
+    scriptRunner: LocalScriptRunner = UnsupportedLocalScriptRunner(),
+    fileReader: AuthorizedFileReader = UnsupportedAuthorizedFileReader(),
+    providerRepository: ProviderConfigRepository? = null,
+    providerConnectionRunner: ProviderConnectionTestRunner = UnsupportedProviderConnectionTestRunner(),
+    searchConfigProvider: (suspend () -> SearchConfig)? = null,
+    searchClient: LocalSearchClient? = null,
+): List<LocalTool> =
+    buildList {
+        add(
+            TimeTool(clock),
+        )
+        add(
+            TextTransformTool(),
+        )
+        add(
+            CodeDiffPreviewTool(),
+        )
+        add(
+            LocalJsTool(scriptRunner),
+        )
+        add(
+            FileReadTool(fileReader),
+        )
+        if (searchConfigProvider != null && searchClient != null) {
+            add(
+                LocalWebSearchTool(
+                    searchConfigProvider = searchConfigProvider,
+                    searchClient = searchClient,
+                ),
+            )
+        }
+        providerRepository?.let {
+            add(
+                ProviderConnectionTestTool(
+                    providerRepository = it,
+                    runner = providerConnectionRunner,
+                ),
+            )
+        }
+    }

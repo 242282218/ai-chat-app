@@ -40,12 +40,16 @@ type ToolManifestResponse struct {
 }
 
 type ToolDefinition struct {
-	Name            string         `json:"name"`
-	Description     string         `json:"description"`
-	PermissionLevel string         `json:"permissionLevel"`
-	InputSchema     map[string]any `json:"inputSchema"`
-	OutputSchema    map[string]any `json:"outputSchema,omitempty"`
-	TimeoutSeconds  int            `json:"timeoutSeconds,omitempty"`
+	Name                    string         `json:"name"`
+	Description             string         `json:"description"`
+	PermissionLevel         string         `json:"permissionLevel"`
+	RiskLevel               string         `json:"riskLevel"`
+	RequiresNetwork         bool           `json:"requiresNetwork"`
+	RequiresFileAccess      bool           `json:"requiresFileAccess"`
+	DefaultPermissionPolicy string         `json:"defaultPermissionPolicy"`
+	InputSchema             map[string]any `json:"inputSchema"`
+	OutputSchema            map[string]any `json:"outputSchema,omitempty"`
+	TimeoutSeconds          int            `json:"timeoutSeconds,omitempty"`
 }
 
 type SearchRequest struct {
@@ -108,9 +112,13 @@ func toolManifestHandler() http.HandlerFunc {
 			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 			Tools: []ToolDefinition{
 				{
-					Name:            "web_search",
-					Description:     "通过已配置的 Gateway search adapter 搜索网页或新闻来源。",
-					PermissionLevel: "Network",
+					Name:                    "web_search",
+					Description:             "通过已配置的 Gateway search adapter 搜索网页或新闻来源。",
+					PermissionLevel:         "Network",
+					RiskLevel:               "Medium",
+					RequiresNetwork:         true,
+					RequiresFileAccess:      false,
+					DefaultPermissionPolicy: "AskEveryTime",
 					InputSchema: map[string]any{
 						"type":     "object",
 						"required": []string{"query"},
@@ -124,9 +132,13 @@ func toolManifestHandler() http.HandlerFunc {
 					TimeoutSeconds: 20,
 				},
 				{
-					Name:            "code_sandbox",
-					Description:     "启用后在远端 Sandbox 运行短代码片段。",
-					PermissionLevel: "Execute",
+					Name:                    "code_sandbox",
+					Description:             "启用后在远端 Sandbox 运行短代码片段。",
+					PermissionLevel:         "Execute",
+					RiskLevel:               "High",
+					RequiresNetwork:         true,
+					RequiresFileAccess:      false,
+					DefaultPermissionPolicy: "AskEveryTime",
 					InputSchema: map[string]any{
 						"type":     "object",
 						"required": []string{"language", "code"},

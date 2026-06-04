@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
+import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ToolCall
@@ -16,6 +17,7 @@ data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val selectedConversationMessageCount: Int = 0,
     val providers: List<ProviderConfig> = emptyList(),
+    val modelRolePreferences: List<ModelRolePreference> = emptyList(),
     val promptPresets: List<PromptPreset> = emptyList(),
     val selectedProviderId: String? = null,
     val draft: DraftState = DraftState(),

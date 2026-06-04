@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
@@ -59,7 +60,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -69,11 +72,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ToolError
+import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.domain.model.ToolResult
+import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
-import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
+import com.aichat.workbench.tool.model.ToolRuntimeSetting
+import com.aichat.workbench.tool.model.canUsePermissionPolicy
+import com.aichat.workbench.tool.model.requiresConfirmation
+import com.aichat.workbench.tool.model.runtimeSettingFor
+import com.aichat.workbench.tool.search.SearchResult
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
@@ -168,7 +180,10 @@ fun ToolsScreen(
             items(state.tools, key = { "${it.source}:${it.name}" }) { tool ->
                 ToolRow(
                     tool = tool,
+                    setting = state.toolSettings.runtimeSettingFor(tool),
                     onConfirm = { viewModel.requestPermission(tool) },
+                    onEnabledChange = { enabled -> viewModel.updateToolEnabled(tool.name, enabled) },
+                    onPolicyChange = { policy -> viewModel.updateToolPermissionPolicy(tool.name, policy) },
                 )
             }
             item {
@@ -188,6 +203,12 @@ fun ToolsScreen(
                     )
                 }
             }
+            item {
+                ToolHistorySection(
+                    state = state,
+                    viewModel = viewModel,
+                )
+            }
         }
     }
 
@@ -203,6 +224,12 @@ fun ToolsScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item {
+                    LocalSearchSettingsPanel(
+                        state = state,
+                        viewModel = viewModel,
+                    )
+                }
                 item {
                     GatewaySettingsPanel(
                         state = state,
@@ -225,6 +252,7 @@ fun ToolsScreen(
 private fun toolsTopBarSubtitle(state: ToolsUiState): String =
     when {
         state.isLoading -> "处理中 · ${state.tools.size} 个工具"
+        state.localSearchEnabled -> "本地搜索可用 · ${state.tools.size} 个工具"
         !state.gatewayEnabled -> "本地工具可用 · 网关关闭"
         state.remoteTools.isEmpty() -> "网关已启用 · 清单未加载"
         else -> "${state.tools.size} 个工具 · ${state.remoteTools.size} 个来自网关"
@@ -279,22 +307,24 @@ private fun GatewayActionStrip(
 
 @Composable
 private fun ToolCatalogHeader(state: ToolsUiState) {
-    val networkCount = state.tools.count { it.permissionLevel == ToolPermissionLevel.Network }
-    val executeCount = state.tools.count {
+    val enabledTools = state.enabledTools
+    val networkCount = enabledTools.count { it.permissionLevel == ToolPermissionLevel.Network }
+    val executeCount = enabledTools.count {
         it.permissionLevel == ToolPermissionLevel.Execute ||
             it.permissionLevel == ToolPermissionLevel.HighRisk
     }
+    val disabledCount = state.tools.size - enabledTools.size
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         QuietSectionHeader(
             title = "工具清单",
-            description = "权限级别同时用文字和图标表达；联网或执行类操作运行前会确认。",
+            description = "管理工具开关和联网工具确认策略；执行类和高风险工具始终每次确认。",
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-                StatusPill(text = "${state.tools.size} 个工具", tone = StatusTone.Accent)
+                StatusPill(text = "${enabledTools.size}/${state.tools.size} 已启用", tone = StatusTone.Accent)
             }
             if (networkCount > 0) {
                 item {
@@ -304,6 +334,11 @@ private fun ToolCatalogHeader(state: ToolsUiState) {
             if (executeCount > 0) {
                 item {
                     StatusPill(text = "$executeCount 个执行类", tone = StatusTone.Critical)
+                }
+            }
+            if (disabledCount > 0) {
+                item {
+                    StatusPill(text = "$disabledCount 个关闭", tone = StatusTone.Neutral)
                 }
             }
         }
@@ -347,7 +382,10 @@ private fun ToolWorkbenchDisclosure(
             }
             if (state.hasSearchTool()) {
                 item {
-                    StatusPill(text = "搜索工具已加载", tone = StatusTone.Success)
+                    StatusPill(
+                        text = if (state.localSearchEnabled) "本地搜索已启用" else "搜索工具已加载",
+                        tone = StatusTone.Success,
+                    )
                 }
             }
             if (state.hasSandboxTool()) {
@@ -369,7 +407,7 @@ private fun GatewayStatusHeader(state: ToolsUiState) {
         QuietSectionHeader(
             title = "网关状态",
             description = if (state.gatewayEnabled) {
-                "网络搜索和代码沙箱取决于工具清单中的能力。"
+                "代码沙箱取决于工具清单；搜索优先使用本地 Provider。"
             } else {
                 "可选能力，关闭时聊天仍可用。"
             },
@@ -392,6 +430,12 @@ private fun GatewayStatusHeader(state: ToolsUiState) {
                         state.gatewayEnabled -> StatusTone.Warning
                         else -> StatusTone.Neutral
                     },
+                )
+            }
+            item {
+                StatusPill(
+                    text = if (state.localSearchEnabled) "本地搜索开启" else "本地搜索关闭",
+                    tone = if (state.localSearchEnabled) StatusTone.Success else StatusTone.Neutral,
                 )
             }
             if (state.remoteTools.isNotEmpty()) {
@@ -727,20 +771,39 @@ private fun SearchPanel(
 
 @Composable
 private fun SearchPanelSummary(state: ToolsUiState) {
-    val urlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
+    val gatewayUrlStatus = state.gatewayBaseUrlDraft.gatewayUrlStatus()
+    val localSearchUrlStatus = state.localSearchBaseUrlDraft.gatewayUrlStatus()
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             StatusPill(
-                text = if (state.gatewayEnabled) "网关开启" else "网关关闭",
-                tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
+                text = if (state.localSearchEnabled) "本地搜索开启" else "本地搜索关闭",
+                tone = if (state.localSearchEnabled) StatusTone.Success else StatusTone.Warning,
             )
         }
-        item {
-            StatusPill(text = urlStatus.label, tone = urlStatus.tone())
+        if (state.localSearchEnabled) {
+            item {
+                StatusPill(text = localSearchUrlStatus.label, tone = localSearchUrlStatus.tone())
+            }
+            item {
+                StatusPill(
+                    text = if (state.localSearchApiKeyDraft.isBlank()) "需要搜索 Key" else "搜索 Key 已输入",
+                    tone = if (state.localSearchApiKeyDraft.isBlank()) StatusTone.Warning else StatusTone.Success,
+                )
+            }
+        } else {
+            item {
+                StatusPill(
+                    text = if (state.gatewayEnabled) "网关开启" else "网关关闭",
+                    tone = if (state.gatewayEnabled) StatusTone.Success else StatusTone.Warning,
+                )
+            }
+            item {
+                StatusPill(text = gatewayUrlStatus.label, tone = gatewayUrlStatus.tone())
+            }
         }
         item {
             StatusPill(
-                text = if (state.hasSearchTool()) "网络搜索已加载" else "需要工具清单",
+                text = if (state.hasSearchTool()) "搜索工具可用" else "需要工具清单",
                 tone = if (state.hasSearchTool()) StatusTone.Success else StatusTone.Warning,
             )
         }
@@ -872,6 +935,106 @@ private fun openUrl(context: Context, url: String) {
     runCatching {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         context.startActivity(intent)
+    }
+}
+
+@Composable
+private fun LocalSearchSettingsPanel(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
+) {
+    val urlStatus = state.localSearchBaseUrlDraft.gatewayUrlStatus()
+    var showSearchApiKey by rememberSaveable { mutableStateOf(false) }
+    WorkbenchPanel(
+        title = "本地搜索",
+        description = "App 端直接调用搜索 Provider，聊天中的 web_search_local 会使用这里的配置。",
+        icon = Icons.Filled.Search,
+        trailing = {
+            Switch(
+                checked = state.localSearchEnabled,
+                onCheckedChange = viewModel::updateLocalSearchEnabled,
+            )
+        },
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(
+                    text = if (state.localSearchEnabled) "已启用" else "未启用",
+                    tone = if (state.localSearchEnabled) StatusTone.Success else StatusTone.Neutral,
+                )
+            }
+            item {
+                StatusPill(text = urlStatus.label, tone = urlStatus.tone())
+            }
+            item {
+                StatusPill(
+                    text = if (state.localSearchApiKeyDraft.isBlank()) "Key 未输入" else "Key 已输入",
+                    tone = if (state.localSearchApiKeyDraft.isBlank()) StatusTone.Warning else StatusTone.Success,
+                )
+            }
+        }
+        MetadataRow(label = "Provider", value = state.localSearchProvider.name)
+        OutlinedTextField(
+            value = state.localSearchBaseUrlDraft,
+            onValueChange = viewModel::updateLocalSearchBaseUrl,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Search Base URL") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = state.localSearchApiKeyDraft,
+            onValueChange = viewModel::updateLocalSearchApiKey,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Search API Key") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            visualTransformation = if (showSearchApiKey) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                WorkbenchIconButton(
+                    icon = if (showSearchApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    label = if (showSearchApiKey) "隐藏 Search API Key" else "显示 Search API Key",
+                    onClick = { showSearchApiKey = !showSearchApiKey },
+                )
+            },
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.localSearchMaxResultsDraft,
+                onValueChange = viewModel::updateLocalSearchMaxResults,
+                modifier = Modifier.weight(1f),
+                label = { Text(text = "结果数") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = state.localSearchDepthDraft,
+                onValueChange = viewModel::updateLocalSearchDepth,
+                modifier = Modifier.weight(1f),
+                label = { Text(text = "深度") },
+                singleLine = true,
+            )
+        }
+        OutlinedTextField(
+            value = state.localSearchTopicDraft,
+            onValueChange = viewModel::updateLocalSearchTopic,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "Topic") },
+            singleLine = true,
+        )
+        Button(
+            onClick = viewModel::saveLocalSearchSettings,
+            enabled = state.canSaveLocalSearchSettings(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(imageVector = Icons.Filled.Save, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "保存本地搜索")
+        }
     }
 }
 
@@ -1020,26 +1183,302 @@ private fun ToolStatusFeedback(message: String) {
 }
 
 @Composable
-private fun ToolRow(
-    tool: ToolDescriptor,
-    onConfirm: () -> Unit,
+private fun ToolHistorySection(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
 ) {
-    QuietListRow(
-        title = tool.displayName,
-        description = "${tool.permissionLevel.displayLabel()} / ${tool.source.displayLabel()} · ${tool.description}",
-        icon = tool.permissionIcon(),
-        onClick = onConfirm,
+    val clipboard = LocalClipboardManager.current
+    val filteredHistory = state.filteredToolHistory.take(10)
+    WorkbenchPanel(
+        title = "运行历史",
+        description = "按工具和状态筛选最近运行，复制输入摘要和输出用于调试。",
+        icon = Icons.Filled.Info,
         trailing = {
             StatusPill(
-                text = tool.permissionLevel.displayLabel(),
-                tone = tool.permissionTone(),
+                text = "${state.toolHistory.size} 条",
+                tone = if (state.toolHistory.isEmpty()) StatusTone.Neutral else StatusTone.Accent,
             )
         },
-    )
+    ) {
+        ToolHistoryFilters(state = state, viewModel = viewModel)
+        if (filteredHistory.isEmpty()) {
+            InlineNotice(
+                text = "暂无符合条件的工具运行记录。",
+                icon = Icons.Filled.Info,
+                tone = StatusTone.Neutral,
+            )
+        } else {
+            filteredHistory.forEach { result ->
+                ToolHistoryRow(
+                    result = result,
+                    onCopyInput = {
+                        clipboard.setText(AnnotatedString(result.rawInputJson ?: result.inputSummary))
+                    },
+                    onCopyOutput = {
+                        clipboard.setText(AnnotatedString(result.rawOutputJson ?: result.output.asPlainText()))
+                    },
+                )
+            }
+        }
+    }
 }
 
-private fun ToolDescriptor.permissionIcon(): ImageVector =
+@Composable
+private fun ToolHistoryFilters(
+    state: ToolsUiState,
+    viewModel: ToolsViewModel,
+) {
+    val toolNames = state.toolHistory.map { it.toolName }.distinct().sorted()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                SelectableFilterButton(
+                    selected = state.toolHistoryToolFilter == null,
+                    text = "全部工具",
+                    onClick = { viewModel.updateToolHistoryToolFilter(null) },
+                )
+            }
+            items(toolNames, key = { it }) { toolName ->
+                SelectableFilterButton(
+                    selected = state.toolHistoryToolFilter == toolName,
+                    text = toolName,
+                    onClick = { viewModel.updateToolHistoryToolFilter(toolName) },
+                )
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                SelectableFilterButton(
+                    selected = state.toolHistoryStatusFilter == null,
+                    text = "全部状态",
+                    onClick = { viewModel.updateToolHistoryStatusFilter(null) },
+                )
+            }
+            items(ToolStatus.values().toList(), key = { it.name }) { status ->
+                SelectableFilterButton(
+                    selected = state.toolHistoryStatusFilter == status,
+                    text = status.displayLabel(),
+                    onClick = { viewModel.updateToolHistoryStatusFilter(status) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableFilterButton(
+    selected: Boolean,
+    text: String,
+    onClick: () -> Unit,
+) {
+    if (selected) {
+        Button(onClick = onClick) {
+            Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    } else {
+        OutlinedButton(onClick = onClick) {
+            Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun ToolHistoryRow(
+    result: ToolResult,
+    onCopyInput: () -> Unit,
+    onCopyOutput: () -> Unit,
+) {
+    ToolResultContainer(
+        title = result.toolName,
+        icon = result.permissionLevel.permissionIcon(),
+        trailing = {
+            StatusPill(text = result.status.displayLabel(), tone = result.status.tone())
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    StatusPill(text = result.permissionLevel.displayLabel(), tone = result.permissionLevel.permissionTone())
+                }
+                item {
+                    StatusPill(text = result.startedAt.toString(), tone = StatusTone.Neutral)
+                }
+                result.finishedAt?.let { finishedAt ->
+                    item {
+                        StatusPill(text = "完成 $finishedAt", tone = StatusTone.Neutral)
+                    }
+                }
+                result.durationMs?.let { durationMs ->
+                    item {
+                        StatusPill(text = "${durationMs} ms", tone = StatusTone.Neutral)
+                    }
+                }
+                result.canceledAt?.let { canceledAt ->
+                    item {
+                        StatusPill(text = "取消 $canceledAt", tone = StatusTone.Warning)
+                    }
+                }
+            }
+            MetadataRow(label = "输入", value = result.inputSummary.ifBlank { "(空)" })
+            result.error?.let { error ->
+                InlineNotice(
+                    text = "${error.code}: ${error.message}",
+                    icon = Icons.Filled.Security,
+                    tone = StatusTone.Critical,
+                )
+            }
+            OutputText(
+                label = "输出",
+                value = result.output.asPlainText().take(MAX_TOOL_HISTORY_OUTPUT_PREVIEW_CHARS),
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    OutlinedButton(onClick = onCopyInput) {
+                        Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "复制输入")
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = onCopyOutput) {
+                        Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "复制输出")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolRow(
+    tool: ToolDescriptor,
+    setting: ToolRuntimeSetting,
+    onConfirm: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    onPolicyChange: (ToolPermissionPolicy) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        QuietListRow(
+            title = tool.displayName,
+            description = "${tool.permissionLevel.displayLabel()} / ${tool.source.displayLabel()} · ${tool.description}",
+            icon = tool.permissionIcon(),
+            onClick = onConfirm,
+            enabled = setting.enabled,
+            trailing = {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Switch(
+                        checked = setting.enabled,
+                        onCheckedChange = onEnabledChange,
+                    )
+                    StatusPill(
+                        text = if (setting.enabled) "已启用" else "已关闭",
+                        tone = if (setting.enabled) StatusTone.Success else StatusTone.Neutral,
+                    )
+                }
+            },
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(
+                    text = tool.permissionLevel.displayLabel(),
+                    tone = tool.permissionTone(),
+                )
+            }
+            item {
+                StatusPill(
+                    text = tool.riskLevel.displayLabel(),
+                    tone = tool.riskLevel.tone(),
+                )
+            }
+            if (tool.requiresNetwork) {
+                item {
+                    StatusPill(text = "访问网络", tone = StatusTone.Warning)
+                }
+            }
+            if (tool.requiresFileAccess) {
+                item {
+                    StatusPill(text = "读取文件", tone = StatusTone.Critical)
+                }
+            }
+            if (tool.canUsePermissionPolicy()) {
+                item {
+                    SelectableFilterButton(
+                        selected = setting.permissionPolicy == ToolPermissionPolicy.AskEveryTime,
+                        text = "每次确认",
+                        onClick = { onPolicyChange(ToolPermissionPolicy.AskEveryTime) },
+                    )
+                }
+                item {
+                    SelectableFilterButton(
+                        selected = setting.permissionPolicy == ToolPermissionPolicy.AllowWithoutPrompt,
+                        text = "免确认",
+                        onClick = { onPolicyChange(ToolPermissionPolicy.AllowWithoutPrompt) },
+                    )
+                }
+            } else {
+                item {
+                    StatusPill(
+                        text = tool.fixedPermissionPolicyLabel(),
+                        tone = tool.permissionPolicyTone(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun ToolDescriptor.fixedPermissionPolicyLabel(): String =
+    if (!requiresConfirmation(defaultPermissionPolicy)) {
+        "直接运行"
+    } else {
+        "每次确认"
+    }
+
+private fun ToolDescriptor.permissionPolicyTone(): StatusTone =
     when (permissionLevel) {
+        ToolPermissionLevel.ReadOnly -> StatusTone.Success
+        ToolPermissionLevel.Network -> StatusTone.Warning
+        ToolPermissionLevel.Execute,
+        ToolPermissionLevel.HighRisk,
+        -> StatusTone.Critical
+    }
+
+private fun ToolRiskLevel.displayLabel(): String =
+    when (this) {
+        ToolRiskLevel.Low -> "低风险"
+        ToolRiskLevel.Medium -> "中风险"
+        ToolRiskLevel.High -> "高风险"
+    }
+
+private fun ToolRiskLevel.tone(): StatusTone =
+    when (this) {
+        ToolRiskLevel.Low -> StatusTone.Neutral
+        ToolRiskLevel.Medium -> StatusTone.Warning
+        ToolRiskLevel.High -> StatusTone.Critical
+    }
+
+private fun ToolPermissionPolicy.displayLabel(): String =
+    when (this) {
+        ToolPermissionPolicy.AskEveryTime -> "每次确认"
+        ToolPermissionPolicy.AllowWithoutPrompt -> "免确认"
+    }
+
+private fun ToolPermissionPolicy.tone(): StatusTone =
+    when (this) {
+        ToolPermissionPolicy.AskEveryTime -> StatusTone.Warning
+        ToolPermissionPolicy.AllowWithoutPrompt -> StatusTone.Success
+    }
+
+private fun ToolDescriptor.permissionIcon(): ImageVector =
+    permissionLevel.permissionIcon()
+
+private fun ToolPermissionLevel.permissionIcon(): ImageVector =
+    when (this) {
         ToolPermissionLevel.ReadOnly -> Icons.Filled.Info
         ToolPermissionLevel.Network -> Icons.Filled.Public
         ToolPermissionLevel.Execute -> Icons.Filled.Code
@@ -1056,7 +1495,7 @@ private fun ToolPermissionDialog(
         ToolPermissionLevel.ReadOnly ->
             "该工具为只读。"
         ToolPermissionLevel.Network ->
-            "该工具会通过配置的网关访问网络。"
+            "该工具会通过已配置的搜索 Provider、模型服务或网关访问网络。"
         ToolPermissionLevel.Execute ->
             "该工具会在远端网关的代码沙箱中运行代码。"
         ToolPermissionLevel.HighRisk ->
@@ -1073,7 +1512,10 @@ private fun ToolPermissionDialog(
 }
 
 private fun ToolDescriptor.permissionTone(): StatusTone =
-    when (permissionLevel) {
+    permissionLevel.permissionTone()
+
+private fun ToolPermissionLevel.permissionTone(): StatusTone =
+    when (this) {
         ToolPermissionLevel.ReadOnly -> StatusTone.Neutral
         ToolPermissionLevel.Network -> StatusTone.Warning
         ToolPermissionLevel.Execute,
@@ -1087,6 +1529,41 @@ private fun ToolPermissionLevel.displayLabel(): String =
         ToolPermissionLevel.Network -> "联网"
         ToolPermissionLevel.Execute -> "执行"
         ToolPermissionLevel.HighRisk -> "高风险"
+    }
+
+private fun ToolStatus.displayLabel(): String =
+    when (this) {
+        ToolStatus.Queued -> "排队"
+        ToolStatus.Pending -> "等待"
+        ToolStatus.NeedsApproval -> "待授权"
+        ToolStatus.Running -> "运行中"
+        ToolStatus.Streaming -> "流式返回"
+        ToolStatus.Completed -> "完成"
+        ToolStatus.Failed -> "失败"
+        ToolStatus.Denied -> "已拒绝"
+        ToolStatus.Canceled,
+        ToolStatus.Cancelled -> "已取消"
+    }
+
+private fun ToolStatus.tone(): StatusTone =
+    when (this) {
+        ToolStatus.Queued,
+        ToolStatus.Pending,
+        ToolStatus.NeedsApproval,
+        ToolStatus.Running,
+        ToolStatus.Streaming,
+        -> StatusTone.Accent
+        ToolStatus.Completed -> StatusTone.Success
+        ToolStatus.Failed -> StatusTone.Critical
+        ToolStatus.Denied,
+        ToolStatus.Canceled,
+        ToolStatus.Cancelled -> StatusTone.Warning
+    }
+
+private fun ToolOutput.asPlainText(): String =
+    when (this) {
+        is ToolOutput.Text -> text
+        is ToolOutput.Json -> value
     }
 
 private fun ToolSource.displayLabel(): String =
@@ -1121,6 +1598,7 @@ private fun toolStatusLabel(message: String): String =
     when {
         toolStatusTone(message) == StatusTone.Critical -> "需要处理"
         message == "已保存" -> "已保存"
+        message == "搜索设置已保存" -> "已保存"
         else -> "状态"
     }
 
@@ -1137,7 +1615,7 @@ private fun toolStatusTone(message: String): StatusTone {
             normalized.contains("请启用 gateway") ||
             normalized.contains("请先加载 gateway") ||
             normalized.contains("失败") -> StatusTone.Critical
-        message == "已保存" -> StatusTone.Success
+        message == "已保存" || message == "搜索设置已保存" -> StatusTone.Success
         else -> StatusTone.Accent
     }
 }
@@ -1163,3 +1641,5 @@ private fun toolWorkbenchStatusTone(state: ToolsUiState): StatusTone =
         state.hasSearchTool() || state.hasSandboxTool() -> StatusTone.Neutral
         else -> StatusTone.Warning
     }
+
+private const val MAX_TOOL_HISTORY_OUTPUT_PREVIEW_CHARS = 1_500

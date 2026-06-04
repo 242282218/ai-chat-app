@@ -15,7 +15,20 @@ fun FileAttachButton(onFilePicked: (Uri) -> Unit) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(onFilePicked)
     }
-    IconButton(onClick = { launcher.launch(arrayOf("text/*", "application/pdf", "image/*")) }) {
+    IconButton(onClick = { launcher.launch(FileAttachMimeTypes) }) {
         Icon(Icons.Outlined.AttachFile, contentDescription = "附件", tint = TextSecondary)
     }
 }
+
+private val FileAttachMimeTypes = arrayOf(
+    "text/*",
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/x-javascript",
+    "application/x-sh",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/*",
+)

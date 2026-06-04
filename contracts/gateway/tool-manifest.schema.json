@@ -18,7 +18,16 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "description", "permissionLevel", "inputSchema"],
+        "required": [
+          "name",
+          "description",
+          "permissionLevel",
+          "riskLevel",
+          "requiresNetwork",
+          "requiresFileAccess",
+          "defaultPermissionPolicy",
+          "inputSchema"
+        ],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -30,6 +39,18 @@
           },
           "permissionLevel": {
             "enum": ["ReadOnly", "Network", "Execute", "HighRisk"]
+          },
+          "riskLevel": {
+            "enum": ["Low", "Medium", "High"]
+          },
+          "requiresNetwork": {
+            "type": "boolean"
+          },
+          "requiresFileAccess": {
+            "type": "boolean"
+          },
+          "defaultPermissionPolicy": {
+            "enum": ["AskEveryTime", "AllowWithoutPrompt"]
           },
           "inputSchema": {
             "type": "object"

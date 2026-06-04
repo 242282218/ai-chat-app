@@ -66,16 +66,21 @@ import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ModelConfig
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.defaultModelCapability
 import com.aichat.workbench.provider.preferredImageModel
+import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.supportsImageGeneration
+import com.aichat.workbench.provider.supportsTextGeneration
 import com.aichat.workbench.provider.api.ProviderConnectionTester
 import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
 import com.aichat.workbench.ui.component.InlineNotice
@@ -99,11 +104,14 @@ fun ProviderSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val repository = koinInject<ProviderConfigRepository>()
+    val modelRolePreferenceRepository = koinInject<ModelRolePreferenceRepository>()
     val connectionTester = koinInject<ProviderConnectionTester>()
     val modelDiscoveryClient = koinInject<ProviderModelDiscoveryClient>()
     val saveProvider = remember(repository) { SaveProviderConfigUseCase(repository) }
     val deleteProvider = remember(repository) { DeleteProviderConfigUseCase(repository) }
     val providers by repository.observeProviders().collectAsStateWithLifecycle(initialValue = emptyList())
+    val modelRolePreferences by modelRolePreferenceRepository.observeAllRolePreferences()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -112,6 +120,8 @@ fun ProviderSettingsScreen(
     var baseUrl by rememberSaveable { mutableStateOf("https://api.openai.com/v1") }
     var model by rememberSaveable { mutableStateOf("") }
     var imageModel by rememberSaveable { mutableStateOf("") }
+    var toolModel by rememberSaveable { mutableStateOf("") }
+    var codeModel by rememberSaveable { mutableStateOf("") }
     var models by remember { mutableStateOf<List<ModelConfig>>(emptyList()) }
     var apiKey by rememberSaveable { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
@@ -132,6 +142,8 @@ fun ProviderSettingsScreen(
         baseUrl != "https://api.openai.com/v1" ||
         model.isNotBlank() ||
         imageModel.isNotBlank() ||
+        toolModel.isNotBlank() ||
+        codeModel.isNotBlank() ||
         models.isNotEmpty() ||
         apiKey.isNotBlank() ||
         headers.isNotBlank() ||
@@ -144,8 +156,12 @@ fun ProviderSettingsScreen(
         name = provider.name
         type = provider.type
         baseUrl = provider.baseUrl
-        model = provider.defaultModel.orEmpty()
-        imageModel = provider.models.explicitImageModel()
+        model = provider.rolePreferenceModel(modelRolePreferences, ModelRole.Chat).orEmpty()
+            .ifBlank { provider.defaultModel.orEmpty() }
+        imageModel = provider.rolePreferenceModel(modelRolePreferences, ModelRole.Image).orEmpty()
+            .ifBlank { provider.models.explicitImageModel() }
+        toolModel = provider.rolePreferenceModel(modelRolePreferences, ModelRole.Tool).orEmpty()
+        codeModel = provider.rolePreferenceModel(modelRolePreferences, ModelRole.Code).orEmpty()
         models = provider.models
         apiKey = ""
         headers = provider.headers.entries.joinToString("\n") { (key, value) -> "$key: $value" }
@@ -166,6 +182,8 @@ fun ProviderSettingsScreen(
         models = emptyList()
         model = ""
         imageModel = ""
+        toolModel = ""
+        codeModel = ""
     }
 
     fun resetForm() {
@@ -175,6 +193,8 @@ fun ProviderSettingsScreen(
         baseUrl = "https://api.openai.com/v1"
         model = ""
         imageModel = ""
+        toolModel = ""
+        codeModel = ""
         models = emptyList()
         apiKey = ""
         headers = ""
@@ -211,9 +231,13 @@ fun ProviderSettingsScreen(
         val providerId = ProviderId(editingId ?: UUID.randomUUID().toString())
         val trimmedModel = model.trim()
         val trimmedImageModel = imageModel.trim()
+        val trimmedToolModel = toolModel.trim()
+        val trimmedCodeModel = codeModel.trim()
         val normalizedModels = models
             .withManualModel(type, trimmedModel)
             .withManualImageModel(trimmedImageModel)
+            .withManualModel(type, trimmedToolModel)
+            .withManualModel(type, trimmedCodeModel)
         return ProviderConfig(
             id = providerId,
             name = name.trim(),
@@ -225,6 +249,13 @@ fun ProviderSettingsScreen(
             defaultModel = trimmedModel.ifBlank { null },
             enabled = enabled,
         )
+    }
+
+    suspend fun saveRolePreferences(providerId: ProviderId) {
+        modelRolePreferenceRepository.setRoleModel(providerId, ModelRole.Chat, model)
+        modelRolePreferenceRepository.setRoleModel(providerId, ModelRole.Image, imageModel)
+        modelRolePreferenceRepository.setRoleModel(providerId, ModelRole.Tool, toolModel)
+        modelRolePreferenceRepository.setRoleModel(providerId, ModelRole.Code, codeModel)
     }
 
     suspend fun discoverModelsFor(provider: ProviderConfig): List<ModelConfig>? {
@@ -332,6 +363,7 @@ fun ProviderSettingsScreen(
                 items(providers, key = { it.id.value }) { provider ->
                     ProviderRow(
                         provider = provider,
+                        modelRolePreferences = modelRolePreferences,
                         onClick = { requestLoadProvider(provider) },
                         onDelete = { pendingDeleteProvider = provider },
                     )
@@ -366,9 +398,15 @@ fun ProviderSettingsScreen(
                         onModelChange = { model = it },
                         imageModel = imageModel,
                         onImageModelChange = { imageModel = it },
+                        toolModel = toolModel,
+                        onToolModelChange = { toolModel = it },
+                        codeModel = codeModel,
+                        onCodeModelChange = { codeModel = it },
                         models = models,
                         onSelectModel = { model = it },
                         onSelectImageModel = { imageModel = it },
+                        onSelectToolModel = { toolModel = it },
+                        onSelectCodeModel = { codeModel = it },
                         apiKey = apiKey,
                         hasStoredKey = storedApiKeyRef != null,
                         onApiKeyChange = { apiKey = it },
@@ -398,11 +436,14 @@ fun ProviderSettingsScreen(
                                         provider.copy(
                                             models = discoveredModels
                                                 .withManualModel(type, defaultModel)
-                                                .withManualImageModel(imageModel),
+                                                .withManualImageModel(imageModel)
+                                                .withManualModel(type, toolModel)
+                                                .withManualModel(type, codeModel),
                                             defaultModel = defaultModel.ifBlank { null },
                                         )
                                     }
                                     saveProvider(providerToSave, apiKey.trim(), allowHttp)
+                                    saveRolePreferences(providerToSave.id)
                                 }.onSuccess {
                                     resetForm()
                                     showProviderEditor = false
@@ -629,9 +670,15 @@ private fun ProviderForm(
     onModelChange: (String) -> Unit,
     imageModel: String,
     onImageModelChange: (String) -> Unit,
+    toolModel: String,
+    onToolModelChange: (String) -> Unit,
+    codeModel: String,
+    onCodeModelChange: (String) -> Unit,
     models: List<ModelConfig>,
     onSelectModel: (String) -> Unit,
     onSelectImageModel: (String) -> Unit,
+    onSelectToolModel: (String) -> Unit,
+    onSelectCodeModel: (String) -> Unit,
     apiKey: String,
     hasStoredKey: Boolean,
     onApiKeyChange: (String) -> Unit,
@@ -671,6 +718,8 @@ private fun ProviderForm(
             baseUrl = baseUrl,
             model = model,
             imageModel = imageModel,
+            toolModel = toolModel,
+            codeModel = codeModel,
             apiKey = apiKey,
             hasStoredKey = hasStoredKey,
             headers = headers,
@@ -709,7 +758,8 @@ private fun ProviderForm(
             value = model,
             onValueChange = onModelChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(text = "默认模型") },
+            label = { Text(text = "对话模型") },
+            supportingText = { Text(text = "默认聊天模型。") },
             singleLine = true,
         )
         ProviderModelPicker(
@@ -731,6 +781,32 @@ private fun ProviderForm(
             models = models,
             selectedImageModel = imageModel,
             onSelectImageModel = onSelectImageModel,
+        )
+        OutlinedTextField(
+            value = toolModel,
+            onValueChange = onToolModelChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "工具模型") },
+            supportingText = { Text(text = "留空时使用对话模型。") },
+            singleLine = true,
+        )
+        ProviderRoleModelPicker(
+            models = models.filter { it.supportsTextGeneration() },
+            selectedModel = toolModel,
+            onSelectModel = onSelectToolModel,
+        )
+        OutlinedTextField(
+            value = codeModel,
+            onValueChange = onCodeModelChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "代码模型") },
+            supportingText = { Text(text = "用于后续代码生成、解释和 diff。") },
+            singleLine = true,
+        )
+        ProviderRoleModelPicker(
+            models = models.filter { it.supportsTextGeneration() },
+            selectedModel = codeModel,
+            onSelectModel = onSelectCodeModel,
         )
         OutlinedTextField(
             value = apiKey,
@@ -906,6 +982,36 @@ private fun ProviderImageModelPicker(
 }
 
 @Composable
+private fun ProviderRoleModelPicker(
+    models: List<ModelConfig>,
+    selectedModel: String,
+    onSelectModel: (String) -> Unit,
+) {
+    if (models.isEmpty()) return
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(models, key = { it.id }) { item ->
+            FilterChip(
+                selected = item.id == selectedModel.trim(),
+                onClick = { onSelectModel(item.id) },
+                label = {
+                    Text(
+                        text = item.displayName.ifBlank { item.id },
+                        modifier = Modifier.widthIn(max = 180.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                leadingIcon = {
+                    if (item.id == selectedModel.trim()) {
+                        Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun ProviderAdvancedFields(
     expanded: Boolean,
     headers: String,
@@ -998,6 +1104,8 @@ private fun ProviderFormSummary(
     baseUrl: String,
     model: String,
     imageModel: String,
+    toolModel: String,
+    codeModel: String,
     apiKey: String,
     hasStoredKey: Boolean,
     headers: String,
@@ -1025,6 +1133,16 @@ private fun ProviderFormSummary(
         if (imageModel.isNotBlank()) {
             item {
                 StatusPill(text = "图片 $imageModel", tone = StatusTone.Accent)
+            }
+        }
+        if (toolModel.isNotBlank()) {
+            item {
+                StatusPill(text = "工具 $toolModel", tone = StatusTone.Accent)
+            }
+        }
+        if (codeModel.isNotBlank()) {
+            item {
+                StatusPill(text = "代码 $codeModel", tone = StatusTone.Accent)
             }
         }
         item {
@@ -1092,12 +1210,13 @@ private fun providerMessageTone(message: String): StatusTone {
 @Composable
 private fun ProviderRow(
     provider: ProviderConfig,
+    modelRolePreferences: List<ModelRolePreference>,
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
     QuietListRow(
         title = provider.name,
-        description = provider.connectionSummary(),
+        description = provider.connectionSummary(modelRolePreferences),
         icon = Icons.Filled.CheckCircle,
         onClick = onClick,
         trailing = {
@@ -1110,6 +1229,26 @@ private fun ProviderRow(
         },
     )
 }
+
+private fun ProviderConfig.connectionSummary(modelRolePreferences: List<ModelRolePreference>): String {
+    val roleSummary = listOfNotNull(
+        roleModel(modelRolePreferences, ModelRole.Chat)?.let { "对话 $it" },
+        roleModel(modelRolePreferences, ModelRole.Image)?.let { "图片 $it" },
+        roleModel(modelRolePreferences, ModelRole.Tool)?.let { "工具 $it" },
+        roleModel(modelRolePreferences, ModelRole.Code)?.let { "代码 $it" },
+    )
+    return if (roleSummary.isEmpty()) {
+        connectionSummary()
+    } else {
+        "${connectionSummary()} · ${roleSummary.joinToString(" · ")}"
+    }
+}
+
+private fun ProviderConfig.roleModel(
+    preferences: List<ModelRolePreference>,
+    role: ModelRole,
+): String? =
+    rolePreferenceModel(preferences, role)
 
 internal fun List<ModelConfig>.withManualModel(type: ProviderType, model: String): List<ModelConfig> {
     val trimmedModel = model.trim()

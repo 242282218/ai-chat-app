@@ -13,7 +13,7 @@ import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.usecase.CreateConversationUseCase
-import com.aichat.workbench.provider.preferredModel
+import com.aichat.workbench.provider.preferredChatModel
 import java.time.Clock
 import java.util.UUID
 
@@ -190,7 +190,7 @@ class ConversationManager(
             systemPrompt = conversation.systemPrompt.orEmpty(),
             model = conversation.defaultModel
                 ?: selectedProviderId?.let { id ->
-                    state.providers.firstOrNull { it.id.value == id }?.preferredModel()
+                    state.providers.firstOrNull { it.id.value == id }?.preferredChatModel(state.modelRolePreferences)
                 }.orEmpty(),
             temperature = conversation.modelParameters.temperature?.toString().orEmpty(),
             topP = conversation.modelParameters.topP?.toString().orEmpty(),

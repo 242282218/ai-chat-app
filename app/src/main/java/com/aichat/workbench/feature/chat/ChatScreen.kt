@@ -1,6 +1,7 @@
 package com.aichat.workbench.feature.chat
 
 import android.graphics.BitmapFactory
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -108,11 +109,16 @@ import com.aichat.workbench.ui.component.ToolCallPanel
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
+import com.aichat.workbench.ui.markdown.CodeArtifact
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 import java.io.File
 import java.util.Base64
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -196,6 +202,13 @@ fun ChatScreen(
                 onRetry = viewModel::retryMessage,
                 onConfirmToolCall = viewModel::confirmToolCall,
                 onDenyToolCall = viewModel::denyToolCall,
+                onToolArgumentsChange = viewModel::updatePendingToolArguments,
+                onRetryToolWithArguments = { toolCall ->
+                    viewModel.updateInput(toolCall.retryPrompt())
+                },
+                onGenerateDiff = { artifact ->
+                    viewModel.updateInput(artifact.diffPrompt())
+                },
                 modifier = Modifier.weight(1f),
             )
             state.pendingToolCall?.let { pending ->
@@ -206,10 +219,14 @@ fun ChatScreen(
                     isPending = true,
                     onApprove = viewModel::confirmToolCall,
                     onDeny = viewModel::denyToolCall,
+                    onArgumentsChange = viewModel::updatePendingToolArguments,
                 )
             }
             state.error?.let {
-                ChatErrorPanel(message = it)
+                ChatErrorPanel(
+                    message = it,
+                    onOpenProviders = onOpenProviders,
+                )
             }
             InputBar(
                 input = state.input,
@@ -224,7 +241,10 @@ fun ChatScreen(
                     viewModel.updateInput(it)
                 },
                 onPickImage = { imagePickerLauncher.launch("image/*") },
-                onPickFile = { uri -> viewModel.updateInput(state.input.appendAttachmentUri(uri)) },
+                onPickFile = { uri ->
+                    context.persistReadPermission(uri)
+                    viewModel.updateInput(state.input.appendAttachmentUri(uri))
+                },
                 onRemoveImage = viewModel::removeImageDraft,
                 onSend = viewModel::sendMessage,
                 onStop = viewModel::stopGeneration,
@@ -344,7 +364,12 @@ private fun ChatTopBar(
 }
 
 @Composable
-private fun ChatErrorPanel(message: String) {
+private fun ChatErrorPanel(
+    message: String,
+    onOpenProviders: () -> Unit,
+) {
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
     InlineNotice(
         text = "生成失败：$message",
         icon = Icons.Filled.Info,
@@ -352,7 +377,16 @@ private fun ChatErrorPanel(message: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-    )
+    ) {
+        WorkbenchIconButton(
+            icon = Icons.Filled.ContentCopy,
+            label = "复制错误",
+            onClick = { clipboard.setText(AnnotatedString(message)) },
+        )
+        TextButton(onClick = onOpenProviders) {
+            Text(text = "配置")
+        }
+    }
 }
 
 @Composable
@@ -949,6 +983,9 @@ private fun MessageList(
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onConfirmToolCall: () -> Unit,
     onDenyToolCall: () -> Unit,
+    onToolArgumentsChange: (String) -> Unit,
+    onRetryToolWithArguments: (ToolCall) -> Unit,
+    onGenerateDiff: (CodeArtifact) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -977,6 +1014,9 @@ private fun MessageList(
                         onRetry = { onRetry(message.id) },
                         onConfirmToolCall = onConfirmToolCall,
                         onDenyToolCall = onDenyToolCall,
+                        onToolArgumentsChange = onToolArgumentsChange,
+                        onRetryToolWithArguments = onRetryToolWithArguments,
+                        onGenerateDiff = onGenerateDiff,
                     )
                 }
             }
@@ -993,27 +1033,46 @@ private fun MessageItem(
     onRetry: () -> Unit,
     onConfirmToolCall: () -> Unit,
     onDenyToolCall: () -> Unit,
+    onToolArgumentsChange: (String) -> Unit,
+    onRetryToolWithArguments: (ToolCall) -> Unit,
+    onGenerateDiff: (CodeArtifact) -> Unit,
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     when {
+        message.role == MessageRole.Assistant && message.toolCalls.isNotEmpty() -> {
+            AssistantToolPlanMessage(
+                message = message,
+                pendingToolCall = pendingToolCall,
+                onConfirmToolCall = onConfirmToolCall,
+                onDenyToolCall = onDenyToolCall,
+                onToolArgumentsChange = onToolArgumentsChange,
+                onGenerateDiff = onGenerateDiff,
+            )
+        }
         message.role == MessageRole.Tool -> {
             val pending = pendingToolCall?.takeIf { it.toolCall.id == message.toolCallId }
             val toolCall = messages.findToolCall(message.toolCallId) ?: pending?.toolCall
             if (toolCall != null) {
-                ToolCallPanel(
-                    toolCall = toolCall,
-                    result = message.toolResult ?: message.content.takeIf { it.isNotBlank() },
-                    isError = message.status == MessageStatus.Failed,
-                    isPending = pending != null,
-                    onApprove = onConfirmToolCall,
-                    onDeny = onDenyToolCall,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolCallPanel(
+                        toolCall = toolCall,
+                        result = message.toolResult ?: message.content.takeIf { it.isNotBlank() },
+                        isError = message.status == MessageStatus.Failed,
+                        isPending = pending != null,
+                        onApprove = onConfirmToolCall,
+                        onDeny = onDenyToolCall,
+                        onArgumentsChange = onToolArgumentsChange,
+                        onRetryWithArguments = { onRetryToolWithArguments(toolCall) },
+                    )
+                    ToolImageResultRow(message = message)
+                }
             } else {
                 MessageBubble(
                     message = message,
                     onEdit = onEdit,
                     onRetry = onRetry,
+                    onGenerateDiff = onGenerateDiff,
                 )
             }
         }
@@ -1030,7 +1089,10 @@ private fun MessageItem(
             message.contentParts.isEmpty() &&
             message.errorSummary == null &&
             message.status == MessageStatus.Completed -> {
-            LinearMessageBubble(message = message)
+            LinearMessageBubble(
+                message = message,
+                onGenerateDiff = onGenerateDiff,
+            )
             MessageActionRow(
                 message = message,
                 onCopy = {
@@ -1044,7 +1106,63 @@ private fun MessageItem(
             message = message,
             onEdit = onEdit,
             onRetry = onRetry,
+            onGenerateDiff = onGenerateDiff,
         )
+    }
+}
+
+@Composable
+private fun AssistantToolPlanMessage(
+    message: Message,
+    pendingToolCall: PendingToolCall?,
+    onConfirmToolCall: () -> Unit,
+    onDenyToolCall: () -> Unit,
+    onToolArgumentsChange: (String) -> Unit,
+    onGenerateDiff: (CodeArtifact) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (message.content.isNotBlank() || message.contentParts.isNotEmpty() || message.errorSummary != null) {
+            MessageBubble(
+                message = message.copy(toolCalls = emptyList()),
+                onEdit = {},
+                onRetry = {},
+                onGenerateDiff = onGenerateDiff,
+            )
+        }
+        message.toolCalls.forEach { plannedCall ->
+            val pending = pendingToolCall?.takeIf { it.toolCall.id == plannedCall.id }
+            ToolCallPanel(
+                toolCall = pending?.toolCall ?: plannedCall,
+                result = null,
+                isError = false,
+                isPending = pending != null,
+                onApprove = onConfirmToolCall,
+                onDeny = onDenyToolCall,
+                onArgumentsChange = onToolArgumentsChange,
+                isPlanOnly = pending == null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolImageResultRow(message: Message) {
+    val images = message.contentParts.filterIsInstance<MessagePart.Image>()
+    if (images.isEmpty()) return
+
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    ) {
+        items(images, key = { it.uri.take(80) }) { image ->
+            InlineImageBubble(
+                imageUrl = image.uri,
+                prompt = message.toolResult?.extractImagePrompt() ?: "生成图片",
+                isLoading = false,
+                modifier = Modifier.width(220.dp),
+            )
+        }
     }
 }
 
@@ -1053,6 +1171,19 @@ private fun List<Message>.findToolCall(toolCallId: com.aichat.workbench.domain.m
     return firstNotNullOfOrNull { message ->
         message.toolCalls.firstOrNull { it.id == toolCallId }
     }
+}
+
+private fun String.extractImagePrompt(): String? =
+    runCatching {
+        chatScreenJson.parseToJsonElement(this)
+            .jsonObject["prompt"]
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+
+private val chatScreenJson = Json {
+    ignoreUnknownKeys = true
 }
 
 @Composable
@@ -1189,6 +1320,7 @@ private fun MessageBubble(
     message: Message,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
+    onGenerateDiff: (CodeArtifact) -> Unit,
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
@@ -1253,7 +1385,10 @@ private fun MessageBubble(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     } else if (message.content.isNotBlank()) {
-                        MarkdownMessageContent(text = message.content)
+                        MarkdownMessageContent(
+                            text = message.content,
+                            onGenerateDiff = onGenerateDiff,
+                        )
                     }
                 } else {
                     Text(
@@ -1279,6 +1414,27 @@ private fun MessageBubble(
         }
     }
 }
+
+private fun CodeArtifact.diffPrompt(): String =
+    buildString {
+        appendLine("请基于下面这段代码生成 diff 预览。")
+        appendLine("要求：先说明计划修改点，再给出修改后的代码；如果需要对比，请调用或模拟 code_diff_preview，只展示 diff，不写入文件。")
+        appendLine()
+        appendLine("```")
+        appendLine(content)
+        appendLine("```")
+    }.trim()
+
+private fun ToolCall.retryPrompt(): String =
+    buildString {
+        appendLine("请基于下面的工具调用参数重新规划并执行工具。")
+        appendLine("工具：$name")
+        appendLine("要求：如果参数有问题，先指出需要修改的字段；需要执行时重新发起工具调用。")
+        appendLine()
+        appendLine("```json")
+        appendLine(arguments.ifBlank { "{}" })
+        appendLine("```")
+    }.trim()
 
 @Composable
 private fun ChatImagePreview(
@@ -1729,6 +1885,15 @@ private fun String.appendAttachmentUri(uri: Uri): String {
     val prefix = trimEnd()
     val attachment = "[附件]($uri)"
     return if (prefix.isBlank()) attachment else "$prefix\n$attachment"
+}
+
+private fun android.content.Context.persistReadPermission(uri: Uri) {
+    runCatching {
+        contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+    }
 }
 
 private fun ModelParameterDraftStatus.tone(): StatusTone =

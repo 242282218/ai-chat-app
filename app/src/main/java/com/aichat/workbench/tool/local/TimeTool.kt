@@ -3,6 +3,8 @@ package com.aichat.workbench.tool.local
 import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
 import java.time.Clock
 import kotlinx.serialization.Serializable
@@ -30,6 +32,10 @@ val TimeToolDescriptor: ToolDescriptor = ToolDescriptor(
     outputSchemaJson = """{"type":"object"}""",
     timeoutSeconds = null,
     source = ToolSource.BuiltIn,
+    riskLevel = ToolRiskLevel.Low,
+    requiresNetwork = false,
+    requiresFileAccess = false,
+    defaultPermissionPolicy = ToolPermissionPolicy.AllowWithoutPrompt,
 )
 
 @Serializable

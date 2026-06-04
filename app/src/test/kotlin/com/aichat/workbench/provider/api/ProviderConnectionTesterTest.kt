@@ -90,6 +90,22 @@ class ProviderConnectionTesterTest {
     }
 
     @Test
+    fun test_returnsFailureForProviderServerErrors() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setBody("""{"error":{"message":"Provider overloaded"}}"""),
+        )
+        val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
+
+        val result = tester.test(provider(), "test-key")
+
+        assertFalse(result.ok)
+        assertEquals(500, result.statusCode)
+        assertEquals("Provider HTTP 500：Provider overloaded", result.message)
+    }
+
+    @Test
     fun test_returnsReadableMessageForConnectionFailures() = runTest {
         val client = OkHttpClient.Builder()
             .addInterceptor { throw IOException("socket closed") }

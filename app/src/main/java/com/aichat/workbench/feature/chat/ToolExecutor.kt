@@ -4,6 +4,8 @@ import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.MessagePart
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolError
@@ -14,6 +16,8 @@ import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
+import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
@@ -21,20 +25,25 @@ import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.defaultImageModel
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.requiresApiKey
+import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.tool.gateway.GatewayClient
 import com.aichat.workbench.tool.gateway.GatewayHttpException
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
-import com.aichat.workbench.tool.gateway.SearchResponse
-import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.local.InvalidLocalToolArgumentsException
 import com.aichat.workbench.tool.local.LocalToolExecutor
 import com.aichat.workbench.tool.local.LocalToolUnavailableException
 import com.aichat.workbench.tool.local.defaultLocalTools
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolRuntimeSetting
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.canonicalToolName
+import com.aichat.workbench.tool.model.requiresConfirmation
+import com.aichat.workbench.tool.model.runtimeSettingFor
 import com.aichat.workbench.tool.registry.BuiltInToolRegistry
+import com.aichat.workbench.tool.search.LocalSearchHttpException
+import com.aichat.workbench.tool.search.SearchResponse
+import com.aichat.workbench.tool.search.SearchResult
 import java.net.URI
 import java.time.Clock
 import java.time.Duration
@@ -65,24 +74,29 @@ class ToolExecutor(
     private val toolInvocationRepository: ToolInvocationRepository,
     private val providerRepository: ProviderConfigRepository,
     private val preferencesRepository: ImageGenerationPreferencesRepository,
+    private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
     private val imageGenerationRepository: ImageGenerationRepository,
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
     private val clock: Clock,
     private val localToolExecutor: LocalToolExecutor = LocalToolExecutor(defaultLocalTools(clock)),
+    private val toolSettingsProvider: suspend () -> Map<String, ToolRuntimeSetting> = { emptyMap() },
 ) {
     private val gatewayClient: GatewayClient by lazy(gatewayClientProvider)
     private val remoteToolsMutex = Mutex()
     private var remoteToolsCache: RemoteToolsCache? = null
 
     suspend fun availableTools(): List<ToolDescriptor> =
-        localTools() + remoteTools()
+        (localTools() + remoteTools()).filterEnabledTools()
 
     suspend fun descriptorFor(name: String): ToolDescriptor? =
         availableTools().firstOrNull { it.name == name.canonicalToolName() }
 
+    suspend fun requiresConfirmation(descriptor: ToolDescriptor): Boolean =
+        descriptor.requiresConfirmation(toolSettingsProvider().runtimeSettingFor(descriptor).permissionPolicy)
+
     suspend fun execute(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
-        execute(conversationId, toolCall, descriptorFor(toolCall.name))
+        execute(conversationId, toolCall, descriptorForExecution(toolCall.name))
 
     suspend fun execute(
         conversationId: ConversationId,
@@ -91,6 +105,15 @@ class ToolExecutor(
     ): ToolExecution {
         val toolDescriptor = descriptor
             ?: return saveFailure(conversationId, toolCall, ToolPermissionLevel.HighRisk, "unknown_tool", "未知工具。")
+        if (!toolSettingsProvider().runtimeSettingFor(toolDescriptor).enabled) {
+            return saveFailure(
+                conversationId = conversationId,
+                toolCall = toolCall,
+                permissionLevel = toolDescriptor.permissionLevel,
+                code = "tool_disabled",
+                message = "工具已禁用。",
+            )
+        }
         if (toolDescriptor.source == ToolSource.Official) {
             return saveFailure(
                 conversationId = conversationId,
@@ -114,6 +137,7 @@ class ToolExecutor(
         }.fold(
             onSuccess = { executed ->
                 val output = executed.output
+                val finishedAt = clock.instant()
                 val result = ToolResult(
                     id = toolCall.id,
                     toolName = toolDescriptor.name,
@@ -122,8 +146,12 @@ class ToolExecutor(
                     output = output,
                     status = ToolStatus.Completed,
                     startedAt = startedAt,
-                    finishedAt = clock.instant(),
+                    finishedAt = finishedAt,
                     error = null,
+                    conversationId = conversationId,
+                    rawInputJson = toolCall.arguments,
+                    rawOutputJson = output.rawJsonOrNull(),
+                    durationMs = startedAt.durationUntilMs(finishedAt),
                 )
                 toolInvocationRepository.saveToolResult(conversationId, result)
                 ToolExecution(result, output.asModelContent(), executed.contentParts)
@@ -155,10 +183,19 @@ class ToolExecutor(
             permissionLevel = descriptor?.permissionLevel ?: ToolPermissionLevel.HighRisk,
             code = "tool_denied",
             message = "用户拒绝执行工具。",
+            status = ToolStatus.Denied,
         )
 
     private fun localTools(): List<ToolDescriptor> =
         localToolExecutor.descriptors + BuiltInToolRegistry.tools.filter { it.name in LOCAL_TOOL_NAMES }
+
+    private suspend fun List<ToolDescriptor>.filterEnabledTools(): List<ToolDescriptor> {
+        val settings = toolSettingsProvider()
+        return filter { descriptor -> settings.runtimeSettingFor(descriptor).enabled }
+    }
+
+    private suspend fun descriptorForExecution(name: String): ToolDescriptor? =
+        (localTools() + remoteTools()).firstOrNull { it.name == name.canonicalToolName() }
 
     private suspend fun remoteTools(): List<ToolDescriptor> {
         val settings = gatewaySettingsProvider()
@@ -231,11 +268,13 @@ class ToolExecutor(
             throw InvalidToolArgumentsException("图片提示词不能为空。")
         }
         val provider = selectImageProvider()
+        val rolePreferences = modelRolePreferenceRepository.observeAllRolePreferences().first()
         val apiKey = providerRepository.getApiKey(provider.id)
         if (provider.requiresApiKey()) {
             require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
         }
         val model = args.model?.trim()?.takeIf { it.isNotBlank() }
+            ?: provider.rolePreferenceModel(rolePreferences, ModelRole.Image)
             ?: imagePreferencesModel(provider)
             ?: provider.defaultImageModel()
         if (model.isBlank()) {
@@ -321,18 +360,24 @@ class ToolExecutor(
         code: String,
         message: String,
         startedAt: java.time.Instant = clock.instant(),
+        status: ToolStatus = ToolStatus.Failed,
     ): ToolExecution {
         val output = ToolOutput.Json(toolJson.encodeToString(ToolErrorOutput(code, message)))
+        val finishedAt = clock.instant()
         val result = ToolResult(
             id = toolCall.id,
             toolName = toolCall.name,
             permissionLevel = permissionLevel,
             inputSummary = toolCall.arguments.toInputSummary(),
             output = output,
-            status = ToolStatus.Failed,
+            status = status,
             startedAt = startedAt,
-            finishedAt = clock.instant(),
+            finishedAt = finishedAt,
             error = ToolError(code, message),
+            conversationId = conversationId,
+            rawInputJson = toolCall.arguments,
+            rawOutputJson = output.value,
+            durationMs = startedAt.durationUntilMs(finishedAt),
         )
         toolInvocationRepository.saveToolResult(conversationId, result)
         return ToolExecution(result, output.asModelContent())
@@ -375,6 +420,15 @@ class ToolExecutor(
             is ToolOutput.Json -> value
         }
 
+    private fun ToolOutput.rawJsonOrNull(): String? =
+        when (this) {
+            is ToolOutput.Text -> null
+            is ToolOutput.Json -> value
+        }
+
+    private fun Instant.durationUntilMs(finishedAt: Instant): Long =
+        (finishedAt.toEpochMilli() - toEpochMilli()).coerceAtLeast(0)
+
     private fun String.toInputSummary(): String {
         val normalized = replace(Regex("\\s+"), " ").trim()
         val preview = normalized.take(120)
@@ -384,6 +438,7 @@ class ToolExecutor(
     private fun Throwable.toToolErrorCode(): String =
         when (this) {
             is GatewayHttpException -> gatewayCode
+            is LocalSearchHttpException -> code
             is GatewaySettingsException -> code
             is InvalidLocalToolArgumentsException -> "invalid_tool_arguments"
             is LocalToolUnavailableException -> "tool_unavailable"
@@ -450,7 +505,16 @@ private class GatewaySettingsException(
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
 private val LOCAL_TOOL_NAMES = setOf("image_generation")
-private val LOCAL_EXECUTABLE_TOOL_NAMES = setOf("time", "text_transform", "code_diff_preview")
+private val LOCAL_EXECUTABLE_TOOL_NAMES =
+    setOf(
+        "time",
+        "text_transform",
+        "code_diff_preview",
+        "web_search_local",
+        "local_js",
+        "file_read",
+        "provider_connection_test",
+    )
 private const val DEFAULT_SANDBOX_LANGUAGE = "python"
 private const val DEFAULT_SANDBOX_TIMEOUT_SECONDS = 3
 private const val MIN_SANDBOX_TIMEOUT_SECONDS = 1

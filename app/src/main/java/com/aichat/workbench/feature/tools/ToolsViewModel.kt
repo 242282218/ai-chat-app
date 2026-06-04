@@ -3,6 +3,8 @@ package com.aichat.workbench.feature.tools
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aichat.workbench.data.settings.GatewaySettingsRepository
+import com.aichat.workbench.data.settings.SearchSettingsRepository
+import com.aichat.workbench.data.settings.ToolSettingsRepository
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.model.ToolError
@@ -13,11 +15,18 @@ import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.tool.gateway.GatewayClient
 import com.aichat.workbench.tool.gateway.GatewayHttpException
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
-import com.aichat.workbench.tool.gateway.SearchResponse
-import com.aichat.workbench.tool.gateway.SearchResult
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRuntimeSetting
 import com.aichat.workbench.tool.model.requiresConfirmation
+import com.aichat.workbench.tool.model.runtimeSettingFor
 import com.aichat.workbench.tool.registry.BuiltInToolRegistry
+import com.aichat.workbench.tool.search.LocalSearchClient
+import com.aichat.workbench.tool.search.LocalSearchHttpException
+import com.aichat.workbench.tool.search.SearchConfig
+import com.aichat.workbench.tool.search.SearchProvider
+import com.aichat.workbench.tool.search.SearchResponse
+import com.aichat.workbench.tool.search.SearchResult
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -34,6 +43,13 @@ data class ToolsUiState(
     val gatewayEnabled: Boolean = false,
     val gatewayBaseUrlDraft: String = "",
     val gatewayApiTokenDraft: String = "",
+    val localSearchEnabled: Boolean = false,
+    val localSearchProvider: SearchProvider = SearchProvider.Tavily,
+    val localSearchBaseUrlDraft: String = "",
+    val localSearchApiKeyDraft: String = "",
+    val localSearchMaxResultsDraft: String = "5",
+    val localSearchDepthDraft: String = "basic",
+    val localSearchTopicDraft: String = "general",
     val remoteTools: List<ToolDescriptor> = emptyList(),
     val isLoading: Boolean = false,
     val status: String? = null,
@@ -47,14 +63,29 @@ data class ToolsUiState(
     val sandboxCode: String = "print(1 + 1)",
     val sandboxResult: SandboxRunResponse? = null,
     val sandboxError: ToolError? = null,
+    val toolHistory: List<ToolResult> = emptyList(),
+    val toolHistoryToolFilter: String? = null,
+    val toolHistoryStatusFilter: ToolStatus? = null,
+    val toolSettings: Map<String, ToolRuntimeSetting> = emptyMap(),
 ) {
     val tools: List<ToolDescriptor>
         get() = BuiltInToolRegistry.tools + remoteTools
+
+    val enabledTools: List<ToolDescriptor>
+        get() = tools.filter { tool -> toolSettings.runtimeSettingFor(tool).enabled }
+
+    val filteredToolHistory: List<ToolResult>
+        get() = toolHistory
+            .filter { result -> toolHistoryToolFilter == null || result.toolName == toolHistoryToolFilter }
+            .filter { result -> toolHistoryStatusFilter == null || result.status == toolHistoryStatusFilter }
 }
 
 class ToolsViewModel(
     private val settingsRepository: GatewaySettingsRepository,
+    private val searchSettingsRepository: SearchSettingsRepository,
+    private val toolSettingsRepository: ToolSettingsRepository,
     private val gatewayClient: GatewayClient,
+    private val localSearchClient: LocalSearchClient,
     private val toolInvocationRepository: ToolInvocationRepository,
     private val clock: Clock,
 ) : ViewModel() {
@@ -74,6 +105,33 @@ class ToolsViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            searchSettingsRepository.loadSettings()
+            searchSettingsRepository.observeSettings().collect { settings ->
+                _state.update {
+                    it.copy(
+                        localSearchEnabled = settings.enabled,
+                        localSearchProvider = settings.provider,
+                        localSearchBaseUrlDraft = settings.baseUrl,
+                        localSearchApiKeyDraft = settings.apiKey,
+                        localSearchMaxResultsDraft = settings.maxResults.toString(),
+                        localSearchDepthDraft = settings.searchDepth,
+                        localSearchTopicDraft = settings.topic,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            toolInvocationRepository.observeToolInvocations().collect { history ->
+                _state.update { it.copy(toolHistory = history) }
+            }
+        }
+        viewModelScope.launch {
+            toolSettingsRepository.loadSettings()
+            toolSettingsRepository.observeSettings().collect { settings ->
+                _state.update { it.copy(toolSettings = settings) }
+            }
+        }
     }
 
     fun updateGatewayEnabled(value: Boolean) {
@@ -88,12 +146,52 @@ class ToolsViewModel(
         _state.update { it.copy(gatewayApiTokenDraft = value) }
     }
 
+    fun updateLocalSearchEnabled(value: Boolean) {
+        _state.update { it.copy(localSearchEnabled = value) }
+    }
+
+    fun updateLocalSearchBaseUrl(value: String) {
+        _state.update { it.copy(localSearchBaseUrlDraft = value) }
+    }
+
+    fun updateLocalSearchApiKey(value: String) {
+        _state.update { it.copy(localSearchApiKeyDraft = value) }
+    }
+
+    fun updateLocalSearchMaxResults(value: String) {
+        _state.update { it.copy(localSearchMaxResultsDraft = value.filter(Char::isDigit).take(2)) }
+    }
+
+    fun updateLocalSearchDepth(value: String) {
+        _state.update { it.copy(localSearchDepthDraft = value) }
+    }
+
+    fun updateLocalSearchTopic(value: String) {
+        _state.update { it.copy(localSearchTopicDraft = value) }
+    }
+
     fun updateSearchQuery(value: String) {
         _state.update { it.copy(searchQuery = value, searchError = null) }
     }
 
     fun updateSandboxCode(value: String) {
         _state.update { it.copy(sandboxCode = value, sandboxError = null) }
+    }
+
+    fun updateToolHistoryToolFilter(value: String?) {
+        _state.update { it.copy(toolHistoryToolFilter = value?.takeIf(String::isNotBlank)) }
+    }
+
+    fun updateToolHistoryStatusFilter(value: ToolStatus?) {
+        _state.update { it.copy(toolHistoryStatusFilter = value) }
+    }
+
+    fun updateToolEnabled(toolName: String, enabled: Boolean) {
+        toolSettingsRepository.setToolEnabled(toolName, enabled)
+    }
+
+    fun updateToolPermissionPolicy(toolName: String, policy: ToolPermissionPolicy) {
+        toolSettingsRepository.setPermissionPolicy(toolName, policy)
     }
 
     fun saveGatewaySettings() {
@@ -115,6 +213,29 @@ class ToolsViewModel(
                 }
             }.onFailure { error ->
                 _state.update { it.copy(status = error.message ?: "保存网关设置失败。") }
+            }
+            _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun saveLocalSearchSettings() {
+        val current = _state.value
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, status = null) }
+            runCatching {
+                searchSettingsRepository.saveSettings(
+                    enabled = current.localSearchEnabled,
+                    provider = current.localSearchProvider,
+                    baseUrl = current.localSearchBaseUrlDraft,
+                    apiKey = current.localSearchApiKeyDraft,
+                    maxResults = current.localSearchMaxResultsOrDefault(),
+                    searchDepth = current.localSearchDepthDraft,
+                    topic = current.localSearchTopicDraft,
+                )
+            }.onSuccess {
+                _state.update { it.copy(status = "搜索设置已保存") }
+            }.onFailure { error ->
+                _state.update { it.copy(status = error.message ?: "保存搜索设置失败。") }
             }
             _state.update { it.copy(isLoading = false) }
         }
@@ -161,8 +282,12 @@ class ToolsViewModel(
     }
 
     fun requestPermission(tool: ToolDescriptor) {
-        if (!tool.permissionLevel.requiresConfirmation()) {
-            _state.update { it.copy(status = "${tool.displayName} 是只读工具") }
+        if (!tool.isEnabled()) {
+            _state.update { it.copy(status = "${tool.displayName} 已禁用。") }
+            return
+        }
+        if (!tool.requiresConfirmation()) {
+            _state.update { it.copy(status = "${tool.displayName} 可直接运行") }
             return
         }
         _state.update { it.copy(pendingConfirmation = tool) }
@@ -183,8 +308,47 @@ class ToolsViewModel(
             }
             return
         }
+        if (current.localSearchEnabled) {
+            if (!current.localSearchBaseUrlDraft.isValidGatewayBaseUrl()) {
+                _state.update { it.copy(status = "搜索 Provider URL 无效。") }
+                return
+            }
+            if (current.localSearchApiKeyDraft.isBlank()) {
+                _state.update {
+                    it.copy(
+                        status = "搜索 API Key 未配置。",
+                        searchError = localSearchKeyRequiredError(),
+                    )
+                }
+                return
+            }
+            if (current.localSearchMaxResultsOrNull() == null) {
+                _state.update { it.copy(status = "搜索结果数量必须在 1 到 20 之间。") }
+                return
+            }
+            val searchTool = current.tools.firstOrNull { it.name == "web_search_local" }
+            if (searchTool == null) {
+                _state.update { it.copy(status = "本地搜索工具不可用。") }
+                return
+            }
+            if (!searchTool.isEnabled()) {
+                _state.update { it.copy(status = "本地搜索工具已禁用。") }
+                return
+            }
+            if (searchTool.requiresConfirmation()) {
+                _state.update {
+                    it.copy(
+                        pendingConfirmation = searchTool,
+                        pendingSearchQuery = query,
+                    )
+                }
+            } else {
+                executeLocalSearch(query)
+            }
+            return
+        }
         if (!current.gatewayEnabled) {
-            _state.update { it.copy(status = "搜索前请启用网关。") }
+            _state.update { it.copy(status = "搜索前请启用本地搜索或 Gateway。") }
             return
         }
         if (!current.gatewayBaseUrlDraft.isValidGatewayBaseUrl()) {
@@ -205,11 +369,19 @@ class ToolsViewModel(
             _state.update { it.copy(status = "搜索前请先加载工具清单。") }
             return
         }
-        _state.update {
-            it.copy(
-                pendingConfirmation = searchTool,
-                pendingSearchQuery = query,
-            )
+        if (!searchTool.isEnabled()) {
+            _state.update { it.copy(status = "Gateway 搜索工具已禁用。") }
+            return
+        }
+        if (searchTool.requiresConfirmation()) {
+            _state.update {
+                it.copy(
+                    pendingConfirmation = searchTool,
+                    pendingSearchQuery = query,
+                )
+            }
+        } else {
+            executeGatewaySearch(query)
         }
     }
 
@@ -250,6 +422,10 @@ class ToolsViewModel(
             _state.update { it.copy(status = "运行代码前请先加载工具清单。") }
             return
         }
+        if (!sandboxTool.isEnabled()) {
+            _state.update { it.copy(status = "代码沙箱工具已禁用。") }
+            return
+        }
         _state.update {
             it.copy(
                 pendingConfirmation = sandboxTool,
@@ -270,8 +446,11 @@ class ToolsViewModel(
                 status = "已确认${tool.permissionLevel.label()}工具：${tool.displayName}",
             )
         }
+        if (tool.name == "web_search_local" && query != null) {
+            executeLocalSearch(query)
+        }
         if (tool.name == "web_search" && query != null) {
-            executeSearch(query)
+            executeGatewaySearch(query)
         }
         if (tool.name == "code_sandbox" && code != null) {
             executeSandbox(code)
@@ -288,7 +467,44 @@ class ToolsViewModel(
         }
     }
 
-    private fun executeSearch(query: String) {
+    private fun executeLocalSearch(query: String) {
+        viewModelScope.launch {
+            val startedAt = clock.instant()
+            val toolCallId = ToolCallId(UUID.randomUUID().toString())
+            _state.update {
+                it.copy(
+                    isLoading = true,
+                    status = null,
+                    searchResults = emptyList(),
+                    searchError = null,
+                )
+            }
+            runCatching {
+                localSearchClient.search(query, _state.value.toLocalSearchConfig())
+            }.onSuccess { response ->
+                saveSearchSuccess(
+                    toolCallId = toolCallId,
+                    toolName = "web_search_local",
+                    query = query,
+                    startedAt = startedAt,
+                    response = response,
+                    status = "本地搜索返回 ${response.results.size} 个来源",
+                )
+            }.onFailure { error ->
+                saveSearchFailure(
+                    toolCallId = toolCallId,
+                    toolName = "web_search_local",
+                    query = query,
+                    startedAt = startedAt,
+                    error = error.toSearchToolError(),
+                    status = "本地搜索失败。",
+                )
+            }
+            _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    private fun executeGatewaySearch(query: String) {
         val baseUrl = _state.value.gatewayBaseUrlDraft
         viewModelScope.launch {
             val startedAt = clock.instant()
@@ -304,48 +520,93 @@ class ToolsViewModel(
             runCatching {
                 gatewayClient.search(baseUrl, query, _state.value.gatewayApiTokenDraft)
             }.onSuccess { response ->
-                val toolResult = ToolResult(
-                    id = toolCallId,
+                saveSearchSuccess(
+                    toolCallId = toolCallId,
                     toolName = "web_search",
-                    permissionLevel = ToolPermissionLevel.Network,
-                    inputSummary = query.toInputSummary("query"),
-                    output = ToolOutput.Json(response.toJson()),
-                    status = ToolStatus.Completed,
+                    query = query,
                     startedAt = startedAt,
-                    finishedAt = clock.instant(),
-                    error = null,
+                    response = response,
+                    status = "Gateway 搜索返回 ${response.results.size} 个来源",
                 )
-                toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
-                _state.update {
-                    it.copy(
-                        searchResults = response.results,
-                        searchFetchedAt = response.fetchedAt.toString(),
-                        searchError = null,
-                        status = "网络搜索返回 ${response.results.size} 个来源",
-                    )
-                }
             }.onFailure { error ->
-                val toolError = error.toSearchToolError()
-                val toolResult = ToolResult(
-                    id = toolCallId,
+                saveSearchFailure(
+                    toolCallId = toolCallId,
                     toolName = "web_search",
-                    permissionLevel = ToolPermissionLevel.Network,
-                    inputSummary = query.toInputSummary("query"),
-                    output = ToolOutput.Json(emptySearchOutputJson(query, startedAt)),
-                    status = ToolStatus.Failed,
+                    query = query,
                     startedAt = startedAt,
-                    finishedAt = clock.instant(),
-                    error = toolError,
+                    error = error.toSearchToolError(),
+                    status = "Gateway 搜索失败。",
                 )
-                toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
-                _state.update {
-                    it.copy(
-                        status = "网络搜索失败。",
-                        searchError = toolError,
-                    )
-                }
             }
             _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    private suspend fun saveSearchSuccess(
+        toolCallId: ToolCallId,
+        toolName: String,
+        query: String,
+        startedAt: Instant,
+        response: SearchResponse,
+        status: String,
+    ) {
+        val outputJson = response.toJson()
+        val finishedAt = clock.instant()
+        val toolResult = ToolResult(
+            id = toolCallId,
+            toolName = toolName,
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSummary = query.toInputSummary("query"),
+            output = ToolOutput.Json(outputJson),
+            status = ToolStatus.Completed,
+            startedAt = startedAt,
+            finishedAt = finishedAt,
+            error = null,
+            rawInputJson = toolsJson.encodeToString(SearchInputJson(query = query)),
+            rawOutputJson = outputJson,
+            durationMs = startedAt.durationUntilMs(finishedAt),
+        )
+        toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
+        _state.update {
+            it.copy(
+                searchResults = response.results,
+                searchFetchedAt = response.fetchedAt.toString(),
+                searchError = null,
+                status = status,
+            )
+        }
+    }
+
+    private suspend fun saveSearchFailure(
+        toolCallId: ToolCallId,
+        toolName: String,
+        query: String,
+        startedAt: Instant,
+        error: ToolError,
+        status: String,
+    ) {
+        val outputJson = emptySearchOutputJson(query, startedAt)
+        val finishedAt = clock.instant()
+        val toolResult = ToolResult(
+            id = toolCallId,
+            toolName = toolName,
+            permissionLevel = ToolPermissionLevel.Network,
+            inputSummary = query.toInputSummary("query"),
+            output = ToolOutput.Json(outputJson),
+            status = ToolStatus.Failed,
+            startedAt = startedAt,
+            finishedAt = finishedAt,
+            error = error,
+            rawInputJson = toolsJson.encodeToString(SearchInputJson(query = query)),
+            rawOutputJson = outputJson,
+            durationMs = startedAt.durationUntilMs(finishedAt),
+        )
+        toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
+        _state.update {
+            it.copy(
+                status = status,
+                searchError = error,
+            )
         }
     }
 
@@ -371,16 +632,23 @@ class ToolsViewModel(
                     apiToken = _state.value.gatewayApiTokenDraft,
                 )
             }.onSuccess { response ->
+                val outputJson = response.toJson()
+                val finishedAt = clock.instant()
                 val toolResult = ToolResult(
                     id = toolCallId,
                     toolName = "code_sandbox",
                     permissionLevel = ToolPermissionLevel.Execute,
                     inputSummary = code.toInputSummary("python"),
-                    output = ToolOutput.Json(response.toJson()),
+                    output = ToolOutput.Json(outputJson),
                     status = ToolStatus.Completed,
                     startedAt = startedAt,
-                    finishedAt = clock.instant(),
+                    finishedAt = finishedAt,
                     error = null,
+                    rawInputJson = toolsJson.encodeToString(
+                        SandboxInputJson(language = "python", code = code, timeoutSeconds = 3),
+                    ),
+                    rawOutputJson = outputJson,
+                    durationMs = startedAt.durationUntilMs(finishedAt),
                 )
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
@@ -395,16 +663,23 @@ class ToolsViewModel(
                     fallbackCode = "sandbox_failed",
                     fallbackMessage = "代码沙箱运行失败。",
                 )
+                val outputJson = emptySandboxOutputJson()
+                val finishedAt = clock.instant()
                 val toolResult = ToolResult(
                     id = toolCallId,
                     toolName = "code_sandbox",
                     permissionLevel = ToolPermissionLevel.Execute,
                     inputSummary = code.toInputSummary("python"),
-                    output = ToolOutput.Json(emptySandboxOutputJson()),
+                    output = ToolOutput.Json(outputJson),
                     status = ToolStatus.Failed,
                     startedAt = startedAt,
-                    finishedAt = clock.instant(),
+                    finishedAt = finishedAt,
                     error = toolError,
+                    rawInputJson = toolsJson.encodeToString(
+                        SandboxInputJson(language = "python", code = code, timeoutSeconds = 3),
+                    ),
+                    rawOutputJson = outputJson,
+                    durationMs = startedAt.durationUntilMs(finishedAt),
                 )
                 toolInvocationRepository.saveToolResult(conversationId = null, toolResult = toolResult)
                 _state.update {
@@ -430,6 +705,12 @@ class ToolsViewModel(
             message = "Gateway API token 未配置。",
         )
 
+    private fun localSearchKeyRequiredError(): ToolError =
+        ToolError(
+            code = "local_search_key_required",
+            message = "搜索 API Key 未配置。",
+        )
+
     private fun Throwable.toToolError(
         fallbackCode: String,
         fallbackMessage: String,
@@ -437,6 +718,10 @@ class ToolsViewModel(
         when (this) {
             is GatewayHttpException -> ToolError(
                 code = gatewayCode,
+                message = message ?: fallbackMessage,
+            )
+            is LocalSearchHttpException -> ToolError(
+                code = code,
                 message = message ?: fallbackMessage,
             )
             else -> ToolError(
@@ -454,6 +739,9 @@ class ToolsViewModel(
             "$label: $preview"
         }
     }
+
+    private fun Instant.durationUntilMs(finishedAt: Instant): Long =
+        (finishedAt.toEpochMilli() - toEpochMilli()).coerceAtLeast(0)
 
     private fun emptySearchOutputJson(query: String, fetchedAt: Instant): String =
         toolsJson.encodeToString(
@@ -514,12 +802,42 @@ class ToolsViewModel(
             ToolPermissionLevel.Execute -> "执行"
             ToolPermissionLevel.HighRisk -> "高风险"
         }
+
+    private fun ToolsUiState.toLocalSearchConfig(): SearchConfig =
+        SearchConfig(
+            enabled = localSearchEnabled,
+            provider = localSearchProvider,
+            baseUrl = localSearchBaseUrlDraft,
+            apiKey = localSearchApiKeyDraft,
+            maxResults = localSearchMaxResultsOrDefault(),
+            searchDepth = localSearchDepthDraft,
+            topic = localSearchTopicDraft,
+        )
+
+    private fun ToolsUiState.localSearchMaxResultsOrDefault(): Int =
+        localSearchMaxResultsOrNull() ?: 5
+
+    private fun ToolsUiState.localSearchMaxResultsOrNull(): Int? =
+        localSearchMaxResultsDraft.toIntOrNull()?.takeIf { it in 1..20 }
+
+    private fun ToolDescriptor.isEnabled(): Boolean =
+        _state.value.toolSettings.runtimeSettingFor(this).enabled
+
+    private fun ToolDescriptor.requiresConfirmation(): Boolean {
+        val setting = _state.value.toolSettings.runtimeSettingFor(this)
+        return requiresConfirmation(setting.permissionPolicy)
+    }
 }
 
 private val toolsJson = Json {
     explicitNulls = false
     encodeDefaults = true
 }
+
+@Serializable
+private data class SearchInputJson(
+    val query: String,
+)
 
 @Serializable
 private data class SearchOutputJson(
@@ -535,6 +853,13 @@ private data class SearchResultOutputJson(
     val url: String,
     val source: String,
     val publishedAt: String? = null,
+)
+
+@Serializable
+private data class SandboxInputJson(
+    val language: String,
+    val code: String,
+    val timeoutSeconds: Int,
 )
 
 @Serializable

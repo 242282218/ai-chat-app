@@ -3,6 +3,8 @@ package com.aichat.workbench.tool.local
 import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.tool.model.ToolDescriptor
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -94,6 +96,10 @@ val CodeDiffPreviewToolDescriptor: ToolDescriptor = ToolDescriptor(
     outputSchemaJson = """{"type":"object"}""",
     timeoutSeconds = null,
     source = ToolSource.BuiltIn,
+    riskLevel = ToolRiskLevel.Low,
+    requiresNetwork = false,
+    requiresFileAccess = false,
+    defaultPermissionPolicy = ToolPermissionPolicy.AllowWithoutPrompt,
 )
 
 @Serializable

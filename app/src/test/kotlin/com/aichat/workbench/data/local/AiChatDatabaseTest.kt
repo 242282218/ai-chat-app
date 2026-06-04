@@ -11,6 +11,7 @@ import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.mapper.toEntity
 import com.aichat.workbench.data.repository.RoomConversationRepository
 import com.aichat.workbench.data.repository.RoomModelPreferenceRepository
+import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
 import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
 import com.aichat.workbench.data.repository.RoomToolInvocationRepository
@@ -27,6 +28,8 @@ import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelPreference
 import com.aichat.workbench.domain.model.ModelPreferenceId
+import com.aichat.workbench.domain.model.ModelRole
+import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.model.ProviderConfig
@@ -257,6 +260,25 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun modelRolePreferences_storeOneModelPerProviderRole() = runTest {
+        val repository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
+        val providerId = ProviderId("provider-1")
+
+        repository.setRoleModel(providerId, ModelRole.Chat, "chat-model")
+        repository.setRoleModel(providerId, ModelRole.Image, "image-model")
+        repository.setRoleModel(providerId, ModelRole.Chat, "updated-chat-model")
+
+        val preferences = repository.observeRolePreferences(providerId).first()
+        assertEquals(2, preferences.size)
+        assertEquals("updated-chat-model", repository.getRoleModel(providerId, ModelRole.Chat))
+        assertEquals("image-model", repository.getRoleModel(providerId, ModelRole.Image))
+
+        repository.setRoleModel(providerId, ModelRole.Image, "")
+
+        assertEquals(null, repository.getRoleModel(providerId, ModelRole.Image))
+    }
+
+    @Test
     fun providerConfigs_storeApiKeyRefOnlyAndDeleteSecretsWithPreferences() = runTest {
         val secretStore = FakeSecretStore()
         val providerRepository = RoomProviderConfigRepository(
@@ -264,8 +286,10 @@ class AiChatDatabaseTest {
             database.modelPreferenceDao(),
             secretStore,
             clock,
+            modelRolePreferenceDao = database.modelRolePreferenceDao(),
         )
         val modelRepository = RoomModelPreferenceRepository(database.modelPreferenceDao(), clock)
+        val modelRoleRepository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
         val providerId = ProviderId("provider-1")
         val saveProvider = SaveProviderConfigUseCase(providerRepository)
         val deleteProvider = DeleteProviderConfigUseCase(providerRepository)
@@ -276,6 +300,7 @@ class AiChatDatabaseTest {
             allowInsecureHttp = false,
         )
         SaveModelPreferenceUseCase(modelRepository)(modelPreference(providerId, "gpt-4.1-mini", favorite = true))
+        modelRoleRepository.setRoleModel(providerId, ModelRole.Tool, "gpt-tool")
 
         val entity = database.providerConfigDao().getProvider(providerId.value)
         val savedProvider = providerRepository.getProvider(providerId)
@@ -298,6 +323,7 @@ class AiChatDatabaseTest {
         assertNull(database.providerConfigDao().getProvider(providerId.value))
         assertNull(providerRepository.getApiKey(providerId))
         assertEquals(emptyList<ModelPreference>(), modelRepository.observeModelPreferences(providerId).first())
+        assertEquals(emptyList<ModelRolePreference>(), modelRoleRepository.observeRolePreferences(providerId).first())
     }
 
     @Test
@@ -346,6 +372,9 @@ class AiChatDatabaseTest {
             startedAt = clock.instant(),
             finishedAt = clock.instant().plusSeconds(1),
             error = null,
+            rawInputJson = """{"query":"AI news"}""",
+            rawOutputJson = """{"query":"AI news","fetchedAt":"2026-05-31T00:00:00Z","results":[]}""",
+            durationMs = 1_000,
         )
 
         repository.saveToolResult(conversationId = null, toolResult = result)
@@ -1379,6 +1408,85 @@ class AiChatDatabaseTest {
         cursor.use {
             assertTrue(it.moveToFirst())
             assertEquals("needle content", it.getString(0))
+        }
+        migrated.close()
+    }
+
+    @Test
+    fun migration7To8_createsModelRolePreferences() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("model-role-preferences-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 7).close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            8,
+            true,
+            AiChatDatabase.MIGRATION_7_8,
+        )
+        migrated.execSQL(
+            """
+            INSERT INTO model_role_preferences (
+                id, provider_id, role, model, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>("provider-1:Tool", "provider-1", "Tool", "gpt-tool", 1L, 1L),
+        )
+        val cursor = migrated.query("SELECT model FROM model_role_preferences WHERE provider_id = 'provider-1' AND role = 'Tool'")
+        cursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("gpt-tool", it.getString(0))
+        }
+        migrated.close()
+    }
+
+    @Test
+    fun migration8To9_addsToolInvocationRawPayloadAndTimingColumns() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("tool-invocation-metadata-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 8).apply {
+            execSQL(
+                """
+                INSERT INTO tool_invocations (
+                    id, conversation_id, tool_name, permission_level, input_summary,
+                    output_json, status, started_at, finished_at, error_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "tool-call-1",
+                    null,
+                    "web_search",
+                    "Network",
+                    "query: AI news",
+                    """{"type":"json","value":"{\"query\":\"AI news\"}"}""",
+                    "Completed",
+                    1L,
+                    2L,
+                    null,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            9,
+            true,
+            AiChatDatabase.MIGRATION_8_9,
+        )
+        val cursor = migrated.query(
+            """
+            SELECT raw_input_json, raw_output_json, duration_ms, canceled_at
+            FROM tool_invocations
+            WHERE id = 'tool-call-1'
+            """.trimIndent(),
+        )
+        cursor.use {
+            assertTrue(it.moveToFirst())
+            assertTrue(it.isNull(0))
+            assertTrue(it.isNull(1))
+            assertTrue(it.isNull(2))
+            assertTrue(it.isNull(3))
         }
         migrated.close()
     }

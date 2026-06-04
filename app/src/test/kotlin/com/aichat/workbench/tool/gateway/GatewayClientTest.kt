@@ -1,6 +1,8 @@
 package com.aichat.workbench.tool.gateway
 
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.tool.model.ToolPermissionPolicy
+import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.requiresConfirmation
 import java.nio.file.Files
@@ -51,10 +53,20 @@ class GatewayClientTest {
         assertEquals("/v1/tools/manifest", recorded.path)
         assertEquals(1, manifest.version)
         assertEquals(2, manifest.tools.size)
-        assertEquals("Web Search", manifest.tools[0].displayName)
-        assertEquals(ToolPermissionLevel.Network, manifest.tools[0].permissionLevel)
-        assertEquals(ToolSource.Gateway, manifest.tools[0].source)
-        assertEquals(ToolPermissionLevel.Execute, manifest.tools[1].permissionLevel)
+        val webSearch = manifest.tools[0]
+        val sandbox = manifest.tools[1]
+        assertEquals("Web Search", webSearch.displayName)
+        assertEquals(ToolPermissionLevel.Network, webSearch.permissionLevel)
+        assertEquals(ToolRiskLevel.Medium, webSearch.riskLevel)
+        assertTrue(webSearch.requiresNetwork)
+        assertFalse(webSearch.requiresFileAccess)
+        assertEquals(ToolPermissionPolicy.AskEveryTime, webSearch.defaultPermissionPolicy)
+        assertEquals(ToolSource.Gateway, webSearch.source)
+        assertEquals(ToolPermissionLevel.Execute, sandbox.permissionLevel)
+        assertEquals(ToolRiskLevel.High, sandbox.riskLevel)
+        assertTrue(sandbox.requiresNetwork)
+        assertFalse(sandbox.requiresFileAccess)
+        assertEquals(ToolPermissionPolicy.AskEveryTime, sandbox.defaultPermissionPolicy)
     }
 
     @Test
@@ -79,6 +91,45 @@ class GatewayClientTest {
         )
 
         assertEquals(ToolPermissionLevel.HighRisk, manifest.tools.single().permissionLevel)
+    }
+
+    @Test
+    fun toolManifest_parsesLegacyManifestWithoutMetadataDefaults() {
+        val client = GatewayClient()
+
+        val manifest = client.parseToolManifest(
+            """
+            {
+              "version": 1,
+              "generatedAt": "2026-06-01T00:00:00Z",
+              "tools": [
+                {
+                  "name": "code_sandbox",
+                  "description": "Legacy sandbox",
+                  "permissionLevel": "Execute",
+                  "inputSchema": {}
+                },
+                {
+                  "name": "legacy_read",
+                  "description": "Legacy read-only tool",
+                  "permissionLevel": "ReadOnly",
+                  "inputSchema": {}
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val sandbox = manifest.tools.first { it.name == "code_sandbox" }
+        val readOnly = manifest.tools.first { it.name == "legacy_read" }
+        assertEquals(ToolRiskLevel.High, sandbox.riskLevel)
+        assertTrue(sandbox.requiresNetwork)
+        assertFalse(sandbox.requiresFileAccess)
+        assertEquals(ToolPermissionPolicy.AskEveryTime, sandbox.defaultPermissionPolicy)
+        assertEquals(ToolRiskLevel.Low, readOnly.riskLevel)
+        assertFalse(readOnly.requiresNetwork)
+        assertFalse(readOnly.requiresFileAccess)
+        assertEquals(ToolPermissionPolicy.AllowWithoutPrompt, readOnly.defaultPermissionPolicy)
     }
 
     @Test

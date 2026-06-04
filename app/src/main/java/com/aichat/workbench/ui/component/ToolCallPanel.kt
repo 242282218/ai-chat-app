@@ -22,9 +22,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,12 +51,22 @@ fun ToolCallPanel(
     isPending: Boolean,
     onApprove: () -> Unit,
     onDeny: () -> Unit,
+    onArgumentsChange: (String) -> Unit = {},
+    onRetryWithArguments: (String) -> Unit = {},
+    isPlanOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable(toolCall.id.value) { mutableStateOf(isPending || isError) }
+    var editableArguments by rememberSaveable(toolCall.id.value) { mutableStateOf(toolCall.arguments) }
     val info = toolVisualInfo(toolCall.name)
-    val state = toolCardState(result = result, isError = isError, isPending = isPending)
+    val state = toolCardState(result = result, isError = isError, isPending = isPending, isPlanOnly = isPlanOnly)
     val clipboard = LocalClipboardManager.current
+
+    LaunchedEffect(toolCall.arguments, isPending) {
+        if (isPending && editableArguments != toolCall.arguments) {
+            editableArguments = toolCall.arguments
+        }
+    }
 
     Surface(
         modifier = modifier
@@ -75,26 +87,61 @@ fun ToolCallPanel(
                 expanded = expanded,
                 onToggleExpanded = { expanded = !expanded },
             )
-            Text(
-                text = toolCall.arguments.ifBlank { "{}" }.abbreviate(if (expanded) 1_200 else 140),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontFamily = FontFamily.Monospace,
-                maxLines = if (expanded) 16 else 2,
-                overflow = TextOverflow.Ellipsis,
+            ToolArgumentsBody(
+                arguments = if (isPending) editableArguments else toolCall.arguments,
+                expanded = expanded,
+                editable = isPending,
+                onArgumentsChange = { value ->
+                    editableArguments = value
+                    onArgumentsChange(value)
+                },
             )
             when {
                 isPending -> ToolApprovalActions(onApprove = onApprove, onDeny = onDeny)
                 result != null -> ToolResultBody(
+                    arguments = toolCall.arguments,
                     result = result,
                     isError = isError,
                     expanded = expanded,
                     onCopy = { clipboard.setText(AnnotatedString(result)) },
+                    onCopyArguments = { clipboard.setText(AnnotatedString(toolCall.arguments.ifBlank { "{}" })) },
+                    onRetryWithArguments = { onRetryWithArguments(toolCall.arguments.ifBlank { "{}" }) },
                 )
+                isPlanOnly -> ToolPlanBody()
                 else -> ToolRunningBody()
             }
         }
     }
+}
+
+@Composable
+private fun ToolArgumentsBody(
+    arguments: String,
+    expanded: Boolean,
+    editable: Boolean,
+    onArgumentsChange: (String) -> Unit,
+) {
+    if (!editable) {
+        Text(
+            text = arguments.ifBlank { "{}" }.abbreviate(if (expanded) 1_200 else 140),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+            maxLines = if (expanded) 16 else 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
+
+    OutlinedTextField(
+        value = arguments,
+        onValueChange = onArgumentsChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("工具参数 JSON") },
+        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        minLines = if (expanded) 4 else 2,
+        maxLines = if (expanded) 12 else 4,
+    )
 }
 
 @Composable
@@ -150,6 +197,15 @@ private fun ToolApprovalActions(
 }
 
 @Composable
+private fun ToolPlanBody() {
+    InlineNotice(
+        text = "工具计划已提交，执行结果会在后续工具卡中显示。",
+        icon = Icons.Filled.HourglassEmpty,
+        tone = StatusTone.Neutral,
+    )
+}
+
+@Composable
 private fun ToolRunningBody() {
     InlineNotice(
         text = "工具正在运行，结果会回写到当前聊天流。",
@@ -160,10 +216,13 @@ private fun ToolRunningBody() {
 
 @Composable
 private fun ToolResultBody(
+    arguments: String,
     result: String,
     isError: Boolean,
     expanded: Boolean,
     onCopy: () -> Unit,
+    onCopyArguments: () -> Unit,
+    onRetryWithArguments: () -> Unit,
 ) {
     val tone = if (isError) StatusTone.Critical else StatusTone.Success
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -180,6 +239,22 @@ private fun ToolResultBody(
                 )
             },
         )
+        if (isError) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onCopyArguments,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("复制参数")
+                }
+                Button(
+                    onClick = onRetryWithArguments,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("修改参数")
+                }
+            }
+        }
         Text(
             text = result.abbreviate(if (expanded) 3_000 else 240),
             style = MaterialTheme.typography.bodySmall,
@@ -188,6 +263,16 @@ private fun ToolResultBody(
             maxLines = if (expanded) 24 else 4,
             overflow = TextOverflow.Ellipsis,
         )
+        if (isError && arguments.isNotBlank()) {
+            Text(
+                text = arguments.abbreviate(if (expanded) 1_200 else 180),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                maxLines = if (expanded) 12 else 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -201,11 +286,13 @@ private fun toolCardState(
     result: String?,
     isError: Boolean,
     isPending: Boolean,
+    isPlanOnly: Boolean,
 ): ToolCardState =
     when {
         isPending -> ToolCardState("待授权", "确认工具计划和参数后再执行。", StatusTone.Warning)
         isError -> ToolCardState("失败", "错误保留在聊天流，可复制日志。", StatusTone.Critical)
         result != null -> ToolCardState("完成", "结果已回写，可继续追问。", StatusTone.Success)
+        isPlanOnly -> ToolCardState("已计划", "工具请求已进入执行流程。", StatusTone.Neutral)
         else -> ToolCardState("运行中", "正在执行工具调用。", StatusTone.Accent)
     }
 
