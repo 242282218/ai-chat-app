@@ -41,7 +41,7 @@ jobs:
         run: |
           set +e
           mkdir -p ci-results
-          ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee ci-results/android-checks.log
+          ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee ci-results/android-checks.txt
           status=${PIPESTATUS[0]}
           {
             echo "status=$status"
@@ -50,7 +50,7 @@ jobs:
           } > ci-results/android-checks-status.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ci-results/android-checks.log ci-results/android-checks-status.txt
+          git add ci-results/android-checks.txt ci-results/android-checks-status.txt
           git commit -m "Add Android diagnostic log" || true
           git push || true
           exit "$status"
