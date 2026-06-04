@@ -85,6 +85,7 @@ fun ImageGenerationScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
     modifier: Modifier = Modifier,
+    showBackButton: Boolean = true,
     viewModel: ImageGenerationViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -114,11 +115,13 @@ fun ImageGenerationScreen(
                     }
                 },
                 navigationIcon = {
-                    WorkbenchIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = onBack,
-                    )
+                    if (showBackButton) {
+                        WorkbenchIconButton(
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            label = "返回",
+                            onClick = onBack,
+                        )
+                    }
                 },
             )
         },

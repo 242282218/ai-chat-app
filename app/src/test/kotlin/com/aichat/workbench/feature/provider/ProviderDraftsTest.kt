@@ -1,5 +1,7 @@
 package com.aichat.workbench.feature.provider
 
+import com.aichat.workbench.domain.model.ModelCapability
+import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
@@ -276,6 +278,31 @@ class ProviderDraftsTest {
         )
     }
 
+    @Test
+    fun addsManualImageModelWithoutChangingChatDefaultModel() {
+        val models = listOf(
+            model("gpt-5.4", text = true, imageGeneration = false),
+        ).withManualImageModel("custom-image-model")
+
+        val textModel = models.first { it.id == "gpt-5.4" }
+        val imageModel = models.first { it.id == "custom-image-model" }
+        assertTrue(textModel.capability?.text == true)
+        assertFalse(textModel.capability?.imageGeneration == true)
+        assertFalse(imageModel.capability?.text == true)
+        assertTrue(imageModel.capability?.imageGeneration == true)
+    }
+
+    @Test
+    fun manualImageModelOverridesDiscoveredTextCapabilityForSameModel() {
+        val models = listOf(
+            model("provider-image-alias", text = true, imageGeneration = false),
+        ).withManualImageModel("provider-image-alias")
+
+        val imageModel = models.single()
+        assertFalse(imageModel.capability?.text == true)
+        assertTrue(imageModel.capability?.imageGeneration == true)
+    }
+
     private fun provider(
         type: ProviderType = ProviderType.OpenAI,
         name: String = "Provider",
@@ -295,5 +322,25 @@ class ProviderDraftsTest {
             models = emptyList(),
             defaultModel = model,
             enabled = enabled,
+        )
+
+    private fun model(
+        id: String,
+        text: Boolean,
+        imageGeneration: Boolean,
+    ): ModelConfig =
+        ModelConfig(
+            id = id,
+            displayName = id,
+            capability = ModelCapability(
+                model = id,
+                text = text,
+                vision = text,
+                imageGeneration = imageGeneration,
+                toolCalling = text,
+                structuredOutput = text,
+                longContext = text,
+                maxContextTokens = null,
+            ),
         )
 }

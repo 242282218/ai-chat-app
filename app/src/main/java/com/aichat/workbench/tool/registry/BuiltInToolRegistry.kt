@@ -1,21 +1,17 @@
 package com.aichat.workbench.tool.registry
 
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.tool.local.CodeDiffPreviewToolDescriptor
+import com.aichat.workbench.tool.local.TextTransformToolDescriptor
+import com.aichat.workbench.tool.local.TimeToolDescriptor
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
 
 object BuiltInToolRegistry {
     val tools: List<ToolDescriptor> = listOf(
-        ToolDescriptor(
-            name = "time",
-            displayName = "本机时间",
-            description = "读取设备本地时间。",
-            permissionLevel = ToolPermissionLevel.ReadOnly,
-            inputSchemaJson = """{"type":"object","properties":{}}""",
-            outputSchemaJson = """{"type":"object"}""",
-            timeoutSeconds = null,
-            source = ToolSource.BuiltIn,
-        ),
+        TimeToolDescriptor,
+        TextTransformToolDescriptor,
+        CodeDiffPreviewToolDescriptor,
         ToolDescriptor(
             name = "image_generation",
             displayName = "图片生成",

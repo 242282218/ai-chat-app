@@ -113,7 +113,7 @@ fun HomeScreen(
                 state = state,
                 onSearch = { searchActive = true },
                 onSettings = { showManagementSheet = true },
-                onOpenProviders = { onDestinationClick(AppDestination.Providers) },
+                onOpenProviders = { onDestinationClick(AppDestination.ProviderSettings) },
                 onTaskDraftChange = viewModel::updateTaskDraft,
                 onSubmitTask = {
                     val draft = viewModel.consumeTaskDraft()
@@ -121,8 +121,8 @@ fun HomeScreen(
                 },
                 onNewChat = { onStartChat("", false) },
                 onTemporaryChat = { onStartChat("", true) },
-                onImages = { onDestinationClick(AppDestination.Images) },
-                onPrompts = { onDestinationClick(AppDestination.Prompts) },
+                onImages = { onDestinationClick(AppDestination.ImageGen) },
+                onPrompts = { onDestinationClick(AppDestination.PromptPresets) },
                 onConversationClick = onConversationClick,
                 onCreateConversation = { showCreateSheet = true },
                 modifier = Modifier
@@ -148,11 +148,11 @@ fun HomeScreen(
                 },
                 onImages = {
                     showCreateSheet = false
-                    onDestinationClick(AppDestination.Images)
+                    onDestinationClick(AppDestination.ImageGen)
                 },
                 onPrompts = {
                     showCreateSheet = false
-                    onDestinationClick(AppDestination.Prompts)
+                    onDestinationClick(AppDestination.PromptPresets)
                 },
                 modifier = Modifier.navigationBarsPadding(),
             )
@@ -666,8 +666,8 @@ private fun ManagementSheet(
         destinations.forEach { destination ->
             CreationActionRow(
                 icon = destination.icon(),
-                title = destination.label,
-                description = destination.description,
+                title = destination.displayLabel(),
+                description = destination.description(),
                 onClick = { onDestinationClick(destination) },
             )
         }
@@ -676,13 +676,38 @@ private fun ManagementSheet(
 
 private fun AppDestination.icon(): ImageVector =
     when (this) {
-        AppDestination.Home -> Icons.Filled.Settings
         AppDestination.Chat -> Icons.AutoMirrored.Filled.Chat
-        AppDestination.Providers -> Icons.Filled.Tune
-        AppDestination.Prompts -> Icons.AutoMirrored.Filled.ViewList
-        AppDestination.Images -> Icons.Filled.Image
-        AppDestination.Tools -> Icons.Filled.Extension
-        AppDestination.Settings -> Icons.Filled.Settings
+        AppDestination.Conversations -> Icons.AutoMirrored.Filled.Chat
+        AppDestination.ImageGen -> Icons.Filled.Image
+        AppDestination.ToolsHub -> Icons.Filled.Extension
+        AppDestination.SettingsHub -> Icons.Filled.Settings
+        AppDestination.ProviderSettings -> Icons.Filled.Tune
+        AppDestination.PromptPresets -> Icons.AutoMirrored.Filled.ViewList
+        AppDestination.DataSettings -> Icons.Filled.Settings
+    }
+
+private fun AppDestination.displayLabel(): String =
+    when (this) {
+        AppDestination.Conversations -> "聊天"
+        AppDestination.ImageGen -> "画图"
+        AppDestination.ToolsHub -> "工具"
+        AppDestination.SettingsHub -> "设置"
+        AppDestination.Chat -> "聊天"
+        AppDestination.ProviderSettings -> "模型连接"
+        AppDestination.PromptPresets -> "提示词"
+        AppDestination.DataSettings -> "数据管理"
+    }
+
+private fun AppDestination.description(): String =
+    when (this) {
+        AppDestination.Conversations -> "最近对话"
+        AppDestination.ImageGen -> "生成并查看图片"
+        AppDestination.ToolsHub -> "配置可选工具网关"
+        AppDestination.SettingsHub -> "模型、提示词和数据"
+        AppDestination.Chat -> "开始或继续一个会话"
+        AppDestination.ProviderSettings -> "配置模型服务"
+        AppDestination.PromptPresets -> "管理本地提示词预设"
+        AppDestination.DataSettings -> "管理应用数据和隐私"
     }
 
 @Composable

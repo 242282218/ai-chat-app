@@ -30,9 +30,9 @@ fun ToolPermissionLevel.requiresConfirmation(): Boolean =
     this != ToolPermissionLevel.ReadOnly
 
 fun String.canonicalToolName(): String =
-    when (trim().lowercase().replace("-", "_")) {
+    when (val normalized = trim().lowercase().replace("-", "_")) {
         "websearch", "search", "web_search" -> "web_search"
         "codesandbox", "sandbox", "code_sandbox" -> "code_sandbox"
         "imagegeneration", "generate_image", "image_generation" -> "image_generation"
-        else -> trim().lowercase()
+        else -> normalized
     }

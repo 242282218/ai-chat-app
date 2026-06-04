@@ -46,6 +46,7 @@ import org.junit.Test
 
 class ToolExecutorTest {
     private val clock: Clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
+    private val localToolNames = listOf("time", "text_transform", "code_diff_preview", "image_generation")
 
     @Test
     fun localToolsDoNotCreateGatewayClientWhenGatewayDisabled() = runTest {
@@ -62,7 +63,7 @@ class ToolExecutorTest {
             toolCall = ToolCall(ToolCallId("call_1"), "time", "{}"),
         )
 
-        assertEquals(listOf("time", "image_generation"), tools.map { it.name })
+        assertEquals(localToolNames, tools.map { it.name })
         assertEquals("""{"currentTime":"2026-06-01T00:00:00Z"}""", execution.messageContent)
         assertEquals(1, repository.savedResults.value.size)
     }
@@ -83,6 +84,56 @@ class ToolExecutorTest {
 
         assertEquals("""{"currentTime":"2026-06-01T00:00:00Z"}""", execution.messageContent)
         assertEquals("time", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
+    fun executeTextTransformFormatsJsonLocally() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            gatewayClientProvider = { error("GatewayClient should be lazy") },
+            toolInvocationRepository = repository,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_text"),
+                "text-transform",
+                """{"operation":"json_format","text":"{\"b\":1,\"a\":[true]}"}""",
+            ),
+        )
+
+        assertEquals("text_transform", repository.savedResults.value.single().toolName)
+        assertTrue(execution.messageContent.contains(""""operation":"json_format""""))
+        assertTrue(execution.messageContent.contains("""\n"""))
+        assertTrue(execution.messageContent.contains(""""validJson":true"""))
+    }
+
+    @Test
+    fun executeCodeDiffPreviewReturnsReadOnlyDiff() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            gatewayClientProvider = { error("GatewayClient should be lazy") },
+            toolInvocationRepository = repository,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_diff"),
+                "code_diff_preview",
+                """{"fileName":"Main.kt","original":"fun main() {\n    println(1)\n}","modified":"fun main() {\n    println(2)\n}"}""",
+            ),
+        )
+
+        val result = repository.savedResults.value.single()
+        assertEquals("code_diff_preview", result.toolName)
+        assertEquals(ToolPermissionLevel.ReadOnly, result.permissionLevel)
+        assertTrue(execution.messageContent.contains("--- Main.kt"))
+        assertTrue(execution.messageContent.contains("-    println(1)"))
+        assertTrue(execution.messageContent.contains("+    println(2)"))
     }
 
     @Test
@@ -152,7 +203,7 @@ class ToolExecutorTest {
             val tools = executor.availableTools()
 
             assertEquals(true, created)
-            assertEquals(listOf("time", "image_generation", "web_search"), tools.map { it.name })
+            assertEquals(localToolNames + "web_search", tools.map { it.name })
             assertEquals("/v1/tools/manifest", server.takeRequest().path)
         } finally {
             server.shutdown()
@@ -177,7 +228,7 @@ class ToolExecutorTest {
 
             val tools = executor.availableTools()
 
-            assertEquals(listOf("time", "image_generation", "web_search"), tools.map { it.name })
+            assertEquals(localToolNames + "web_search", tools.map { it.name })
             assertEquals("/v1/tools/manifest", server.takeRequest().path)
         } finally {
             server.shutdown()
@@ -202,7 +253,7 @@ class ToolExecutorTest {
             val first = executor.availableTools()
             val second = executor.availableTools()
 
-            assertEquals(listOf("time", "image_generation", "web_search"), first.map { it.name })
+            assertEquals(localToolNames + "web_search", first.map { it.name })
             assertEquals(first, second)
             assertEquals(1, server.requestCount)
         } finally {
@@ -231,8 +282,8 @@ class ToolExecutorTest {
             token = "token-2"
             val second = executor.availableTools()
 
-            assertEquals(listOf("time", "image_generation", "web_search"), first.map { it.name })
-            assertEquals(listOf("time", "image_generation", "code_sandbox"), second.map { it.name })
+            assertEquals(localToolNames + "web_search", first.map { it.name })
+            assertEquals(localToolNames + "code_sandbox", second.map { it.name })
             assertEquals(2, server.requestCount)
         } finally {
             server.shutdown()
@@ -260,8 +311,8 @@ class ToolExecutorTest {
             mutableClock.advanceBy(Duration.ofMinutes(6))
             val second = executor.availableTools()
 
-            assertEquals(listOf("time", "image_generation", "web_search"), first.map { it.name })
-            assertEquals(listOf("time", "image_generation", "code_sandbox"), second.map { it.name })
+            assertEquals(localToolNames + "web_search", first.map { it.name })
+            assertEquals(localToolNames + "code_sandbox", second.map { it.name })
             assertEquals(2, server.requestCount)
         } finally {
             server.shutdown()
@@ -287,7 +338,7 @@ class ToolExecutorTest {
                 .map { async { executor.availableTools().map { it.name } } }
                 .awaitAll()
 
-            assertEquals(List(5) { listOf("time", "image_generation", "web_search") }, results)
+            assertEquals(List(5) { localToolNames + "web_search" }, results)
             assertEquals(1, server.requestCount)
         } finally {
             server.shutdown()
@@ -334,7 +385,7 @@ class ToolExecutorTest {
 
             val tools = executor.availableTools()
 
-            assertEquals(listOf("time", "image_generation", "web_search"), tools.map { it.name })
+            assertEquals(localToolNames + "web_search", tools.map { it.name })
             assertEquals(1, server.requestCount)
         } finally {
             server.shutdown()

@@ -63,6 +63,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aichat.workbench.domain.model.ModelCapability
+import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
@@ -72,6 +74,8 @@ import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.defaultModelCapability
+import com.aichat.workbench.provider.preferredImageModel
+import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.provider.api.ProviderConnectionTester
 import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
 import com.aichat.workbench.ui.component.InlineNotice
@@ -107,6 +111,7 @@ fun ProviderSettingsScreen(
     var type by rememberSaveable { mutableStateOf(ProviderType.OpenAI) }
     var baseUrl by rememberSaveable { mutableStateOf("https://api.openai.com/v1") }
     var model by rememberSaveable { mutableStateOf("") }
+    var imageModel by rememberSaveable { mutableStateOf("") }
     var models by remember { mutableStateOf<List<ModelConfig>>(emptyList()) }
     var apiKey by rememberSaveable { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
@@ -126,6 +131,7 @@ fun ProviderSettingsScreen(
         type != ProviderType.OpenAI ||
         baseUrl != "https://api.openai.com/v1" ||
         model.isNotBlank() ||
+        imageModel.isNotBlank() ||
         models.isNotEmpty() ||
         apiKey.isNotBlank() ||
         headers.isNotBlank() ||
@@ -139,6 +145,7 @@ fun ProviderSettingsScreen(
         type = provider.type
         baseUrl = provider.baseUrl
         model = provider.defaultModel.orEmpty()
+        imageModel = provider.models.explicitImageModel()
         models = provider.models
         apiKey = ""
         headers = provider.headers.entries.joinToString("\n") { (key, value) -> "$key: $value" }
@@ -158,6 +165,7 @@ fun ProviderSettingsScreen(
         }
         models = emptyList()
         model = ""
+        imageModel = ""
     }
 
     fun resetForm() {
@@ -166,6 +174,7 @@ fun ProviderSettingsScreen(
         type = ProviderType.OpenAI
         baseUrl = "https://api.openai.com/v1"
         model = ""
+        imageModel = ""
         models = emptyList()
         apiKey = ""
         headers = ""
@@ -201,7 +210,10 @@ fun ProviderSettingsScreen(
     fun currentProvider(): ProviderConfig {
         val providerId = ProviderId(editingId ?: UUID.randomUUID().toString())
         val trimmedModel = model.trim()
-        val normalizedModels = models.withManualModel(type, trimmedModel)
+        val trimmedImageModel = imageModel.trim()
+        val normalizedModels = models
+            .withManualModel(type, trimmedModel)
+            .withManualImageModel(trimmedImageModel)
         return ProviderConfig(
             id = providerId,
             name = name.trim(),
@@ -352,8 +364,11 @@ fun ProviderSettingsScreen(
                         onBaseUrlChange = { baseUrl = it },
                         model = model,
                         onModelChange = { model = it },
+                        imageModel = imageModel,
+                        onImageModelChange = { imageModel = it },
                         models = models,
                         onSelectModel = { model = it },
+                        onSelectImageModel = { imageModel = it },
                         apiKey = apiKey,
                         hasStoredKey = storedApiKeyRef != null,
                         onApiKeyChange = { apiKey = it },
@@ -381,7 +396,9 @@ fun ProviderSettingsScreen(
                                     } else {
                                         val defaultModel = model.trim().ifBlank { discoveredModels.firstOrNull()?.id.orEmpty() }
                                         provider.copy(
-                                            models = discoveredModels.withManualModel(type, defaultModel),
+                                            models = discoveredModels
+                                                .withManualModel(type, defaultModel)
+                                                .withManualImageModel(imageModel),
                                             defaultModel = defaultModel.ifBlank { null },
                                         )
                                     }
@@ -610,8 +627,11 @@ private fun ProviderForm(
     onBaseUrlChange: (String) -> Unit,
     model: String,
     onModelChange: (String) -> Unit,
+    imageModel: String,
+    onImageModelChange: (String) -> Unit,
     models: List<ModelConfig>,
     onSelectModel: (String) -> Unit,
+    onSelectImageModel: (String) -> Unit,
     apiKey: String,
     hasStoredKey: Boolean,
     onApiKeyChange: (String) -> Unit,
@@ -650,6 +670,7 @@ private fun ProviderForm(
             type = type,
             baseUrl = baseUrl,
             model = model,
+            imageModel = imageModel,
             apiKey = apiKey,
             hasStoredKey = hasStoredKey,
             headers = headers,
@@ -697,6 +718,19 @@ private fun ProviderForm(
             canRefresh = canTest,
             onSelectModel = onSelectModel,
             onRefreshModels = onRefreshModels,
+        )
+        OutlinedTextField(
+            value = imageModel,
+            onValueChange = onImageModelChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "图片模型") },
+            supportingText = { Text(text = "单独用于图片生成，不覆盖聊天默认模型。") },
+            singleLine = true,
+        )
+        ProviderImageModelPicker(
+            models = models,
+            selectedImageModel = imageModel,
+            onSelectImageModel = onSelectImageModel,
         )
         OutlinedTextField(
             value = apiKey,
@@ -829,6 +863,49 @@ private fun ProviderModelPicker(
 }
 
 @Composable
+private fun ProviderImageModelPicker(
+    models: List<ModelConfig>,
+    selectedImageModel: String,
+    onSelectImageModel: (String) -> Unit,
+) {
+    val imageModels = models.filter { it.supportsImageGeneration() }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = if (imageModels.isEmpty()) {
+                "没有已识别的图片模型，可手动填写。"
+            } else {
+                "已识别 ${imageModels.size} 个图片模型"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (imageModels.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(imageModels, key = { it.id }) { item ->
+                    FilterChip(
+                        selected = item.id == selectedImageModel.trim(),
+                        onClick = { onSelectImageModel(item.id) },
+                        label = {
+                            Text(
+                                text = item.displayName.ifBlank { item.id },
+                                modifier = Modifier.widthIn(max = 180.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = {
+                            if (item.id == selectedImageModel.trim()) {
+                                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProviderAdvancedFields(
     expanded: Boolean,
     headers: String,
@@ -920,6 +997,7 @@ private fun ProviderFormSummary(
     type: ProviderType,
     baseUrl: String,
     model: String,
+    imageModel: String,
     apiKey: String,
     hasStoredKey: Boolean,
     headers: String,
@@ -941,7 +1019,12 @@ private fun ProviderFormSummary(
         }
         if (model.isNotBlank()) {
             item {
-                StatusPill(text = model, tone = StatusTone.Success)
+                StatusPill(text = "聊天 $model", tone = StatusTone.Success)
+            }
+        }
+        if (imageModel.isNotBlank()) {
+            item {
+                StatusPill(text = "图片 $imageModel", tone = StatusTone.Accent)
             }
         }
         item {
@@ -1028,7 +1111,7 @@ private fun ProviderRow(
     )
 }
 
-private fun List<ModelConfig>.withManualModel(type: ProviderType, model: String): List<ModelConfig> {
+internal fun List<ModelConfig>.withManualModel(type: ProviderType, model: String): List<ModelConfig> {
     val trimmedModel = model.trim()
     val normalizedModels = map { item ->
         val id = item.id.trim()
@@ -1052,3 +1135,55 @@ private fun List<ModelConfig>.withManualModel(type: ProviderType, model: String)
             )
         ).distinctBy { it.id }
 }
+
+internal fun List<ModelConfig>.withManualImageModel(model: String): List<ModelConfig> {
+    val trimmedModel = model.trim()
+    val normalizedModels = map { item ->
+        val id = item.id.trim()
+        if (id == trimmedModel) {
+            item.copy(
+                id = id,
+                displayName = item.displayName.trim().ifBlank { id },
+                capability = imageGenerationCapability(id),
+            )
+        } else {
+            item.copy(
+                id = id,
+                displayName = item.displayName.trim().ifBlank { id },
+                capability = item.capability?.copy(model = item.capability.model.trim()),
+            )
+        }
+    }.filter { it.id.isNotBlank() }
+
+    if (trimmedModel.isBlank() || normalizedModels.any { it.id == trimmedModel }) {
+        return normalizedModels.distinctBy { it.id }
+    }
+
+    return (
+        normalizedModels +
+            ModelConfig(
+                id = trimmedModel,
+                displayName = trimmedModel,
+                capability = imageGenerationCapability(trimmedModel),
+            )
+        ).distinctBy { it.id }
+}
+
+private fun List<ModelConfig>.explicitImageModel(): String =
+    filter { it.supportsImageGeneration() }
+        .map { it.id }
+        .preferredImageModel()
+        .orEmpty()
+
+private fun imageGenerationCapability(model: String): ModelCapability =
+    ModelCapability(
+        model = model,
+        text = false,
+        vision = false,
+        imageGeneration = true,
+        toolCalling = false,
+        structuredOutput = false,
+        longContext = false,
+        maxContextTokens = null,
+        source = ModelCapabilitySource.UserOverride,
+    )

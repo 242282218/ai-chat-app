@@ -91,6 +91,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ToolsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    showBackButton: Boolean = true,
     viewModel: ToolsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -132,11 +133,13 @@ fun ToolsScreen(
                     }
                 },
                 navigationIcon = {
-                    WorkbenchIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = onBack,
-                    )
+                    if (showBackButton) {
+                        WorkbenchIconButton(
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            label = "返回",
+                            onClick = onBack,
+                        )
+                    }
                 },
             )
         },

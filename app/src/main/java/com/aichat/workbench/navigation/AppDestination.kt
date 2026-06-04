@@ -1,20 +1,39 @@
 package com.aichat.workbench.navigation
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Widgets
+import androidx.compose.ui.graphics.vector.ImageVector
+
 sealed class AppDestination(
     val route: String,
-    val label: String,
-    val description: String,
 ) {
-    data object Home : AppDestination("home", "首页", "会话中心")
-    data object Chat : AppDestination("chat", "聊天", "开始或继续一个会话")
-    data object Providers : AppDestination("providers", "模型连接", "配置模型服务")
-    data object Prompts : AppDestination("prompts", "提示词", "管理本地提示词预设")
-    data object Images : AppDestination("images", "图片", "生成并查看图片")
-    data object Tools : AppDestination("tools", "工具", "配置可选工具网关")
-    data object Settings : AppDestination("settings", "设置", "管理应用数据和隐私")
+    data object Conversations : AppDestination("conversations")
+    data object ImageGen : AppDestination("image_gen")
+    data object ToolsHub : AppDestination("tools_hub")
+    data object SettingsHub : AppDestination("settings_hub")
+
+    data object Chat : AppDestination("chat")
+    data object ProviderSettings : AppDestination("provider_settings")
+    data object PromptPresets : AppDestination("prompt_presets")
+    data object DataSettings : AppDestination("data_settings")
 
     companion object {
-        val topLevel = listOf(Chat, Providers, Prompts, Images, Tools, Settings)
-        val management = listOf(Providers, Prompts, Images, Tools, Settings)
+        val bottomTabs = listOf(Conversations, ImageGen, ToolsHub, SettingsHub)
     }
 }
+
+data class BottomTabItem(
+    val destination: AppDestination,
+    val label: String,
+    val icon: ImageVector,
+)
+
+val bottomTabItems = listOf(
+    BottomTabItem(AppDestination.Conversations, "对话", Icons.Outlined.Chat),
+    BottomTabItem(AppDestination.ToolsHub, "工具", Icons.Outlined.Widgets),
+    BottomTabItem(AppDestination.ImageGen, "图片", Icons.Outlined.Image),
+    BottomTabItem(AppDestination.SettingsHub, "设置", Icons.Outlined.Settings),
+)

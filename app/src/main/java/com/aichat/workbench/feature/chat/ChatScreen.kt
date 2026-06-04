@@ -93,14 +93,18 @@ import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
-import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.domain.model.ToolCall
+import com.aichat.workbench.ui.component.FileAttachButton
+import com.aichat.workbench.ui.component.InlineImageBubble
 import com.aichat.workbench.provider.preferredModel
 import com.aichat.workbench.ui.component.InlineNotice
+import com.aichat.workbench.ui.component.MessageBubble as LinearMessageBubble
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
 import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
+import com.aichat.workbench.ui.component.ToolCallPanel
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
@@ -181,6 +185,7 @@ fun ChatScreen(
         ) {
             MessageList(
                 messages = state.messages,
+                pendingToolCall = state.pendingToolCall,
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onUseStarterPrompt = { prompt ->
@@ -189,12 +194,17 @@ fun ChatScreen(
                 },
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
+                onConfirmToolCall = viewModel::confirmToolCall,
+                onDenyToolCall = viewModel::denyToolCall,
                 modifier = Modifier.weight(1f),
             )
             state.pendingToolCall?.let { pending ->
-                ToolCallConfirmationPanel(
-                    pendingToolCall = pending,
-                    onConfirm = viewModel::confirmToolCall,
+                ToolCallPanel(
+                    toolCall = pending.toolCall,
+                    result = null,
+                    isError = false,
+                    isPending = true,
+                    onApprove = viewModel::confirmToolCall,
                     onDeny = viewModel::denyToolCall,
                 )
             }
@@ -214,6 +224,7 @@ fun ChatScreen(
                     viewModel.updateInput(it)
                 },
                 onPickImage = { imagePickerLauncher.launch("image/*") },
+                onPickFile = { uri -> viewModel.updateInput(state.input.appendAttachmentUri(uri)) },
                 onRemoveImage = viewModel::removeImageDraft,
                 onSend = viewModel::sendMessage,
                 onStop = viewModel::stopGeneration,
@@ -330,54 +341,6 @@ private fun ChatTopBar(
             )
         },
     )
-}
-
-@Composable
-private fun ToolCallConfirmationPanel(
-    pendingToolCall: PendingToolCall,
-    onConfirm: () -> Unit,
-    onDeny: () -> Unit,
-) {
-    val arguments = pendingToolCall.toolCall.arguments.ifBlank { "{}" }
-    WorkbenchPanel(
-        title = "允许工具调用？",
-        description = pendingToolCall.displayName,
-        icon = Icons.Filled.AutoAwesome,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        trailing = {
-            StatusPill(
-                text = pendingToolCall.permissionLevel.displayLabel(),
-                tone = pendingToolCall.permissionLevel.tone(),
-            )
-        },
-    ) {
-        MetadataRow(label = "工具", value = pendingToolCall.toolCall.name)
-        MetadataRow(
-            label = "参数",
-            value = if (arguments.length > 360) "${arguments.take(360)}..." else arguments,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = onDeny,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(imageVector = Icons.Filled.Close, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "拒绝")
-            }
-            Button(
-                onClick = onConfirm,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "允许")
-            }
-        }
-    }
 }
 
 @Composable
@@ -978,11 +941,14 @@ private fun PromptPresetStrip(
 @Composable
 private fun MessageList(
     messages: List<Message>,
+    pendingToolCall: PendingToolCall?,
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
     onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
+    onConfirmToolCall: () -> Unit,
+    onDenyToolCall: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -1003,14 +969,89 @@ private fun MessageList(
                 if (message.status == MessageStatus.Compressed) {
                     CompressedMessagesCard(message = message)
                 } else {
-                    MessageBubble(
+                    MessageItem(
                         message = message,
+                        messages = messages,
+                        pendingToolCall = pendingToolCall,
                         onEdit = { onEdit(message.id) },
                         onRetry = { onRetry(message.id) },
+                        onConfirmToolCall = onConfirmToolCall,
+                        onDenyToolCall = onDenyToolCall,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MessageItem(
+    message: Message,
+    messages: List<Message>,
+    pendingToolCall: PendingToolCall?,
+    onEdit: () -> Unit,
+    onRetry: () -> Unit,
+    onConfirmToolCall: () -> Unit,
+    onDenyToolCall: () -> Unit,
+) {
+    @Suppress("DEPRECATION")
+    val clipboardManager = LocalClipboardManager.current
+    when {
+        message.role == MessageRole.Tool -> {
+            val pending = pendingToolCall?.takeIf { it.toolCall.id == message.toolCallId }
+            val toolCall = messages.findToolCall(message.toolCallId) ?: pending?.toolCall
+            if (toolCall != null) {
+                ToolCallPanel(
+                    toolCall = toolCall,
+                    result = message.toolResult ?: message.content.takeIf { it.isNotBlank() },
+                    isError = message.status == MessageStatus.Failed,
+                    isPending = pending != null,
+                    onApprove = onConfirmToolCall,
+                    onDeny = onDenyToolCall,
+                )
+            } else {
+                MessageBubble(
+                    message = message,
+                    onEdit = onEdit,
+                    onRetry = onRetry,
+                )
+            }
+        }
+        message.role == MessageRole.Assistant &&
+            message.contentParts.any { it is MessagePart.Image } -> {
+            val image = message.contentParts.filterIsInstance<MessagePart.Image>().first()
+            InlineImageBubble(
+                imageUrl = image.uri,
+                prompt = message.content.ifBlank { "生成图片" },
+                isLoading = message.status == MessageStatus.Streaming,
+            )
+        }
+        (message.role == MessageRole.User || message.role == MessageRole.Assistant) &&
+            message.contentParts.isEmpty() &&
+            message.errorSummary == null &&
+            message.status == MessageStatus.Completed -> {
+            LinearMessageBubble(message = message)
+            MessageActionRow(
+                message = message,
+                onCopy = {
+                    clipboardManager.setText(AnnotatedString(message.content))
+                },
+                onEdit = onEdit,
+                onRetry = onRetry,
+            )
+        }
+        else -> MessageBubble(
+            message = message,
+            onEdit = onEdit,
+            onRetry = onRetry,
+        )
+    }
+}
+
+private fun List<Message>.findToolCall(toolCallId: com.aichat.workbench.domain.model.ToolCallId?): ToolCall? {
+    if (toolCallId == null) return null
+    return firstNotNullOfOrNull { message ->
+        message.toolCalls.firstOrNull { it.id == toolCallId }
     }
 }
 
@@ -1449,6 +1490,7 @@ private fun InputBar(
     onOpenProviders: () -> Unit,
     onInputChange: (String) -> Unit,
     onPickImage: () -> Unit,
+    onPickFile: (Uri) -> Unit,
     onRemoveImage: (Int) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
@@ -1492,6 +1534,7 @@ private fun InputBar(
                     onClick = onPickImage,
                     enabled = !isGenerating,
                 )
+                FileAttachButton(onFilePicked = onPickFile)
                 OutlinedTextField(
                     value = input,
                     onValueChange = onInputChange,
@@ -1682,22 +1725,11 @@ private fun canSubmitMessage(
 ): Boolean =
     canSend && (input.trim().isNotEmpty() || imageDrafts.isNotEmpty())
 
-private fun ToolPermissionLevel.displayLabel(): String =
-    when (this) {
-        ToolPermissionLevel.ReadOnly -> "只读"
-        ToolPermissionLevel.Network -> "网络"
-        ToolPermissionLevel.Execute -> "执行代码"
-        ToolPermissionLevel.HighRisk -> "高风险"
-    }
-
-private fun ToolPermissionLevel.tone(): StatusTone =
-    when (this) {
-        ToolPermissionLevel.ReadOnly -> StatusTone.Success
-        ToolPermissionLevel.Network -> StatusTone.Warning
-        ToolPermissionLevel.Execute,
-        ToolPermissionLevel.HighRisk,
-        -> StatusTone.Critical
-    }
+private fun String.appendAttachmentUri(uri: Uri): String {
+    val prefix = trimEnd()
+    val attachment = "[附件]($uri)"
+    return if (prefix.isBlank()) attachment else "$prefix\n$attachment"
+}
 
 private fun ModelParameterDraftStatus.tone(): StatusTone =
     if (isValid) StatusTone.Neutral else StatusTone.Critical

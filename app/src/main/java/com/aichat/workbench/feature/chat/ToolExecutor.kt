@@ -27,6 +27,10 @@ import com.aichat.workbench.tool.gateway.GatewayHttpException
 import com.aichat.workbench.tool.gateway.SandboxRunResponse
 import com.aichat.workbench.tool.gateway.SearchResponse
 import com.aichat.workbench.tool.gateway.SearchResult
+import com.aichat.workbench.tool.local.InvalidLocalToolArgumentsException
+import com.aichat.workbench.tool.local.LocalToolExecutor
+import com.aichat.workbench.tool.local.LocalToolUnavailableException
+import com.aichat.workbench.tool.local.defaultLocalTools
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.canonicalToolName
@@ -65,6 +69,7 @@ class ToolExecutor(
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
     private val clock: Clock,
+    private val localToolExecutor: LocalToolExecutor = LocalToolExecutor(defaultLocalTools(clock)),
 ) {
     private val gatewayClient: GatewayClient by lazy(gatewayClientProvider)
     private val remoteToolsMutex = Mutex()
@@ -98,7 +103,9 @@ class ToolExecutor(
         val startedAt = clock.instant()
         return runCatching {
             when (toolDescriptor.name) {
-                "time" -> ExecutedToolOutput(ToolOutput.Json(timeOutputJson()))
+                in LOCAL_EXECUTABLE_TOOL_NAMES -> localToolExecutor
+                    .execute(conversationId, toolCall)
+                    .let { ExecutedToolOutput(it.output, it.contentParts) }
                 "web_search" -> ExecutedToolOutput(ToolOutput.Json(executeSearch(toolCall.arguments).toJson()))
                 "code_sandbox" -> ExecutedToolOutput(ToolOutput.Json(executeSandbox(toolCall.arguments).toJson()))
                 "image_generation" -> executeImageGeneration(conversationId, toolCall.arguments)
@@ -151,7 +158,7 @@ class ToolExecutor(
         )
 
     private fun localTools(): List<ToolDescriptor> =
-        BuiltInToolRegistry.tools.filter { it.name in LOCAL_TOOL_NAMES }
+        localToolExecutor.descriptors + BuiltInToolRegistry.tools.filter { it.name in LOCAL_TOOL_NAMES }
 
     private suspend fun remoteTools(): List<ToolDescriptor> {
         val settings = gatewaySettingsProvider()
@@ -331,9 +338,6 @@ class ToolExecutor(
         return ToolExecution(result, output.asModelContent())
     }
 
-    private fun timeOutputJson(): String =
-        toolJson.encodeToString(TimeOutput(clock.instant().toString()))
-
     private fun SearchResponse.toJson(): String =
         toolJson.encodeToString(
             SearchOutput(
@@ -381,6 +385,8 @@ class ToolExecutor(
         when (this) {
             is GatewayHttpException -> gatewayCode
             is GatewaySettingsException -> code
+            is InvalidLocalToolArgumentsException -> "invalid_tool_arguments"
+            is LocalToolUnavailableException -> "tool_unavailable"
             is InvalidToolArgumentsException -> "invalid_tool_arguments"
             else -> "tool_failed"
         }
@@ -443,7 +449,8 @@ private class GatewaySettingsException(
 ) : RuntimeException(message)
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
-private val LOCAL_TOOL_NAMES = setOf("time", "image_generation")
+private val LOCAL_TOOL_NAMES = setOf("image_generation")
+private val LOCAL_EXECUTABLE_TOOL_NAMES = setOf("time", "text_transform", "code_diff_preview")
 private const val DEFAULT_SANDBOX_LANGUAGE = "python"
 private const val DEFAULT_SANDBOX_TIMEOUT_SECONDS = 3
 private const val MIN_SANDBOX_TIMEOUT_SECONDS = 1
@@ -474,9 +481,6 @@ private data class ImageGenerationArguments(
     val quality: String? = null,
     val count: Int? = null,
 )
-
-@Serializable
-private data class TimeOutput(val currentTime: String)
 
 @Serializable
 private data class ToolErrorOutput(val code: String, val message: String)
