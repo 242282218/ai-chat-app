@@ -1,0 +1,56 @@
+name: Android Diagnostic
+
+on:
+  push:
+    branches:
+      - ci/phase1-validate
+    paths-ignore:
+      - "ci-results/**"
+
+permissions:
+  contents: write
+
+jobs:
+  android-diagnostic:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      AI_CHAT_PROVIDER_BASE_URL: ${{ secrets.AI_CHAT_PROVIDER_BASE_URL }}
+      AI_CHAT_PROVIDER_API_KEY: ${{ secrets.AI_CHAT_PROVIDER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Android checks and persist log
+        shell: bash
+        run: |
+          set +e
+          mkdir -p ci-results
+          ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee ci-results/android-checks.log
+          status=${PIPESTATUS[0]}
+          {
+            echo "status=$status"
+            echo "run=$GITHUB_RUN_ID"
+            echo "sha=$GITHUB_SHA"
+          } > ci-results/android-checks-status.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci-results/android-checks.log ci-results/android-checks-status.txt
+          git commit -m "Add Android diagnostic log" || true
+          git push || true
+          exit "$status"
