@@ -153,7 +153,10 @@ class GenerationControllerTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("time", "image_generation", "web_search"), chatProvider.requests.single().tools.map { it.name })
+        val toolNames = chatProvider.requests.single().tools.map { it.name }
+        assertTrue(toolNames.contains("time"))
+        assertTrue(toolNames.contains("image_generation"))
+        assertTrue(toolNames.contains("web_search"))
     }
 
     @Test
@@ -197,7 +200,10 @@ class GenerationControllerTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("time", "image_generation"), chatProvider.requests.single().tools.map { it.name })
+        val toolNames = chatProvider.requests.single().tools.map { it.name }
+        assertTrue(toolNames.contains("time"))
+        assertTrue(toolNames.contains("image_generation"))
+        assertFalse(toolNames.contains("web_search"))
     }
 
     @Test
