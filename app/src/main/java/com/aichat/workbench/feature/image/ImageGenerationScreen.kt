@@ -74,6 +74,7 @@ import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import com.aichat.workbench.ui.component.WorkbenchPanel
 import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
@@ -95,7 +96,23 @@ fun ImageGenerationScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "图片") },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "图片创作",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = imageTopBarSubtitle(state),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -238,19 +255,17 @@ private fun ImageGenerationForm(
     onToggleControls: () -> Unit,
     viewModel: ImageGenerationViewModel,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    WorkbenchPanel(
+        title = "图像创作台",
+        description = "先描述画面，模型和尺寸按需展开。",
+        icon = Icons.Filled.Image,
+        trailing = {
+            StatusPill(
+                text = state.imageGenerationReadiness().label,
+                tone = state.imageGenerationReadiness().tone,
+            )
+        },
     ) {
-        QuietSectionHeader(
-            title = "图像创作台",
-            description = "先描述画面，细节参数按需展开。",
-            trailing = {
-                if (state.isGenerating) {
-                    StatusPill(text = "生成中", tone = StatusTone.Accent)
-                }
-            },
-        )
         if (state.providers.none { it.enabled }) {
             InlineNotice(
                 text = "生成图片前请先配置支持图片生成的模型服务。",
@@ -350,6 +365,13 @@ private fun ImageGenerationForm(
             )
         }
     }
+}
+
+private fun imageTopBarSubtitle(state: ImageGenerationUiState): String {
+    val provider = state.selectedProvider?.name ?: "需要图片模型"
+    val model = state.model.ifBlank { "未设置模型" }
+    val status = if (state.isGenerating) "生成中" else state.imageLibrarySummaryLabel()
+    return "$status · $provider / $model"
 }
 
 @Composable

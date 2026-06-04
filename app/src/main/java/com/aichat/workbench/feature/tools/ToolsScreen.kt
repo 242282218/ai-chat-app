@@ -114,7 +114,23 @@ fun ToolsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "工具") },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "工具",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = toolsTopBarSubtitle(state),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -202,6 +218,14 @@ fun ToolsScreen(
         )
     }
 }
+
+private fun toolsTopBarSubtitle(state: ToolsUiState): String =
+    when {
+        state.isLoading -> "处理中 · ${state.tools.size} 个工具"
+        !state.gatewayEnabled -> "本地工具可用 · 网关关闭"
+        state.remoteTools.isEmpty() -> "网关已启用 · 清单未加载"
+        else -> "${state.tools.size} 个工具 · ${state.remoteTools.size} 个来自网关"
+    }
 
 @Composable
 private fun GatewayActionStrip(

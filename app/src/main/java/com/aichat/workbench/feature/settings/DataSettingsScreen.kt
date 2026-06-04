@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.data.backup.BackupImportSummary
 import com.aichat.workbench.ui.component.InlineNotice
@@ -101,7 +102,23 @@ fun DataSettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(text = "数据与隐私") },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "数据与隐私",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = dataSettingsTopBarSubtitle(state),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -201,6 +218,14 @@ fun DataSettingsScreen(
         }
     }
 }
+
+private fun dataSettingsTopBarSubtitle(state: DataSettingsUiState): String =
+    when {
+        state.isBusy -> "处理中"
+        state.importPreviewSummary != null -> "导入预览已就绪"
+        state.exportJson.isNotBlank() -> "导出已就绪 · ${if (state.includeChats) "包含聊天" else "仅配置"}"
+        else -> if (state.includeChats) "备份包含聊天内容" else "默认仅备份配置"
+    }
 
 @Composable
 private fun PrivacySummaryHeader(state: DataSettingsUiState) {

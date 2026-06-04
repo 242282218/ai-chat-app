@@ -1054,39 +1054,35 @@ private fun EmptyConversationPanel(
     onOpenProviders: () -> Unit,
     onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
 ) {
-    Column(
+    WorkbenchPanel(
+        title = if (hasEnabledProvider) "开始新的会话" else "先连接模型",
+        description = if (hasEnabledProvider) {
+            "直接输入任务，或用一个起手式快速进入写作、代码、搜索和排查场景。"
+        } else {
+            "添加模型连接后，请求会从本机直接发送到你的接口地址。"
+        },
+        icon = Icons.AutoMirrored.Filled.Chat,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 96.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(top = 48.dp),
+        trailing = {
+            StatusPill(
+                text = if (hasEnabledProvider) "可发送" else "待配置",
+                tone = if (hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
+            )
+        },
     ) {
-        Text(
-            text = if (hasEnabledProvider) "开始新的会话" else "还不能发送消息",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-        )
-        Text(
-            text = if (hasEnabledProvider) {
-                "输入问题、粘贴材料，或添加图片。"
-            } else {
-                "先配置模型连接，请求会从本机发送到你的接口地址。"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         if (!hasEnabledProvider) {
             Button(
                 onClick = onOpenProviders,
+                modifier = Modifier.fillMaxWidth(),
             ) {
+                Icon(imageVector = Icons.Filled.Tune, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "配置模型连接")
             }
         } else {
-            Text(
-                text = "选择一个起手式",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            QuickCapabilityRow()
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(top = 2.dp),
@@ -1111,6 +1107,24 @@ private fun EmptyConversationPanel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickCapabilityRow() {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            StatusPill(text = "写代码", tone = StatusTone.Accent)
+        }
+        item {
+            StatusPill(text = "搜资料", tone = StatusTone.Warning)
+        }
+        item {
+            StatusPill(text = "看图片", tone = StatusTone.Success)
+        }
+        item {
+            StatusPill(text = "生图片", tone = StatusTone.Accent)
         }
     }
 }

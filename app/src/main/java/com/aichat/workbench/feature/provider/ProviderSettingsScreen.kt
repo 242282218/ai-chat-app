@@ -265,7 +265,23 @@ fun ProviderSettingsScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text(text = "模型连接") },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "模型连接",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = providerTopBarSubtitle(providers),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -497,6 +513,15 @@ private fun EmptyProviderState(
         TextButton(onClick = onCreate) {
             Text(text = "添加模型连接")
         }
+    }
+}
+
+private fun providerTopBarSubtitle(providers: List<ProviderConfig>): String {
+    val stats = providers.providerHealthStats()
+    return when {
+        stats.totalCount == 0 -> "需要添加模型连接"
+        stats.enabledChatCount == 0 -> "${stats.totalCount} 个连接 · 没有可用聊天模型"
+        else -> "${stats.enabledChatCount} 个可用 · ${stats.totalCount} 个连接"
     }
 }
 

@@ -45,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.PromptPresetId
@@ -149,7 +150,23 @@ fun PromptPresetScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text(text = "提示词") },
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "提示词",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = promptTopBarSubtitle(presets, filteredPresets, searchQuery),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -335,6 +352,17 @@ private fun EmptyPromptLibraryState(
         }
     }
 }
+
+private fun promptTopBarSubtitle(
+    presets: List<PromptPreset>,
+    filteredPresets: List<PromptPreset>,
+    searchQuery: String,
+): String =
+    when {
+        presets.isEmpty() -> "本地提示词库为空"
+        searchQuery.isNotBlank() -> "${filteredPresets.size} 个匹配 · ${presets.size} 个总数"
+        else -> "${presets.size} 个本地模板"
+    }
 
 @Composable
 private fun PromptLibraryHeader(

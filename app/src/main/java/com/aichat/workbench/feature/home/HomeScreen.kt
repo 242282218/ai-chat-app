@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -30,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,9 +59,11 @@ import com.aichat.workbench.domain.repository.MessageSearchResult
 import com.aichat.workbench.navigation.AppDestination
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.QuietListRow
+import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import com.aichat.workbench.ui.component.WorkbenchPanel
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,6 +114,15 @@ fun HomeScreen(
                 onSearch = { searchActive = true },
                 onSettings = { showManagementSheet = true },
                 onOpenProviders = { onDestinationClick(AppDestination.Providers) },
+                onTaskDraftChange = viewModel::updateTaskDraft,
+                onSubmitTask = {
+                    val draft = viewModel.consumeTaskDraft()
+                    onStartChat(draft, false)
+                },
+                onNewChat = { onStartChat("", false) },
+                onTemporaryChat = { onStartChat("", true) },
+                onImages = { onDestinationClick(AppDestination.Images) },
+                onPrompts = { onDestinationClick(AppDestination.Prompts) },
                 onConversationClick = onConversationClick,
                 onCreateConversation = { showCreateSheet = true },
                 modifier = Modifier
@@ -167,6 +182,12 @@ private fun ConversationHomeContent(
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onOpenProviders: () -> Unit,
+    onTaskDraftChange: (String) -> Unit,
+    onSubmitTask: () -> Unit,
+    onNewChat: () -> Unit,
+    onTemporaryChat: () -> Unit,
+    onImages: () -> Unit,
+    onPrompts: () -> Unit,
     onConversationClick: (ConversationId) -> Unit,
     onCreateConversation: () -> Unit,
     modifier: Modifier = Modifier,
@@ -185,6 +206,23 @@ private fun ConversationHomeContent(
         item {
             HomeTitle()
         }
+        item {
+            HomeTaskComposer(
+                draft = state.taskDraft,
+                enabledProviderCount = state.enabledProviderCount,
+                onDraftChange = onTaskDraftChange,
+                onSubmitTask = onSubmitTask,
+                onOpenProviders = onOpenProviders,
+            )
+        }
+        item {
+            HomeQuickActions(
+                onNewChat = onNewChat,
+                onTemporaryChat = onTemporaryChat,
+                onImages = onImages,
+                onPrompts = onPrompts,
+            )
+        }
         if (!state.hasEnabledProvider) {
             item {
                 InlineNotice(
@@ -198,6 +236,12 @@ private fun ConversationHomeContent(
                     },
                 )
             }
+        }
+        item {
+            QuietSectionHeader(
+                title = "最近会话",
+                description = homeSummaryLabel(state),
+            )
         }
         if (state.recentConversations.isEmpty()) {
             item {
@@ -219,7 +263,7 @@ private fun HomeTitle(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = "会话",
+        text = "AI 工作台",
         modifier = modifier.fillMaxWidth(),
         style = MaterialTheme.typography.headlineLarge,
         fontWeight = FontWeight.Medium,
@@ -246,6 +290,125 @@ private fun HomeActionRow(
             icon = Icons.Filled.Settings,
             label = "设置",
             onClick = onSettings,
+        )
+    }
+}
+
+@Composable
+private fun HomeTaskComposer(
+    draft: String,
+    enabledProviderCount: Int,
+    onDraftChange: (String) -> Unit,
+    onSubmitTask: () -> Unit,
+    onOpenProviders: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasEnabledProvider = enabledProviderCount > 0
+    val hasDraft = draft.isNotBlank()
+    WorkbenchPanel(
+        title = "直接开始任务",
+        description = if (hasEnabledProvider) {
+            "写代码、搜资料、生成图片前的想法，都可以先从这里带入会话。"
+        } else {
+            "配置模型连接后即可发送任务。"
+        },
+        icon = Icons.Filled.Bolt,
+        modifier = modifier,
+        trailing = {
+            StatusPill(
+                text = if (hasEnabledProvider) "${enabledProviderCount} 个模型可用" else "待配置",
+                tone = if (hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
+            )
+        },
+    ) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = onDraftChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "任务") },
+            placeholder = { Text(text = "例如：帮我写一个爬虫，或搜索今天 AI 新闻") },
+            minLines = 1,
+            maxLines = 4,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            item {
+                StatusPill(
+                    text = "本地保存会话",
+                    tone = StatusTone.Neutral,
+                )
+            }
+            item {
+                StatusPill(
+                    text = "支持图片输入",
+                    tone = StatusTone.Accent,
+                )
+            }
+        }
+        Button(
+            onClick = if (hasEnabledProvider) onSubmitTask else onOpenProviders,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = if (hasEnabledProvider) Icons.AutoMirrored.Filled.Chat else Icons.Filled.Tune,
+                contentDescription = null,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = when {
+                    !hasEnabledProvider -> "配置模型连接"
+                    hasDraft -> "带任务开始"
+                    else -> "新建会话"
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickActions(
+    onNewChat: () -> Unit,
+    onTemporaryChat: () -> Unit,
+    onImages: () -> Unit,
+    onPrompts: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    WorkbenchPanel(
+        title = "常用入口",
+        description = "把高频动作放在首屏，减少进入设置页的次数。",
+        icon = Icons.Filled.Add,
+        modifier = modifier,
+    ) {
+        CreationActionRow(
+            icon = Icons.AutoMirrored.Filled.Chat,
+            title = "新建会话",
+            description = "持久保存上下文和模型设置",
+            onClick = onNewChat,
+            modifier = Modifier,
+        )
+        CreationActionRow(
+            icon = Icons.Filled.Bolt,
+            title = "临时会话",
+            description = "退出后自动清理当前内容",
+            onClick = onTemporaryChat,
+            modifier = Modifier,
+        )
+        CreationActionRow(
+            icon = Icons.Filled.Image,
+            title = "图片生成",
+            description = "使用已配置的图片模型",
+            onClick = onImages,
+            modifier = Modifier,
+        )
+        CreationActionRow(
+            icon = Icons.AutoMirrored.Filled.ViewList,
+            title = "提示词",
+            description = "从本地预设开始任务",
+            onClick = onPrompts,
+            modifier = Modifier,
         )
     }
 }
@@ -543,6 +706,13 @@ private fun conversationDescription(conversation: Conversation): String {
     val model = conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型"
     return "模型：$model"
 }
+
+private fun homeSummaryLabel(state: HomeUiState): String =
+    when {
+        state.recentConversations.isEmpty() -> "还没有保存的会话"
+        state.enabledProviderCount == 0 -> "${state.recentConversations.size} 个会话 · 待配置模型"
+        else -> "${state.recentConversations.size} 个会话 · ${state.enabledProviderCount} 个模型连接可用"
+    }
 
 @Composable
 private fun ConversationStatusPill(conversation: Conversation) {
