@@ -22,6 +22,7 @@ import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
+import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.defaultImageModel
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.requiresApiKey
@@ -518,6 +519,7 @@ class ToolExecutor(
 
     private fun Throwable.toToolErrorCode(): String =
         when (this) {
+            is ProviderHttpException -> error.code
             is GatewayHttpException -> gatewayCode
             is LocalSearchHttpException -> code
             is GatewaySettingsException -> code
@@ -529,6 +531,7 @@ class ToolExecutor(
 
     private fun Throwable?.toolErrorStatusCode(): Int? =
         when (this) {
+            is ProviderHttpException -> error.statusCode
             is GatewayHttpException -> statusCode
             is LocalSearchHttpException -> statusCode
             else -> null
@@ -536,6 +539,7 @@ class ToolExecutor(
 
     private fun Throwable?.toolErrorRetryable(): Boolean? =
         when (this) {
+            is ProviderHttpException -> error.retryable
             is GatewayHttpException -> statusCode == 429 || statusCode in 500..599
             is LocalSearchHttpException -> statusCode == 429 || statusCode in 500..599
             else -> null

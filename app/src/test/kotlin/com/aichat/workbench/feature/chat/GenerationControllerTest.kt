@@ -675,7 +675,10 @@ class GenerationControllerTest {
         assertEquals(ToolStatus.Denied, toolRepository.savedResults.value.single().status)
         val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
         assertEquals(MessageStatus.Cancelled, toolMessage.status)
-        assertEquals("用户拒绝执行工具。", toolMessage.errorSummary)
+        assertEquals(
+            "用户拒绝执行工具。\n建议：工具已被拒绝执行；如需继续，请确认风险和参数后重新发起。",
+            toolMessage.errorSummary,
+        )
         assertTrue(conversationRepository.allMessages().any { it.content == "Final answer" && it.status == MessageStatus.Completed })
     }
 
@@ -1287,7 +1290,10 @@ class GenerationControllerTest {
 
         val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
         assertEquals(MessageStatus.Failed, toolMessage.status)
-        assertEquals("未知工具。", toolMessage.errorSummary)
+        assertEquals(
+            "未知工具。\n建议：请打开工具中心检查工具是否启用、名称是否正确，或改用当前 App 支持的本地工具。",
+            toolMessage.errorSummary,
+        )
         assertEquals("unknown_tool", toolRepository.savedResults.value.single().error?.code)
         assertTrue(conversationRepository.allMessages().any { it.content == "Final answer" && it.status == MessageStatus.Completed })
     }

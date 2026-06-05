@@ -1274,6 +1274,7 @@ private val REFILLABLE_TOOL_NAMES = setOf(
     "local_js",
     "file_read",
     "image_generation",
+    "image_upload_to_model",
 )
 
 private fun sampleInputForToolName(toolName: String): String =

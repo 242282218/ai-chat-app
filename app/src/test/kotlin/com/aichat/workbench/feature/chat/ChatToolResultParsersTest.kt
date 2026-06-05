@@ -186,7 +186,7 @@ class ChatToolResultParsersTest {
         requireNotNull(result)
         assertEquals("notes.md", result.fileName)
         assertEquals("text/markdown", result.mimeType)
-        assertEquals(4096, result.sizeBytes)
+        assertEquals(4096L, result.sizeBytes)
         assertEquals("truncated", result.status)
         assertEquals("# Notes\nFirst line", result.preview)
         assertEquals(true, result.truncated)

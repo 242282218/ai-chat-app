@@ -1541,7 +1541,10 @@ class AiChatDatabaseTest {
         val saved = repository.getMessages(conversation.id).last()
 
         assertEquals(MessageStatus.Failed, states.last().status)
-        assertEquals("Unauthorized", states.last().errorSummary)
+        assertEquals(
+            "Unauthorized（code: unauthorized，HTTP 401，需检查配置） 请检查 Provider、Base URL、模型和 API Key。",
+            states.last().errorSummary,
+        )
         assertEquals(saved, states.last())
     }
 
