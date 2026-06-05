@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "app/**"
+      - "baselineprofile/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "baselineprofile/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"

@@ -38,6 +38,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Verify release version
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          version_name=$(grep -E 'versionName = "[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          expected_tag="v${version_name}"
+          if [ "$TAG_NAME" != "$expected_tag" ]; then
+            echo "Release tag $TAG_NAME does not match Android version $expected_tag" >&2
+            exit 1
+          fi
+
       - name: Run Android checks
         run: ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
 

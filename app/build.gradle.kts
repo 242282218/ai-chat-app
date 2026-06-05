@@ -15,8 +15,8 @@ android {
         applicationId = "com.aichat.workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "0.20.0"
+        versionCode = 22
+        versionName = "0.21.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -87,8 +87,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.room.ktx)
     implementation(libs.room.runtime)
-    implementation("io.coil-kt.coil3:coil-compose:3.1.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     baselineProfile(project(":baselineprofile"))
 
