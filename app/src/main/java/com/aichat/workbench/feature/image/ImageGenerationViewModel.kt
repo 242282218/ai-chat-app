@@ -145,8 +145,8 @@ class ImageGenerationViewModel(
 
     fun regenerate(generation: ImageGeneration) {
         _state.update {
-            val providerId = generation.providerId.value
-                .takeIf { id -> it.providers.any { provider -> provider.id.value == id } }
+            val providerId = generation.providerId?.value
+                ?.takeIf { id -> it.providers.any { provider -> provider.id.value == id } }
                 ?: it.selectedProviderId
             it.copy(
                 selectedProviderId = providerId,
@@ -227,13 +227,13 @@ class ImageGenerationViewModel(
                         error = null,
                     )
                 }
-                connectionTester.test(provider, apiKey)
-            }.onSuccess { result ->
+                provider to connectionTester.test(provider, apiKey)
+            }.onSuccess { (testedProvider, result) ->
                 _state.update {
                     it.copy(
                         isTestingConnection = false,
                         connectionTestMessage = result.message,
-                        connectionTestDiagnostic = provider.imageConnectionDiagnostic(
+                        connectionTestDiagnostic = testedProvider.imageConnectionDiagnostic(
                             model = _state.value.model,
                             ok = result.ok,
                             statusCode = result.statusCode,

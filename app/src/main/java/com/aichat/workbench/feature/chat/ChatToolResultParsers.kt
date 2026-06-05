@@ -334,7 +334,7 @@ internal val TOOL_CONFIGURATION_ERROR_CODES = setOf(
 internal fun extractToolErrorResult(toolResult: String?): ToolErrorResultSummary? {
     if (toolResult.isNullOrBlank()) return null
     return runCatching {
-        val output = chatToolResultJson.decodeFromString(ToolErrorOutput.serializer(), toolResult)
+        val output = chatToolResultJson.decodeFromString(ParsedToolErrorOutput.serializer(), toolResult)
         ToolErrorResultSummary(
             code = output.code.takeIf { it.isNotBlank() } ?: return@runCatching null,
             message = output.message.ifBlank { "工具执行失败。" },
@@ -412,7 +412,7 @@ private data class ProviderConnectionTestToolOutput(
 )
 
 @Serializable
-private data class ToolErrorOutput(
+private data class ParsedToolErrorOutput(
     val code: String = "",
     val message: String = "",
     val statusCode: Int? = null,

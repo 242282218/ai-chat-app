@@ -365,9 +365,9 @@ private fun ToolRunningBody(onCancel: (() -> Unit)?) {
         text = "工具正在运行 ${elapsedSeconds.formatElapsedSeconds()}，结果会回写到当前聊天流。",
         icon = Icons.Filled.HourglassEmpty,
         tone = StatusTone.Neutral,
-        action = onCancel?.let { cancel ->
-            {
-                OutlinedButton(onClick = cancel) {
+        action = {
+            if (onCancel != null) {
+                OutlinedButton(onClick = onCancel) {
                     Text("停止")
                 }
             }

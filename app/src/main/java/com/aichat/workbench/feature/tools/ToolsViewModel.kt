@@ -497,7 +497,7 @@ class ToolsViewModel(
     }
 
     fun refillToolResult(result: ToolResult) {
-        if (!canRefillToolResult(result)) {
+        if (!_state.value.canRefillToolResult(result)) {
             _state.update { it.copy(status = "${result.toolName.canonicalToolName()} 当前状态不支持回填参数。") }
             return
         }
@@ -1156,7 +1156,7 @@ class ToolsViewModel(
 
     private fun SandboxRunResponse.toJson(): String =
         toolsJson.encodeToString(
-            toOutputJson(),
+            toSandboxOutputJson(),
         )
 
     private fun SearchResponse.toJson(): String =
@@ -1164,11 +1164,11 @@ class ToolsViewModel(
             SearchOutputJson(
                 query = query,
                 fetchedAt = fetchedAt.toString(),
-                results = results.map(SearchResult::toOutputJson),
+                results = results.map { result -> result.toSearchResultOutputJson() },
             ),
         )
 
-    private fun SearchResult.toOutputJson(): SearchResultOutputJson =
+    private fun SearchResult.toSearchResultOutputJson(): SearchResultOutputJson =
         SearchResultOutputJson(
             title = title,
             summary = summary,
@@ -1177,7 +1177,7 @@ class ToolsViewModel(
             publishedAt = publishedAt?.toString(),
         )
 
-    private fun SandboxRunResponse.toOutputJson(): SandboxOutputJson =
+    private fun SandboxRunResponse.toSandboxOutputJson(): SandboxOutputJson =
         SandboxOutputJson(
             language = language,
             stdout = stdout,
