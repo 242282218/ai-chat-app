@@ -1,11 +1,15 @@
 package com.aichat.workbench.feature.image
 
+import com.aichat.workbench.domain.model.ImageGeneration
+import com.aichat.workbench.domain.model.ImageGenerationId
+import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.ui.component.StatusTone
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -107,6 +111,105 @@ class ImageDraftsTest {
         )
 
         assertEquals(listOf("gpt-image-2", "flux-pro"), state.availableImageModels().map { it.id })
+    }
+
+    @Test
+    fun imageGenerationChatReferenceDraftPreservesUsefulContext() {
+        val draft = ImageGeneration(
+            id = ImageGenerationId("image-1"),
+            conversationId = null,
+            prompt = "Draw a cabin",
+            providerId = ProviderId("provider-1"),
+            model = "gpt-image-1",
+            size = "1024x1024",
+            quality = "auto",
+            count = 1,
+            originalPath = "/data/user/0/app/files/images/originals/image-1.png",
+            thumbnailPath = null,
+            status = ImageGenerationStatus.Completed,
+            errorSummary = null,
+            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+        ).toChatReferenceDraft()
+
+        assertTrue(draft.contains("不要自动上传本地文件"))
+        assertTrue(draft.contains("Provider：provider-1"))
+        assertTrue(draft.contains("图片提示词：Draw a cabin"))
+        assertTrue(draft.contains("模型：gpt-image-1"))
+        assertTrue(draft.contains("本地图片路径：/data/user/0/app/files/images/originals/image-1.png"))
+    }
+
+    @Test
+    fun failedImageGenerationChatDraftPreparesRecoveryInsteadOfReferencingMissingImage() {
+        val draft = ImageGeneration(
+            id = ImageGenerationId("image-2"),
+            conversationId = null,
+            prompt = "Draw a cabin",
+            providerId = ProviderId("provider-1"),
+            model = "gpt-image-1",
+            size = "1024x1024",
+            quality = "auto",
+            count = 1,
+            originalPath = null,
+            thumbnailPath = null,
+            status = ImageGenerationStatus.Failed,
+            errorSummary = "HTTP 429: Rate limit exceeded",
+            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+        ).toChatReferenceDraft()
+
+        assertFalse(draft.contains("请基于这张图片继续处理"))
+        assertTrue(draft.contains("准备一个可重新发起的 image_generation 工具调用"))
+        assertTrue(draft.contains("不要假设图片已生成"))
+        assertTrue(draft.contains("工具：image_generation"))
+        assertTrue(
+            draft.contains(
+                """参数：{"prompt":"Draw a cabin","model":"gpt-image-1","size":"1024x1024","quality":"auto","count":1}""",
+            ),
+        )
+        assertTrue(draft.contains("Provider：provider-1"))
+        assertTrue(draft.contains("图片提示词：Draw a cabin"))
+        assertTrue(draft.contains("错误：HTTP 429: Rate limit exceeded"))
+    }
+
+    @Test
+    fun failedImageGenerationChatDraftEscapesPromptInToolInputJson() {
+        val draft = ImageGeneration(
+            id = ImageGenerationId("image-3"),
+            conversationId = null,
+            prompt = "Draw \"quoted\"\ncat",
+            providerId = ProviderId("provider-1"),
+            model = null,
+            size = null,
+            quality = null,
+            count = 9,
+            originalPath = null,
+            thumbnailPath = null,
+            status = ImageGenerationStatus.Failed,
+            errorSummary = null,
+            createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+        ).toChatReferenceDraft()
+
+        assertTrue(draft.contains("""参数：{"prompt":"Draw \"quoted\"\ncat","count":4}"""))
+        assertTrue(draft.contains("模型：未记录"))
+        assertTrue(draft.contains("错误：未记录"))
+    }
+
+    @Test
+    fun connectionTestChatDraftKeepsDiagnosticAndApiKeyBoundary() {
+        val draft = """
+            图片模型连接测试
+            Provider：OpenAI
+            模型：gpt-image-1
+            结果：连接失败
+            HTTP：401
+            消息：Unauthorized
+        """.trimIndent().toConnectionTestChatDraft()
+
+        assertTrue(draft.contains("图片模型连接测试诊断"))
+        assertTrue(draft.contains("Provider：OpenAI"))
+        assertTrue(draft.contains("HTTP：401"))
+        assertTrue(draft.contains("只能基于诊断字段分析"))
+        assertTrue(draft.contains("不要要求我粘贴 API Key"))
+        assertTrue(draft.contains("不要输出或推测 API Key 明文"))
     }
 
     private fun state(

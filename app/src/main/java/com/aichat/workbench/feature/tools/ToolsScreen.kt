@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
@@ -59,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +86,7 @@ import com.aichat.workbench.tool.model.ToolPermissionPolicy
 import com.aichat.workbench.tool.model.ToolRiskLevel
 import com.aichat.workbench.tool.model.ToolSource
 import com.aichat.workbench.tool.model.ToolRuntimeSetting
+import com.aichat.workbench.tool.model.canonicalToolName
 import com.aichat.workbench.tool.model.canUsePermissionPolicy
 import com.aichat.workbench.tool.model.requiresConfirmation
 import com.aichat.workbench.tool.model.runtimeSettingFor
@@ -102,6 +107,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun ToolsScreen(
     onBack: () -> Unit,
+    onSendToChat: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     showBackButton: Boolean = true,
     viewModel: ToolsViewModel = koinViewModel(),
@@ -180,10 +186,13 @@ fun ToolsScreen(
             items(state.tools, key = { "${it.source}:${it.name}" }) { tool ->
                 ToolRow(
                     tool = tool,
+                    state = state,
                     setting = state.toolSettings.runtimeSettingFor(tool),
                     onConfirm = { viewModel.requestPermission(tool) },
                     onEnabledChange = { enabled -> viewModel.updateToolEnabled(tool.name, enabled) },
                     onPolicyChange = { policy -> viewModel.updateToolPermissionPolicy(tool.name, policy) },
+                    onRerunLatest = viewModel::rerunToolResult,
+                    onRefillLatest = viewModel::refillToolResult,
                 )
             }
             item {
@@ -200,6 +209,7 @@ fun ToolsScreen(
                         onTabSelected = { selectedWorkbenchTab = it },
                         state = state,
                         viewModel = viewModel,
+                        onSendToChat = onSendToChat,
                     )
                 }
             }
@@ -207,6 +217,7 @@ fun ToolsScreen(
                 ToolHistorySection(
                     state = state,
                     viewModel = viewModel,
+                    onSendToChat = onSendToChat,
                 )
             }
         }
@@ -474,6 +485,7 @@ private fun ToolTestWorkbench(
     onTabSelected: (Int) -> Unit,
     state: ToolsUiState,
     viewModel: ToolsViewModel,
+    onSendToChat: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -481,8 +493,8 @@ private fun ToolTestWorkbench(
     ) {
         ToolWorkbenchTabs(selectedTab = selectedTab, onTabSelected = onTabSelected)
         when (selectedTab) {
-            0 -> SearchWorkbenchContent(state, viewModel)
-            else -> SandboxWorkbenchContent(state, viewModel)
+            0 -> SearchWorkbenchContent(state, viewModel, onSendToChat)
+            else -> SandboxWorkbenchContent(state, viewModel, onSendToChat)
         }
     }
 }
@@ -516,9 +528,22 @@ private fun ToolWorkbenchTabs(
 private fun SearchWorkbenchContent(
     state: ToolsUiState,
     viewModel: ToolsViewModel,
+    onSendToChat: (String) -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SearchPanel(state, viewModel, modifier = Modifier.fillMaxWidth(), framed = false)
+        WorkbenchCopyActions(
+            onCopyInput = {
+                clipboard.setText(AnnotatedString(state.searchWorkbenchInputJson()))
+            },
+            onCopyOutput = state.searchWorkbenchOutputJson()?.let { outputJson ->
+                { clipboard.setText(AnnotatedString(outputJson)) }
+            },
+            onSendToChat = state.searchWorkbenchChatDraft()?.let { chatDraft ->
+                { onSendToChat(chatDraft) }
+            },
+        )
         state.searchError?.let { error ->
             SearchErrorRow(error, modifier = Modifier.fillMaxWidth())
         }
@@ -538,14 +563,62 @@ private fun SearchWorkbenchContent(
 private fun SandboxWorkbenchContent(
     state: ToolsUiState,
     viewModel: ToolsViewModel,
+    onSendToChat: (String) -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SandboxPanel(state, viewModel, modifier = Modifier.fillMaxWidth(), framed = false)
+        WorkbenchCopyActions(
+            onCopyInput = {
+                clipboard.setText(AnnotatedString(state.sandboxWorkbenchInputJson()))
+            },
+            onCopyOutput = state.sandboxWorkbenchOutputJson()?.let { outputJson ->
+                { clipboard.setText(AnnotatedString(outputJson)) }
+            },
+            onSendToChat = state.sandboxWorkbenchChatDraft()?.let { chatDraft ->
+                { onSendToChat(chatDraft) }
+            },
+        )
         state.sandboxError?.let { error ->
             SandboxErrorRow(error, modifier = Modifier.fillMaxWidth())
         }
         state.sandboxResult?.let { result ->
             SandboxResultRow(result, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun WorkbenchCopyActions(
+    onCopyInput: () -> Unit,
+    onCopyOutput: (() -> Unit)?,
+    onSendToChat: (() -> Unit)? = null,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            OutlinedButton(onClick = onCopyInput) {
+                Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "复制参数 JSON")
+            }
+        }
+        if (onCopyOutput != null) {
+            item {
+                OutlinedButton(onClick = onCopyOutput) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制结果 JSON")
+                }
+            }
+        }
+        if (onSendToChat != null) {
+            item {
+                OutlinedButton(onClick = onSendToChat) {
+                    Icon(imageVector = Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "带入聊天")
+                }
+            }
         }
     }
 }
@@ -640,7 +713,7 @@ private fun SandboxErrorRow(
     modifier: Modifier = Modifier,
 ) {
     InlineNotice(
-        text = "${error.code}: ${error.message}",
+        text = error.diagnosticLabel(),
         icon = Icons.Filled.Security,
         modifier = modifier,
         tone = StatusTone.Critical,
@@ -707,6 +780,43 @@ private fun OutputText(
             fontFamily = FontFamily.Monospace,
         )
     }
+}
+
+@Composable
+private fun RefilledToolInputCard(
+    toolName: String,
+    inputJson: String,
+    onCopyInput: () -> Unit,
+    onCopyChatInstruction: () -> Unit,
+    onSendToChat: () -> Unit,
+) {
+    InlineNotice(
+        text = "已回填 $toolName 参数，可复制或带入聊天继续执行。",
+        icon = Icons.Filled.Edit,
+        tone = StatusTone.Accent,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WorkbenchIconButton(
+                icon = Icons.Filled.ContentCopy,
+                label = "复制回填参数",
+                onClick = onCopyInput,
+            )
+            WorkbenchIconButton(
+                icon = Icons.Filled.Edit,
+                label = "复制聊天指令",
+                onClick = onCopyChatInstruction,
+            )
+            WorkbenchIconButton(
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                label = "带入聊天",
+                onClick = onSendToChat,
+            )
+        }
+    }
+    OutputText(
+        label = "回填参数",
+        value = inputJson.rawPayloadPreview(),
+    )
 }
 
 @Composable
@@ -822,7 +932,7 @@ private fun SearchErrorRow(
     modifier: Modifier = Modifier,
 ) {
     InlineNotice(
-        text = "${error.code}: ${error.message}",
+        text = error.diagnosticLabel(),
         icon = Icons.Filled.Public,
         modifier = modifier,
         tone = StatusTone.Critical,
@@ -1186,6 +1296,7 @@ private fun ToolStatusFeedback(message: String) {
 private fun ToolHistorySection(
     state: ToolsUiState,
     viewModel: ToolsViewModel,
+    onSendToChat: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val filteredHistory = state.filteredToolHistory.take(10)
@@ -1201,6 +1312,21 @@ private fun ToolHistorySection(
         },
     ) {
         ToolHistoryFilters(state = state, viewModel = viewModel)
+        state.refilledToolName?.let { toolName ->
+            RefilledToolInputCard(
+                toolName = toolName,
+                inputJson = state.refilledToolInputJson.orEmpty(),
+                onCopyInput = {
+                    clipboard.setText(AnnotatedString(state.refilledToolInputJson.orEmpty()))
+                },
+                onCopyChatInstruction = {
+                    clipboard.setText(AnnotatedString(state.chatInstructionForRefilledTool().orEmpty()))
+                },
+                onSendToChat = {
+                    state.chatInstructionForRefilledTool()?.let(onSendToChat)
+                },
+            )
+        }
         if (filteredHistory.isEmpty()) {
             InlineNotice(
                 text = "暂无符合条件的工具运行记录。",
@@ -1211,6 +1337,17 @@ private fun ToolHistorySection(
             filteredHistory.forEach { result ->
                 ToolHistoryRow(
                     result = result,
+                    canRerun = state.canRerunToolResult(result),
+                    canRefill = state.canRefillToolResult(result),
+                    canSendToChat = state.canSendToolResultToChat(result),
+                    onRerun = { viewModel.rerunToolResult(result) },
+                    onRefill = { viewModel.refillToolResult(result) },
+                    onCopyChatInstruction = {
+                        clipboard.setText(AnnotatedString(state.chatInstructionForToolResult(result)))
+                    },
+                    onSendToChat = {
+                        onSendToChat(state.chatInstructionForToolResult(result))
+                    },
                     onCopyInput = {
                         clipboard.setText(AnnotatedString(result.rawInputJson ?: result.inputSummary))
                     },
@@ -1228,8 +1365,27 @@ private fun ToolHistoryFilters(
     state: ToolsUiState,
     viewModel: ToolsViewModel,
 ) {
-    val toolNames = state.toolHistory.map { it.toolName }.distinct().sorted()
+    val conversationIds = state.toolHistory.mapNotNull { it.conversationId?.value }.distinct().sorted()
+    val toolNames = state.toolHistory.map { it.toolName.canonicalToolName() }.distinct().sorted()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (conversationIds.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    SelectableFilterButton(
+                        selected = state.toolHistoryConversationFilter == null,
+                        text = "全部会话",
+                        onClick = { viewModel.updateToolHistoryConversationFilter(null) },
+                    )
+                }
+                items(conversationIds, key = { it }) { conversationId ->
+                    SelectableFilterButton(
+                        selected = state.toolHistoryConversationFilter == conversationId,
+                        text = conversationId.historyLabel("会话"),
+                        onClick = { viewModel.updateToolHistoryConversationFilter(conversationId) },
+                    )
+                }
+            }
+        }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 SelectableFilterButton(
@@ -1285,9 +1441,19 @@ private fun SelectableFilterButton(
 @Composable
 private fun ToolHistoryRow(
     result: ToolResult,
+    canRerun: Boolean,
+    canRefill: Boolean,
+    canSendToChat: Boolean,
+    onRerun: () -> Unit,
+    onRefill: () -> Unit,
+    onCopyChatInstruction: () -> Unit,
+    onSendToChat: () -> Unit,
     onCopyInput: () -> Unit,
     onCopyOutput: () -> Unit,
 ) {
+    var showRawPayload by rememberSaveable(result.id.value) { mutableStateOf(false) }
+    val rawInput = result.rawInputJson ?: result.inputSummary
+    val rawOutput = result.rawOutputJson ?: result.output.asPlainText()
     ToolResultContainer(
         title = result.toolName,
         icon = result.permissionLevel.permissionIcon(),
@@ -1299,6 +1465,11 @@ private fun ToolHistoryRow(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     StatusPill(text = result.permissionLevel.displayLabel(), tone = result.permissionLevel.permissionTone())
+                }
+                result.conversationId?.let { conversationId ->
+                    item {
+                        StatusPill(text = conversationId.value.historyLabel("会话"), tone = StatusTone.Neutral)
+                    }
                 }
                 item {
                     StatusPill(text = result.startedAt.toString(), tone = StatusTone.Neutral)
@@ -1322,16 +1493,86 @@ private fun ToolHistoryRow(
             MetadataRow(label = "输入", value = result.inputSummary.ifBlank { "(空)" })
             result.error?.let { error ->
                 InlineNotice(
-                    text = "${error.code}: ${error.message}",
+                    text = error.diagnosticLabel(),
                     icon = Icons.Filled.Security,
-                    tone = StatusTone.Critical,
+                    tone = result.status.errorTone(),
+                )
+            }
+            result.recoveryHintForHistory()?.let { recoveryHint ->
+                InlineNotice(
+                    text = recoveryHint,
+                    icon = Icons.Filled.Info,
+                    tone = result.status.errorTone(),
+                )
+            }
+            if (!canRerun && canRefill && result.status.isUserStopped()) {
+                InlineNotice(
+                    text = "这条记录未实际完成执行，已保留原始参数。请先回填参数，确认后再从聊天或调试入口重新发起。",
+                    icon = Icons.Filled.Info,
+                    tone = result.status.tone(),
                 )
             }
             OutputText(
                 label = "输出",
                 value = result.output.asPlainText().take(MAX_TOOL_HISTORY_OUTPUT_PREVIEW_CHARS),
             )
+            if (showRawPayload) {
+                OutputText(
+                    label = "原始输入 JSON",
+                    value = rawInput.rawPayloadPreview(),
+                )
+                OutputText(
+                    label = "原始输出 JSON",
+                    value = rawOutput.rawPayloadPreview(),
+                )
+            }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    OutlinedButton(
+                        onClick = onRerun,
+                        enabled = canRerun,
+                    ) {
+                        Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (canRerun) "重跑" else "暂不支持重跑")
+                    }
+                }
+                if (canRefill) {
+                    item {
+                        OutlinedButton(onClick = onRefill) {
+                            Icon(imageVector = Icons.Filled.Edit, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "回填参数")
+                        }
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = { showRawPayload = !showRawPayload }) {
+                        Icon(
+                            imageVector = if (showRawPayload) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = null,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (showRawPayload) "隐藏原始" else "查看原始")
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = onCopyChatInstruction) {
+                        Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (canSendToChat) "复制聊天指令" else "复制诊断")
+                    }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = onSendToChat,
+                        enabled = canSendToChat,
+                    ) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (canSendToChat) "带入聊天" else "不可带入")
+                    }
+                }
                 item {
                     OutlinedButton(onClick = onCopyInput) {
                         Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
@@ -1354,11 +1595,22 @@ private fun ToolHistoryRow(
 @Composable
 private fun ToolRow(
     tool: ToolDescriptor,
+    state: ToolsUiState,
     setting: ToolRuntimeSetting,
     onConfirm: () -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onPolicyChange: (ToolPermissionPolicy) -> Unit,
+    onRerunLatest: (ToolResult) -> Unit,
+    onRefillLatest: (ToolResult) -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
+    var showSchema by rememberSaveable(tool.name) { mutableStateOf(false) }
+    var showRecentRuns by rememberSaveable(tool.name) { mutableStateOf(false) }
+    val outputSchema = tool.outputSchemaJson ?: "(未声明)"
+    val latestResult = state.latestToolResultFor(tool)
+    val latestRerunnableResult = state.latestRerunnableToolResultFor(tool)
+    val latestRefillableResult = state.latestRefillableToolResultFor(tool)
+    val recentRuns = state.recentToolResultsFor(tool)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         QuietListRow(
             title = tool.displayName,
@@ -1395,6 +1647,44 @@ private fun ToolRow(
                     tone = tool.riskLevel.tone(),
                 )
             }
+            item {
+                if (latestResult == null) {
+                    StatusPill(text = "最近未运行", tone = StatusTone.Neutral)
+                } else {
+                    StatusPill(
+                        text = "最近${latestResult.status.displayLabel()}",
+                        tone = latestResult.status.tone(),
+                    )
+                }
+            }
+            latestResult?.durationMs?.let { durationMs ->
+                item {
+                    StatusPill(text = "${durationMs} ms", tone = StatusTone.Neutral)
+                }
+            }
+            latestResult?.error?.takeIf { it.code.isNotBlank() }?.let { error ->
+                item {
+                    StatusPill(text = error.statusLabel(), tone = latestResult.status.errorTone())
+                }
+            }
+            latestRerunnableResult?.let { result ->
+                item {
+                    OutlinedButton(onClick = { onRerunLatest(result) }) {
+                        Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "重跑最近")
+                    }
+                }
+            }
+            latestRefillableResult?.let { result ->
+                item {
+                    OutlinedButton(onClick = { onRefillLatest(result) }) {
+                        Icon(imageVector = Icons.Filled.Edit, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "回填最近")
+                    }
+                }
+            }
             if (tool.requiresNetwork) {
                 item {
                     StatusPill(text = "访问网络", tone = StatusTone.Warning)
@@ -1426,6 +1716,173 @@ private fun ToolRow(
                         text = tool.fixedPermissionPolicyLabel(),
                         tone = tool.permissionPolicyTone(),
                     )
+                }
+            }
+            item {
+                OutlinedButton(onClick = { showSchema = !showSchema }) {
+                    Icon(
+                        imageVector = if (showSchema) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = if (showSchema) "隐藏 schema" else "查看 schema")
+                }
+            }
+            item {
+                OutlinedButton(onClick = { showRecentRuns = !showRecentRuns }) {
+                    Icon(
+                        imageVector = if (showRecentRuns) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = if (showRecentRuns) "隐藏最近" else "查看最近")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        clipboard.setText(
+                            AnnotatedString("input:\n${tool.inputSchemaJson}\n\noutput:\n$outputSchema"),
+                        )
+                    },
+                ) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制 schema")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(state.sampleInputForTool(tool)))
+                    },
+                ) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制示例参数")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(state.chatInstructionForTool(tool)))
+                    },
+                ) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制聊天指令")
+                }
+            }
+        }
+        if (showSchema) {
+            OutputText(
+                label = "输入 schema",
+                value = tool.inputSchemaJson.schemaPreview(),
+            )
+            OutputText(
+                label = "输出 schema",
+                value = outputSchema.schemaPreview(),
+            )
+        }
+        if (showRecentRuns) {
+            ToolRecentRuns(
+                results = recentRuns,
+                onCopyInput = { result ->
+                    clipboard.setText(AnnotatedString(result.rawInputJson ?: result.inputSummary))
+                },
+                onCopyOutput = { result ->
+                    clipboard.setText(AnnotatedString(result.rawOutputJson ?: result.output.asPlainText()))
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolRecentRuns(
+    results: List<ToolResult>,
+    onCopyInput: (ToolResult) -> Unit,
+    onCopyOutput: (ToolResult) -> Unit,
+) {
+    if (results.isEmpty()) {
+        InlineNotice(
+            text = "这个工具还没有运行记录。",
+            icon = Icons.Filled.Info,
+            tone = StatusTone.Neutral,
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "最近 ${results.size} 次运行",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        results.forEach { result ->
+            ToolRecentRunRow(
+                result = result,
+                onCopyInput = { onCopyInput(result) },
+                onCopyOutput = { onCopyOutput(result) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolRecentRunRow(
+    result: ToolResult,
+    onCopyInput: () -> Unit,
+    onCopyOutput: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                StatusPill(text = result.status.displayLabel(), tone = result.status.tone())
+            }
+            item {
+                StatusPill(text = result.startedAt.toString(), tone = StatusTone.Neutral)
+            }
+            result.durationMs?.let { durationMs ->
+                item {
+                    StatusPill(text = "${durationMs} ms", tone = StatusTone.Neutral)
+                }
+            }
+            result.error?.takeIf { it.code.isNotBlank() }?.let { error ->
+                item {
+                    StatusPill(text = error.statusLabel(), tone = result.status.errorTone())
+                }
+            }
+        }
+        MetadataRow(label = "输入", value = result.inputSummary.ifBlank { "(空)" })
+        result.error?.let { error ->
+            Text(
+                text = error.diagnosticLabel(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                OutlinedButton(onClick = onCopyInput) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制输入")
+                }
+            }
+            item {
+                OutlinedButton(onClick = onCopyOutput) {
+                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "复制输出")
                 }
             }
         }
@@ -1555,16 +2012,50 @@ private fun ToolStatus.tone(): StatusTone =
         -> StatusTone.Accent
         ToolStatus.Completed -> StatusTone.Success
         ToolStatus.Failed -> StatusTone.Critical
-        ToolStatus.Denied,
+        ToolStatus.Denied -> StatusTone.Warning
         ToolStatus.Canceled,
-        ToolStatus.Cancelled -> StatusTone.Warning
+        ToolStatus.Cancelled -> StatusTone.Neutral
     }
+
+private fun ToolStatus.errorTone(): StatusTone =
+    when (this) {
+        ToolStatus.Failed -> StatusTone.Critical
+        else -> tone()
+    }
+
+private fun ToolStatus.isUserStopped(): Boolean =
+    this == ToolStatus.Denied ||
+        this == ToolStatus.Canceled ||
+        this == ToolStatus.Cancelled
 
 private fun ToolOutput.asPlainText(): String =
     when (this) {
         is ToolOutput.Text -> text
         is ToolOutput.Json -> value
     }
+
+private fun ToolError.diagnosticLabel(): String =
+    buildString {
+        append("$code: $message")
+        statusCode?.let { append(" · HTTP $it") }
+        retryable?.let { append(" · ${if (it) "可重试" else "不可重试"}") }
+    }
+
+private fun ToolError.statusLabel(): String =
+    statusCode?.let { "$code · HTTP $it" } ?: code
+
+private fun String.rawPayloadPreview(): String {
+    val preview = take(MAX_TOOL_HISTORY_RAW_PREVIEW_CHARS)
+    return if (length > preview.length) "$preview\n... 已截断显示，可复制完整内容" else preview
+}
+
+private fun String.schemaPreview(): String {
+    val preview = take(MAX_TOOL_SCHEMA_PREVIEW_CHARS)
+    return if (length > preview.length) "$preview\n... 已截断显示，可复制完整 schema" else preview
+}
+
+private fun String.historyLabel(prefix: String): String =
+    "$prefix ${take(8)}"
 
 private fun ToolSource.displayLabel(): String =
     when (this) {
@@ -1643,3 +2134,5 @@ private fun toolWorkbenchStatusTone(state: ToolsUiState): StatusTone =
     }
 
 private const val MAX_TOOL_HISTORY_OUTPUT_PREVIEW_CHARS = 1_500
+private const val MAX_TOOL_HISTORY_RAW_PREVIEW_CHARS = 4_000
+private const val MAX_TOOL_SCHEMA_PREVIEW_CHARS = 4_000

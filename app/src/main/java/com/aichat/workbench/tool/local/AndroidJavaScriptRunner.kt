@@ -7,6 +7,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
@@ -53,6 +54,8 @@ class AndroidJavaScriptRunner(
                 timedOut = false,
                 truncated = truncated.truncated,
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             throw LocalScriptExecutionException(
                 message = error.message ?: "JavaScript 执行失败。",
@@ -64,21 +67,22 @@ class AndroidJavaScriptRunner(
         }
     }
 
-    private fun LocalScriptRunRequest.toSandboxScript(): String {
-        val input = inputJson?.trim()?.takeIf { it.isNotBlank() } ?: "null"
-        val codeLiteral = localToolJson.encodeToString(code)
-        return """
-            (async () => {
-              const input = $input;
-              const userCode = $codeLiteral;
-              const fn = new Function("input", `"use strict";
-            ${'$'}{userCode}`);
-              const value = await fn(input);
-              if (typeof value === "string") return value;
-              return JSON.stringify(value ?? null);
-            })()
-        """.trimIndent()
-    }
+}
+
+internal fun LocalScriptRunRequest.toSandboxScript(): String {
+    val inputLiteral = localToolJson.encodeToString(inputJson?.trim()?.takeIf { it.isNotBlank() } ?: "null")
+    val codeLiteral = localToolJson.encodeToString(code)
+    return """
+        (async () => {
+          const input = JSON.parse($inputLiteral);
+          const userCode = $codeLiteral;
+          const fn = new Function("input", `"use strict";
+        ${'$'}{userCode}`);
+          const value = await fn(input);
+          if (typeof value === "string") return value;
+          return JSON.stringify(value ?? null);
+        })()
+    """.trimIndent()
 }
 
 private suspend fun <T> ListenableFuture<T>.await(): T =

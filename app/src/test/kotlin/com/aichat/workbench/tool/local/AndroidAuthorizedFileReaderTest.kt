@@ -10,6 +10,8 @@ class AndroidAuthorizedFileReaderTest {
         assertNull(unsupportedFileReadReason("text/plain", "notes.txt"))
         assertNull(unsupportedFileReadReason("application/json", "data.json"))
         assertNull(unsupportedFileReadReason("application/octet-stream", "README.md"))
+        assertNull(unsupportedFileReadReason("application/typescript", null))
+        assertNull(unsupportedFileReadReason("application/x-python-code", null))
         assertNull(unsupportedFileReadReason(null, "Main.kt"))
         assertNull(unsupportedFileReadReason("", "script.py"))
     }

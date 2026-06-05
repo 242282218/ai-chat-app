@@ -14,8 +14,11 @@ import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
+import com.aichat.workbench.provider.api.ProviderError
+import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
+import java.net.UnknownHostException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -92,6 +95,103 @@ class SendMessageUseCaseTest {
         assertEquals(listOf(MessagePart.Text("Image ready"), image), repository.savedMessages.last().contentParts)
     }
 
+    @Test
+    fun providerHttpExceptionKeepsStatusAndRecoveryHintInErrorSummary() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val provider = ThrowingChatProvider(
+            ProviderHttpException(
+                ProviderError(
+                    code = "authentication_failed",
+                    message = "bad key",
+                    statusCode = 401,
+                    retryable = false,
+                ),
+            ),
+        )
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals(MessageStatus.Failed, states.last().status)
+        assertEquals(
+            "bad key（code: authentication_failed，HTTP 401，需检查配置） 请检查 Provider、Base URL、模型和 API Key。",
+            states.last().errorSummary,
+        )
+        assertEquals(states.last().errorSummary, repository.savedMessages.last().errorSummary)
+    }
+
+    @Test
+    fun providerRateLimitKeepsRetryAndSwitchProviderHintInErrorSummary() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val provider = ThrowingChatProvider(
+            ProviderHttpException(
+                ProviderError(
+                    code = "rate_limited",
+                    message = "too many requests",
+                    statusCode = 429,
+                    retryable = true,
+                ),
+            ),
+        )
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals(MessageStatus.Failed, states.last().status)
+        assertEquals(
+            "too many requests（code: rate_limited，HTTP 429，可重试） 请求被限流，请稍后重试或切换模型/Provider。",
+            states.last().errorSummary,
+        )
+        assertEquals(states.last().errorSummary, repository.savedMessages.last().errorSummary)
+    }
+
+    @Test
+    fun providerNetworkFailureKeepsConnectivityHintInErrorSummary() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val provider = ThrowingChatProvider(UnknownHostException("api.example.test"))
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals(MessageStatus.Failed, states.last().status)
+        assertEquals(
+            "Provider 网络不可达，无法解析服务地址。请检查网络连接、Base URL 或 DNS 后重试。",
+            states.last().errorSummary,
+        )
+        assertEquals(states.last().errorSummary, repository.savedMessages.last().errorSummary)
+    }
+
+    @Test
+    fun providerStreamFailedKeepsRetryHintInErrorSummary() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val provider = FlowChatProvider(
+            flowOf(
+                ProviderStreamEvent.Failed(
+                    ProviderError(
+                        code = "provider_unavailable",
+                        message = "upstream exploded",
+                        statusCode = 500,
+                        retryable = true,
+                    ),
+                ),
+            ),
+        )
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals(MessageStatus.Failed, states.last().status)
+        assertEquals(
+            "upstream exploded（code: provider_unavailable，HTTP 500，可重试） Provider 服务端异常，请稍后重试或切换 Provider。",
+            states.last().errorSummary,
+        )
+        assertEquals(states.last().errorSummary, repository.savedMessages.last().errorSummary)
+    }
+
     private fun assistantMessage(clock: Clock): Message =
         Message(
             id = MessageId("assistant-1"),
@@ -137,6 +237,16 @@ private class FlowChatProvider(
         ProviderTextResponse("")
 
     override fun stream(request: ChatProviderRequest): Flow<ProviderStreamEvent> = events
+}
+
+private class ThrowingChatProvider(
+    private val error: Throwable,
+) : ChatProvider {
+    override suspend fun complete(request: ChatProviderRequest): ProviderTextResponse =
+        ProviderTextResponse("")
+
+    override fun stream(request: ChatProviderRequest): Flow<ProviderStreamEvent> =
+        flow { throw error }
 }
 
 private class CountingConversationRepository : ConversationRepository {

@@ -97,6 +97,54 @@ class ConversationCompactorTest {
         assertEquals(messages.takeLast(12).map { it.content }, context.history.map { it.content })
     }
 
+    @Test
+    fun cancelledAndDeniedToolMessagesStayOutOfProviderContext() = runTest {
+        val repository = CompactingConversationRepository()
+        val chatProvider = SummaryChatProvider("unused")
+        val compactor = ConversationCompactor(repository, clock)
+        val conversation = conversation(systemPrompt = "Base system")
+        val completedTool = message(
+            id = "tool-completed",
+            content = """{"ok":true}""",
+            role = MessageRole.Tool,
+            status = MessageStatus.Completed,
+            createdAtOffset = 1,
+        )
+        val failedTool = message(
+            id = "tool-failed",
+            content = """{"code":"local_search_http_429","message":"Rate limit exceeded"}""",
+            role = MessageRole.Tool,
+            status = MessageStatus.Failed,
+            createdAtOffset = 2,
+        )
+        val cancelledTool = message(
+            id = "tool-cancelled",
+            content = """{"code":"tool_cancelled","message":"工具执行已取消。"}""",
+            role = MessageRole.Tool,
+            status = MessageStatus.Cancelled,
+            createdAtOffset = 3,
+        )
+        val deniedTool = message(
+            id = "tool-denied",
+            content = """{"code":"tool_denied","message":"用户拒绝执行工具。"}""",
+            role = MessageRole.Tool,
+            status = MessageStatus.Cancelled,
+            createdAtOffset = 4,
+        )
+
+        val context = compactor.compactIfNeeded(
+            conversation = conversation,
+            provider = provider(maxContextTokens = 1_000),
+            apiKey = "key",
+            model = "model-a",
+            messages = listOf(completedTool, failedTool, cancelledTool, deniedTool),
+            chatProvider = chatProvider,
+        )
+
+        assertEquals(0, chatProvider.requests.size)
+        assertEquals(listOf(completedTool.content, failedTool.content), context.history.map { it.content })
+    }
+
     private fun conversation(systemPrompt: String?): Conversation =
         Conversation(
             id = ConversationId("conversation-1"),

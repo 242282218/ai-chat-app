@@ -9,10 +9,13 @@ import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.StoredImagePaths
+import com.aichat.workbench.provider.api.ProviderError
+import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.image.GeneratedImage
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
+import java.net.SocketTimeoutException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -177,6 +180,53 @@ class GenerateImageUseCaseTest {
     }
 
     @Test
+    fun generateImage_savesProviderHttpRecoverySummaryInFailedHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val useCase = createUseCase(
+            repository = repository,
+            imageProvider = ThrowingImageProvider(
+                ProviderHttpException(
+                    ProviderError(
+                        code = "rate_limited",
+                        message = "too many image requests",
+                        statusCode = 429,
+                        retryable = true,
+                    ),
+                ),
+            ),
+        )
+
+        assertFailsWith<ProviderHttpException> {
+            useCase(validRequest())
+        }
+
+        assertEquals(ImageGenerationStatus.Failed, repository.saved.value.single().status)
+        assertEquals(
+            "too many image requests（code: rate_limited，HTTP 429，可重试） 请求被限流，请稍后重试或切换模型/Provider。",
+            repository.saved.value.single().errorSummary,
+        )
+    }
+
+    @Test
+    fun generateImage_savesProviderTimeoutRecoverySummaryInFailedHistory() = runTest {
+        val repository = FakeImageGenerationRepository()
+        val useCase = createUseCase(
+            repository = repository,
+            imageProvider = ThrowingImageProvider(SocketTimeoutException("timeout")),
+        )
+
+        assertFailsWith<SocketTimeoutException> {
+            useCase(validRequest())
+        }
+
+        assertEquals(ImageGenerationStatus.Failed, repository.saved.value.single().status)
+        assertEquals(
+            "Provider 请求超时。请稍后重试，或切换网络、模型/Provider。",
+            repository.saved.value.single().errorSummary,
+        )
+    }
+
+    @Test
     fun generateImage_savesCancelledHistoryWhenProviderIsCancelled() = runTest {
         val repository = FakeImageGenerationRepository()
         val useCase = createUseCase(repository, CancellingImageProvider())
@@ -301,6 +351,16 @@ class GenerateImageUseCaseTest {
             request: ImageGenerationProviderRequest,
         ): ImageGenerationProviderResponse {
             throw CancellationException("cancelled")
+        }
+    }
+
+    private class ThrowingImageProvider(
+        private val error: Throwable,
+    ) : ImageGenerationProvider {
+        override suspend fun generate(
+            request: ImageGenerationProviderRequest,
+        ): ImageGenerationProviderResponse {
+            throw error
         }
     }
 }

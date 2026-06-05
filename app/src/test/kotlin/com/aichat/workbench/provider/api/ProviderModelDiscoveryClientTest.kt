@@ -92,6 +92,27 @@ class ProviderModelDiscoveryClientTest {
         assertEquals(ModelCapabilitySource.ProviderDiscovery, chatModel.capability?.source)
     }
 
+    @Test
+    fun discover_marksCodeAndLongContextHintsForCapabilityLabels() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"id":"qwen2.5-coder-32b"},{"id":"gpt-4.1-128k"}]}"""),
+        )
+        val client = ProviderModelDiscoveryClient(providerRegistry = registeredRegistry())
+
+        val result = client.discover(provider(type = ProviderType.NewApi), "test-key")
+
+        assertTrue(result.ok)
+        val codeModel = result.models.single { it.id == "qwen2.5-coder-32b" }
+        val longContextModel = result.models.single { it.id == "gpt-4.1-128k" }
+        assertEquals(true, codeModel.capability?.text)
+        assertEquals(true, codeModel.capability?.structuredOutput)
+        assertEquals(false, codeModel.capability?.imageGeneration)
+        assertEquals(true, longContextModel.capability?.longContext)
+        assertEquals(false, longContextModel.capability?.imageGeneration)
+    }
+
     private fun provider(
         type: ProviderType = ProviderType.OpenAICompatible,
         baseUrl: String = server.url("/v1").toString().trimEnd('/'),

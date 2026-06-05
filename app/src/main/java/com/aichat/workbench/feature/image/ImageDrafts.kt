@@ -1,5 +1,6 @@
 package com.aichat.workbench.feature.image
 
+import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.provider.requiresApiKey
@@ -98,6 +99,64 @@ internal fun ImageGenerationUiState.imageModelTone(): StatusTone =
         model.isBlank() -> StatusTone.Warning
         selectedModelUnsupported -> StatusTone.Critical
         else -> StatusTone.Success
+    }
+
+internal fun ImageGeneration.toChatReferenceDraft(): String =
+    if (originalPath.isNullOrBlank()) {
+        val toolInput = toImageGenerationToolInputJson()
+        """
+            请分析这次图片生成记录，并准备一个可重新发起的 image_generation 工具调用。
+            不要假设图片已生成；先说明失败原因、可调整参数和是否需要切换 Provider 或模型。
+            如果需要重试，请优先复用下面的工具参数，并在必要时先修改 Provider、模型、数量、尺寸或质量。
+
+            工具：image_generation
+            参数：$toolInput
+
+            Provider：${providerId?.value.orEmpty().ifBlank { "未记录" }}
+            图片提示词：${prompt.trim()}
+            模型：${model.orEmpty().ifBlank { "未记录" }}
+            尺寸：${size.orEmpty().ifBlank { "未记录" }}
+            质量：${quality.orEmpty().ifBlank { "未记录" }}
+            状态：${status.name.lowercase()}
+            错误：${errorSummary.orEmpty().ifBlank { "未记录" }}
+        """.trimIndent()
+    } else {
+        """
+            请基于这张图片继续处理。不要自动上传本地文件；如需多模态分析，请先征得确认。
+
+            Provider：${providerId?.value.orEmpty().ifBlank { "未记录" }}
+            图片提示词：${prompt.trim()}
+            模型：${model.orEmpty().ifBlank { "未记录" }}
+            尺寸：${size.orEmpty().ifBlank { "未记录" }}
+            质量：${quality.orEmpty().ifBlank { "未记录" }}
+            状态：${status.name.lowercase()}
+            本地图片路径：$originalPath
+        """.trimIndent()
+    }
+
+private fun ImageGeneration.toImageGenerationToolInputJson(): String =
+    buildString {
+        append("""{"prompt":${prompt.trim().jsonStringLiteral()}""")
+        model?.trim()?.takeIf(String::isNotBlank)?.let { append(""","model":${it.jsonStringLiteral()}""") }
+        size?.trim()?.takeIf(String::isNotBlank)?.let { append(""","size":${it.jsonStringLiteral()}""") }
+        quality?.trim()?.takeIf(String::isNotBlank)?.let { append(""","quality":${it.jsonStringLiteral()}""") }
+        append(""","count":${count.coerceIn(1, 4)}}""")
+    }
+
+private fun String.jsonStringLiteral(): String =
+    buildString {
+        append('"')
+        this@jsonStringLiteral.forEach { char ->
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(char)
+            }
+        }
+        append('"')
     }
 
 private fun ImageGenerationUiState.selectedProviderMissingApiKey(): Boolean {

@@ -10,13 +10,17 @@ data class ProviderConnectionResult(
     val message: String,
 )
 
+interface ProviderConnectionTestClient {
+    suspend fun test(provider: ProviderConfig, apiKey: String?): ProviderConnectionResult
+}
+
 class ProviderConnectionTester(
     client: OkHttpClient = OkHttpClient(),
     providerRegistry: ProviderRegistry,
-) {
+) : ProviderConnectionTestClient {
     private val discoveryClient = ProviderModelDiscoveryClient(client, providerRegistry)
 
-    suspend fun test(
+    override suspend fun test(
         provider: ProviderConfig,
         apiKey: String?,
     ): ProviderConnectionResult {

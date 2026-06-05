@@ -20,15 +20,17 @@ fun FileAttachButton(onFilePicked: (Uri) -> Unit) {
     }
 }
 
-private val FileAttachMimeTypes = arrayOf(
+internal val FileAttachMimeTypes = arrayOf(
     "text/*",
     "application/json",
     "application/xml",
     "application/javascript",
     "application/x-javascript",
+    "application/typescript",
     "application/x-sh",
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "image/*",
+    "application/x-python-code",
+    "text/markdown",
+    "text/x-kotlin",
+    "text/x-java-source",
+    "text/x-python",
 )

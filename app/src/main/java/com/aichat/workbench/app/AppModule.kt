@@ -39,6 +39,7 @@ import com.aichat.workbench.feature.tools.ToolsViewModel
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ProviderConnectionTester
+import com.aichat.workbench.provider.api.ProviderConnectionTestClient
 import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
 import com.aichat.workbench.provider.compatible.OpenAiCompatibleChatProvider
 import com.aichat.workbench.provider.image.ImageGenerationProvider
@@ -200,6 +201,7 @@ val appModule: Module = module {
             providerRegistry = get(),
         )
     }
+    single<ProviderConnectionTestClient> { get<ProviderConnectionTester>() }
     factory { ConversationCompactor(conversationRepository = get(), clock = get()) }
     factory { ConversationManager(conversationRepository = get(), clock = get()) }
     factory {
@@ -239,6 +241,7 @@ val appModule: Module = module {
             modelRolePreferenceRepository = get(),
             imageProvider = get(),
             imageStorage = get(),
+            connectionTester = get(),
             clock = get(),
         )
     }

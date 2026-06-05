@@ -28,13 +28,15 @@ fun ProviderType.discoveredModelCapability(model: String): ModelCapability? =
     defaultModelCapability(model, source = ModelCapabilitySource.ProviderDiscovery)
         ?.let { capability ->
             val imageGenerationModel = model.isLikelyImageGenerationModel()
+            val codeModel = model.isLikelyCodeModel()
+            val longContextModel = model.isLikelyLongContextModel()
             capability.copy(
                 text = capability.text && !imageGenerationModel,
                 vision = capability.vision && !imageGenerationModel,
                 imageGeneration = capability.imageGeneration && imageGenerationModel,
                 toolCalling = capability.toolCalling && !imageGenerationModel,
-                structuredOutput = capability.structuredOutput && !imageGenerationModel,
-                longContext = capability.longContext && !imageGenerationModel,
+                structuredOutput = (capability.structuredOutput || codeModel) && !imageGenerationModel,
+                longContext = (capability.longContext || longContextModel) && !imageGenerationModel,
             )
         }
 
@@ -102,6 +104,18 @@ fun String.isLikelyImageGenerationModel(): Boolean {
     return IMAGE_GENERATION_MODEL_MARKERS.any { marker -> normalized.contains(marker) }
 }
 
+fun String.isLikelyCodeModel(): Boolean {
+    val normalized = trim().lowercase()
+    if (normalized.isBlank()) return false
+    return CODE_MODEL_MARKERS.any { marker -> normalized.contains(marker) }
+}
+
+fun String.isLikelyLongContextModel(): Boolean {
+    val normalized = trim().lowercase()
+    if (normalized.isBlank()) return false
+    return LONG_CONTEXT_MODEL_MARKERS.any { marker -> normalized.contains(marker) }
+}
+
 fun List<String>.preferredImageModel(): String? =
     sortedWith(compareByDescending<String> { it.imageModelScore() }.thenBy { it }).firstOrNull()
 
@@ -127,6 +141,27 @@ private val IMAGE_GENERATION_MODEL_MARKERS = listOf(
     "sdxl",
     "midjourney",
     "recraft",
+)
+
+private val CODE_MODEL_MARKERS = listOf(
+    "coder",
+    "codex",
+    "code-",
+    "-code",
+    "code_",
+    "_code",
+    "deepseek-coder",
+    "devstral",
+    "qwen2.5-coder",
+    "qwen-coder",
+)
+
+private val LONG_CONTEXT_MODEL_MARKERS = listOf(
+    "128k",
+    "200k",
+    "1m",
+    "long",
+    "context",
 )
 
 const val DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1"

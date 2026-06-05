@@ -158,6 +158,25 @@ class TavilyLocalSearchClientTest {
     }
 
     @Test
+    fun search_mapsServerErrorFallbackMessage() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setBody("""{"error":"server_error","message":"Search backend unavailable"}"""),
+        )
+        val client = TavilyLocalSearchClient(clock = clock)
+
+        try {
+            client.search("AI news", searchConfig(baseUrl = server.url("/").toString()))
+            fail("Expected LocalSearchHttpException")
+        } catch (error: LocalSearchHttpException) {
+            assertEquals(500, error.statusCode)
+            assertEquals("server_error", error.code)
+            assertEquals("Search backend unavailable", error.message)
+        }
+    }
+
+    @Test
     fun search_surfacesTimeout() = runTest {
         server.enqueue(
             MockResponse()

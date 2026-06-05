@@ -20,6 +20,8 @@ import com.aichat.workbench.provider.defaultImageModel
 import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.provider.supportsImageGeneration
+import com.aichat.workbench.provider.api.ProviderConnectionTestClient
+import com.aichat.workbench.provider.api.providerFailureSummary
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
 import kotlinx.coroutines.Job
@@ -41,6 +43,10 @@ data class ImageGenerationUiState(
     val quality: String = "auto",
     val count: String = "1",
     val isGenerating: Boolean = false,
+    val isTestingConnection: Boolean = false,
+    val connectionTestMessage: String? = null,
+    val connectionTestDiagnostic: String? = null,
+    val connectionTestOk: Boolean? = null,
     val error: String? = null,
 ) {
     val selectedProvider: ProviderConfig?
@@ -60,6 +66,7 @@ class ImageGenerationViewModel(
     private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
+    private val connectionTester: ProviderConnectionTestClient,
     private val clock: Clock,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ImageGenerationUiState())
@@ -136,6 +143,24 @@ class ImageGenerationViewModel(
         generate()
     }
 
+    fun regenerate(generation: ImageGeneration) {
+        _state.update {
+            val providerId = generation.providerId.value
+                .takeIf { id -> it.providers.any { provider -> provider.id.value == id } }
+                ?: it.selectedProviderId
+            it.copy(
+                selectedProviderId = providerId,
+                prompt = generation.prompt,
+                model = generation.model.orEmpty().ifBlank { it.model },
+                size = generation.size.orEmpty().ifBlank { it.size },
+                quality = generation.quality.orEmpty().ifBlank { it.quality },
+                count = generation.count.coerceIn(1, 4).toString(),
+                error = null,
+            )
+        }
+        generate()
+    }
+
     fun generate() {
         if (_state.value.isGenerating) return
         generationJob = viewModelScope.launch {
@@ -175,10 +200,64 @@ class ImageGenerationViewModel(
                 if (error is CancellationException) {
                     _state.update { it.copy(error = "已停止，提示词和参数已保留，可修改后重新生成。") }
                 } else {
-                    _state.update { it.copy(error = error.message ?: "图片生成失败。") }
+                    _state.update { it.copy(error = error.providerFailureSummary("图片生成失败。")) }
                 }
             }
             _state.update { it.copy(isGenerating = false) }
+        }
+    }
+
+    fun testConnection() {
+        if (_state.value.isTestingConnection) return
+        viewModelScope.launch {
+            val provider = _state.value.selectedProvider
+            runCatching {
+                requireNotNull(provider) { "模型服务未配置。" }
+                require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
+                val apiKey = providerRepository.getApiKey(provider.id)
+                if (provider.requiresApiKey()) {
+                    require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
+                }
+                _state.update {
+                    it.copy(
+                        isTestingConnection = true,
+                        connectionTestMessage = "测试中...",
+                        connectionTestDiagnostic = null,
+                        connectionTestOk = null,
+                        error = null,
+                    )
+                }
+                connectionTester.test(provider, apiKey)
+            }.onSuccess { result ->
+                _state.update {
+                    it.copy(
+                        isTestingConnection = false,
+                        connectionTestMessage = result.message,
+                        connectionTestDiagnostic = provider.imageConnectionDiagnostic(
+                            model = _state.value.model,
+                            ok = result.ok,
+                            statusCode = result.statusCode,
+                            message = result.message,
+                        ),
+                        connectionTestOk = result.ok,
+                    )
+                }
+            }.onFailure { error ->
+                val message = error.providerFailureSummary("模型连接测试失败。")
+                _state.update {
+                    it.copy(
+                        isTestingConnection = false,
+                        connectionTestMessage = message,
+                        connectionTestDiagnostic = provider?.imageConnectionDiagnostic(
+                            model = _state.value.model,
+                            ok = false,
+                            statusCode = null,
+                            message = message,
+                        ),
+                        connectionTestOk = false,
+                    )
+                }
+            }
         }
     }
 
@@ -241,3 +320,20 @@ class ImageGenerationViewModel(
             else -> model.ifBlank { provider.defaultImageModel() }
         }
 }
+
+internal fun ProviderConfig.imageConnectionDiagnostic(
+    model: String,
+    ok: Boolean,
+    statusCode: Int?,
+    message: String,
+): String =
+    buildString {
+        appendLine("图片模型连接测试")
+        appendLine("Provider：$name")
+        appendLine("类型：$type")
+        appendLine("Base URL：${baseUrl.ifBlank { "(默认)" }}")
+        appendLine("模型：${model.ifBlank { "(未设置)" }}")
+        appendLine("结果：${if (ok) "连接成功" else "连接失败"}")
+        statusCode?.let { appendLine("HTTP：$it") }
+        append("消息：${message.ifBlank { if (ok) "连接成功" else "连接失败" }}")
+    }

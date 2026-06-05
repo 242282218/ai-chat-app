@@ -304,6 +304,487 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun attachFileAppendsExplicitFileReadInstruction() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.attachFile("file:///sdcard/secret.txt")
+        viewModel.updateInput("请总结这个文件")
+        viewModel.attachFile("""content://docs/my "notes".md""")
+
+        val input = viewModel.state.value.input
+        assertTrue(input.startsWith("请总结这个文件"))
+        assertTrue(input.contains("工具：file_read"))
+        assertTrue(input.contains("""参数：{"uri":"content://docs/my \"notes\".md","maxBytes":65536}"""))
+        assertEquals(null, viewModel.state.value.error)
+    }
+
+    @Test
+    fun attachFileRejectsNonPickerUriWithoutChangingDraft() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("请总结这个文件")
+        viewModel.attachFile("file:///sdcard/secret.txt")
+
+        assertEquals("请总结这个文件", viewModel.state.value.input)
+        assertEquals("只能读取通过系统文件选择器授权的 content:// 文件。", viewModel.state.value.error)
+    }
+
+    @Test
+    fun attachFileReplacesPreviousGeneratedFileReadInstruction() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("请总结这个文件")
+        viewModel.attachFile("content://docs/old.md")
+        viewModel.attachFile("content://docs/new.md")
+
+        val input = viewModel.state.value.input
+
+        assertTrue(input.startsWith("请总结这个文件"))
+        assertFalse(input.contains("content://docs/old.md"))
+        assertTrue(input.contains("content://docs/new.md"))
+        assertEquals(1, Regex("工具：file_read").findAll(input).count())
+    }
+
+    @Test
+    fun clearAttachedFileTaskRemovesGeneratedFileReadInstructionOnly() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("请总结这个文件")
+        viewModel.attachFile("content://docs/notes.md")
+        assertTrue(viewModel.state.value.input.hasFileReadInstruction())
+
+        viewModel.clearAttachedFileTask()
+
+        assertEquals("请总结这个文件", viewModel.state.value.input)
+        assertFalse(viewModel.state.value.input.hasFileReadInstruction())
+
+        viewModel.attachFile("content://docs/notes.md")
+        viewModel.updateInput(viewModel.state.value.input.removePrefix("请总结这个文件\n\n"))
+        viewModel.clearAttachedFileTask()
+
+        assertEquals("", viewModel.state.value.input)
+    }
+
+    @Test
+    fun clearAttachedFileTaskIgnoresUserWrittenFileReadText() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        val userText = """
+            请解释这段文字，不要执行工具。
+            工具：file_read
+            参数：我只是讨论这个格式
+        """.trimIndent()
+
+        viewModel.updateInput(userText)
+        assertFalse(viewModel.state.value.input.hasFileReadInstruction())
+
+        viewModel.clearAttachedFileTask()
+
+        assertEquals(userText, viewModel.state.value.input)
+    }
+
+    @Test
+    fun fileReadInstructionDetectionRequiresGeneratedJsonArguments() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        val userText = """
+            请读取我刚通过系统文件选择器授权的文件，并基于文件内容继续处理。
+            工具：file_read
+            参数：请先解释这个格式，不要执行
+        """.trimIndent()
+
+        viewModel.updateInput(userText)
+        assertFalse(viewModel.state.value.input.hasFileReadInstruction())
+
+        viewModel.clearAttachedFileTask()
+
+        assertEquals(userText, viewModel.state.value.input)
+    }
+
+    @Test
+    fun clearAttachedFileTaskPreservesUserTextAfterGeneratedInstruction() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val openAi = provider("openai", ProviderType.OpenAI)
+            val viewModel = startViewModel(
+                conversationRepository = FakeConversationRepository(clock),
+                providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+                openAiProvider = RecordingChatProvider(),
+            )
+            advanceUntilIdle()
+
+            viewModel.updateInput("请总结这个文件")
+            viewModel.attachFile("content://docs/notes.md")
+            viewModel.updateInput("${viewModel.state.value.input}\n\n重点检查风险项")
+
+            viewModel.clearAttachedFileTask()
+
+            assertEquals("请总结这个文件\n\n重点检查风险项", viewModel.state.value.input)
+            assertFalse(viewModel.state.value.input.hasFileReadInstruction())
+        }
+
+    @Test
+    fun imagePromptActionsReuseAndRegenerateDraft() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.reuseImagePrompt("  Draw a city  ")
+
+        assertEquals("Draw a city", viewModel.state.value.input)
+
+        viewModel.regenerateImagePrompt("""Draw "city" again""")
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：image_generation"))
+        assertTrue(input.contains("联网且可能产生费用"))
+        assertTrue(input.contains("不要自动上传本地图片"))
+        assertTrue(input.contains("""参数：{"prompt":"Draw \"city\" again","count":1}"""))
+    }
+
+    @Test
+    fun starterToolActionsPrepareExplicitSearchAndLocalJsInstructions() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareSearchTask("AI \"news\"")
+
+        val searchInput = viewModel.state.value.input
+        assertTrue(searchInput.contains("工具：web_search_local"))
+        assertTrue(searchInput.contains("关键结论必须标注对应来源 URL"))
+        assertTrue(searchInput.contains("没有可引用来源"))
+        assertTrue(searchInput.contains("""参数：{"query":"AI \"news\""}"""))
+
+        viewModel.prepareLocalJsTask("""return JSON.stringify({ "ok": true })""")
+
+        val jsInput = viewModel.state.value.input
+        assertTrue(jsInput.contains("工具：local_js"))
+        assertTrue(jsInput.contains("只允许纯计算或文本处理"))
+        assertTrue(jsInput.contains("不要请求网络、文件系统、系统命令或 Android Context"))
+        assertTrue(jsInput.contains("\"language\":\"javascript\""))
+        assertTrue(jsInput.contains("""return JSON.stringify({ \"ok\": true })"""))
+    }
+
+    @Test
+    fun starterToolActionsPrepareTextTransformAndDiffPreviewInstructions() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareTextTransformTask("""{"name":"A"}""")
+
+        val textInput = viewModel.state.value.input
+        assertTrue(textInput.contains("工具：text_transform"))
+        assertTrue(textInput.contains(""""operation":"json_format""""))
+        assertTrue(textInput.contains("""\"name\":\"A\""""))
+
+        viewModel.prepareCodeDiffPreviewTask("""fun answer() = "old"""")
+
+        val diffInput = viewModel.state.value.input
+        assertTrue(diffInput.contains("工具：code_diff_preview"))
+        assertTrue(diffInput.contains(""""fileName":"snippet""""))
+        assertTrue(diffInput.contains(""""original":"fun answer() = \"old\"""""))
+        assertTrue(diffInput.contains(""""modified":"fun answer() = \"old\"""""))
+    }
+
+    @Test
+    fun continueWithToolResultPreparesFollowUpDraft() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.continueWithToolResult("local_js", """{"output":"42"}""")
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：local_js"))
+        assertTrue(input.contains("工具结果："))
+        assertTrue(input.contains("""{"output":"42"}"""))
+    }
+
+    @Test
+    fun continueWithFileReadResultKeepsPreviewOnlyBoundary() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.continueWithToolResult(
+            "read_file",
+            """{"fileName":"notes.md","preview":"# Notes","sentToModel":false}""",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：file_read"))
+        assertTrue(input.contains("只包含文件元数据和文本预览"))
+        assertTrue(input.contains("不代表完整文件内容已发送给模型"))
+        assertTrue(input.contains("不要编造未出现在预览中的内容"))
+        assertTrue(input.contains(""""sentToModel":false"""))
+    }
+
+    @Test
+    fun prepareLocalJsRecoveryTaskKeepsResultAndRequestsAdjustedRerunPlan() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareLocalJsRecoveryTask("""{"output":"partial","timedOut":true,"truncated":false}""")
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：local_js"))
+        assertTrue(input.contains("结果不完整"))
+        assertTrue(input.contains("新的 local_js 参数"))
+        assertTrue(input.contains("不要请求网络、文件系统、系统命令或 Android Context"))
+        assertTrue(input.contains(""""timedOut":true"""))
+    }
+
+    @Test
+    fun prepareToolRecoveryTaskKeepsToolNameReasonAndResult() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "text_transform",
+            toolResult = """{"operation":"regex_preview","truncated":true}""",
+            reason = "文本转换结果已截断",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：text_transform"))
+        assertTrue(input.contains("原因：文本转换结果已截断"))
+        assertTrue(input.contains("新的 text_transform 参数"))
+        assertTrue(input.contains(""""truncated":true"""))
+    }
+
+    @Test
+    fun prepareFileReadRecoveryTaskKeepsSystemPickerBoundary() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "file_read",
+            toolResult = """{"uri":"content://docs/a.pdf","status":"unsupported","unsupportedReason":"PDF 暂不支持"}""",
+            reason = "文件读取结果不完整，需要重新选择文件或改用受支持的文本格式。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：file_read"))
+        assertTrue(input.contains("重新选择文件"))
+        assertTrue(input.contains("新的 file_read 参数"))
+        assertTrue(input.contains("content://docs/a.pdf"))
+    }
+
+    @Test
+    fun prepareLocalJsRecoveryTaskFromGenericToolPathKeepsSandboxBoundary() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "local_js",
+            toolResult = """{"timedOut":true,"output":"partial"}""",
+            reason = "执行超时，需要减少循环或调高 timeoutMillis。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：local_js"))
+        assertTrue(input.contains("新的 local_js 参数"))
+        assertTrue(input.contains("不要请求网络、文件系统、系统命令或 Android Context"))
+        assertTrue(input.contains("执行前确认超时和输出截断设置"))
+        assertTrue(input.contains(""""timedOut":true"""))
+    }
+
+    @Test
+    fun prepareWebSearchRecoveryTaskKeepsCitationRequirement() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "web_search_local",
+            toolResult = """{"results":[]}""",
+            reason = "没有搜索结果，需要换关键词。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：web_search_local"))
+        assertTrue(input.contains("新的 web_search_local 参数"))
+        assertTrue(input.contains("关键结论必须标注对应来源 URL"))
+        assertTrue(input.contains("没有可引用来源"))
+        assertTrue(input.contains(""""results":[]"""))
+    }
+
+    @Test
+    fun prepareToolRecoveryTaskCanonicalizesToolAliasInDraft() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "web-search",
+            toolResult = """{"results":[]}""",
+            reason = "需要换关键词。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：web_search"))
+        assertTrue(input.contains("新的 web_search 参数"))
+        assertTrue(input.contains("关键结论必须标注对应来源 URL"))
+    }
+
+    @Test
+    fun prepareProviderConnectionRecoveryTaskDoesNotRequestApiKeyPlaintext() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "provider_connection_test",
+            toolResult = """{"ok":false,"statusCode":401}""",
+            reason = "Provider 鉴权失败。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：provider_connection_test"))
+        assertTrue(input.contains("新的 provider_connection_test 参数"))
+        assertTrue(input.contains("已保存的 Provider 配置"))
+        assertTrue(input.contains("不要输出或索要 API Key 明文"))
+        assertTrue(input.contains(""""statusCode":401"""))
+    }
+
+    @Test
+    fun prepareImageGenerationRecoveryTaskKeepsPaidNetworkBoundary() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val viewModel = startViewModel(
+            conversationRepository = FakeConversationRepository(clock),
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.prepareToolRecoveryTask(
+            toolName = "image_generation",
+            toolResult = """{"code":"rate_limited","statusCode":429,"retryable":true}""",
+            reason = "请求被限流，请稍后重试或切换模型/Provider。",
+        )
+
+        val input = viewModel.state.value.input
+        assertTrue(input.contains("工具：image_generation"))
+        assertTrue(input.contains("新的 image_generation 参数"))
+        assertTrue(input.contains("联网且可能产生费用"))
+        assertTrue(input.contains("执行前必须确认 Provider、模型、数量、尺寸和质量"))
+        assertTrue(input.contains("不要自动上传本地图片"))
+        assertTrue(input.contains(""""statusCode":429"""))
+    }
+
+    @Test
+    fun prepareImageGenerationRecoveryTaskRecognizesCanonicalAliases() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val openAi = provider("openai", ProviderType.OpenAI)
+            val viewModel = startViewModel(
+                conversationRepository = FakeConversationRepository(clock),
+                providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+                openAiProvider = RecordingChatProvider(),
+            )
+            advanceUntilIdle()
+
+            viewModel.prepareToolRecoveryTask(
+                toolName = "generate_image",
+                toolResult = """{"code":"provider_error"}""",
+                reason = "Provider 返回错误。",
+            )
+
+            val input = viewModel.state.value.input
+            assertTrue(input.contains("工具：image_generation"))
+            assertTrue(input.contains("联网且可能产生费用"))
+            assertTrue(input.contains("不要自动上传本地图片"))
+        }
+
+    @Test
     fun retryMessageSendsHistoryBeforeFailure() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)

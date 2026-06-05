@@ -17,6 +17,7 @@ import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.model.ToolResult
+import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
@@ -56,6 +57,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
@@ -68,6 +70,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.test.assertFailsWith
 
 class ToolExecutorTest {
     private val clock: Clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
@@ -79,6 +82,7 @@ class ToolExecutorTest {
         "file_read",
         "web_search_local",
         "provider_connection_test",
+        "image_upload_to_model",
         "image_generation",
     )
 
@@ -135,6 +139,10 @@ class ToolExecutorTest {
         assertEquals(ToolRiskLevel.High, requireNotNull(tools["file_read"]).riskLevel)
         assertFalse(requireNotNull(tools["file_read"]).requiresNetwork)
         assertTrue(requireNotNull(tools["file_read"]).requiresFileAccess)
+        assertEquals(ToolRiskLevel.High, requireNotNull(tools["image_upload_to_model"]).riskLevel)
+        assertTrue(requireNotNull(tools["image_upload_to_model"]).requiresNetwork)
+        assertTrue(requireNotNull(tools["image_upload_to_model"]).requiresFileAccess)
+        assertEquals(ToolPermissionPolicy.AskEveryTime, requireNotNull(tools["image_upload_to_model"]).defaultPermissionPolicy)
     }
 
     @Test
@@ -189,6 +197,51 @@ class ToolExecutorTest {
         assertEquals("tool_disabled", execution.result.error?.code)
         assertEquals("工具已禁用。", execution.result.error?.message)
         assertEquals("time", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
+    fun executeDisabledToolAliasSavesCanonicalToolName() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+            toolSettingsProvider = {
+                mapOf("web_search_local" to ToolRuntimeSetting(toolName = "web_search_local", enabled = false))
+            },
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_disabled_alias"), "local-search", """{"query":"AI"}"""),
+        )
+
+        assertEquals("tool_disabled", execution.result.error?.code)
+        assertEquals("web_search_local", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
+    fun executeImageUploadToModelRequiresChatInputConfirmation() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_image_upload"),
+                "image-upload",
+                """{"imageUri":"content://image/1","purpose":"describe it"}""",
+            ),
+        )
+
+        val saved = repository.savedResults.value.single()
+        assertEquals("image_upload_to_model", saved.toolName)
+        assertEquals(ToolPermissionLevel.HighRisk, saved.permissionLevel)
+        assertEquals("image_upload_requires_chat_confirmation", execution.result.error?.code)
+        assertTrue(execution.messageContent.contains("聊天输入栏选择图片"))
+        assertTrue(execution.messageContent.contains("工具不能自动读取或上传本地图片"))
     }
 
     @Test
@@ -266,6 +319,29 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun executeCodeDiffPreviewRejectsEmptyOriginalAndModified() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            gatewayClientProvider = { error("GatewayClient should be lazy") },
+            toolInvocationRepository = repository,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_empty_diff"),
+                "code_diff_preview",
+                """{"fileName":"snippet.kt","original":"","modified":""}""",
+            ),
+        )
+
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
+        assertEquals("original 和 modified 不能同时为空。", execution.result.error?.message)
+        assertEquals("code_diff_preview", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
     fun executeLocalJsRunsWithExplicitJsonInput() = runTest {
         val runner = RecordingScriptRunner(
             result = LocalScriptRunResult(
@@ -328,6 +404,34 @@ class ToolExecutorTest {
         assertEquals("local_js", repository.savedResults.value.single().toolName)
         assertEquals(null, repository.savedResults.value.single().error)
         assertTrue(execution.messageContent.contains(""""timedOut":true"""))
+    }
+
+    @Test
+    fun executeLocalJsCancellationSavesCancelledToolHistoryAndRethrows() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+            scriptRunner = RecordingScriptRunner(error = CancellationException("user stopped")),
+        )
+
+        assertFailsWith<CancellationException> {
+            executor.execute(
+                conversationId = ConversationId("conversation"),
+                toolCall = ToolCall(
+                    ToolCallId("call_js_cancelled"),
+                    "local_js",
+                    """{"code":"return 1;"}""",
+                ),
+            )
+        }
+
+        val saved = repository.savedResults.value.single()
+        assertEquals("local_js", saved.toolName)
+        assertEquals(ToolStatus.Cancelled, saved.status)
+        assertEquals("tool_cancelled", saved.error?.code)
+        assertEquals("工具执行已取消。", saved.error?.message)
+        assertEquals(clock.instant(), saved.canceledAt)
     }
 
     @Test
@@ -407,7 +511,10 @@ class ToolExecutorTest {
         assertEquals(4096, fileReader.requests.single().maxBytes)
         assertTrue(execution.messageContent.contains(""""fileName":"notes.md""""))
         assertTrue(execution.messageContent.contains(""""status":"completed""""))
-        assertTrue(execution.messageContent.contains(""""content":"# Title\nFirst line\nSecond line""""))
+        assertTrue(execution.messageContent.contains(""""preview":"# Title\nFirst line\nSecond line""""))
+        assertFalse(execution.messageContent.contains(""""content""""))
+        assertFalse(repository.savedResults.value.single().rawOutputJson.orEmpty().contains(""""content""""))
+        assertTrue(execution.messageContent.contains(""""sentToModel":false"""))
     }
 
     @Test
@@ -589,6 +696,78 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun executeLocalSearchRejectsInvalidMaxResultsBeforeRequest() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val searchClient = RecordingLocalSearchClient()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+            searchClient = searchClient,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_local_search_invalid_max"),
+                "web_search_local",
+                """{"query":"AI news","maxResults":21}""",
+            ),
+        )
+
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
+        assertEquals("maxResults 必须在 1 到 20 之间。", execution.result.error?.message)
+        assertEquals(emptyList<LocalSearchRequest>(), searchClient.requests)
+    }
+
+    @Test
+    fun executeLocalSearchRejectsInvalidSearchDepthBeforeRequest() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val searchClient = RecordingLocalSearchClient()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+            searchClient = searchClient,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_local_search_invalid_depth"),
+                "web_search_local",
+                """{"query":"AI news","searchDepth":"deep"}""",
+            ),
+        )
+
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
+        assertEquals("searchDepth 仅支持 basic 或 advanced。", execution.result.error?.message)
+        assertEquals(emptyList<LocalSearchRequest>(), searchClient.requests)
+    }
+
+    @Test
+    fun executeLocalSearchRejectsInvalidTopicBeforeRequest() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val searchClient = RecordingLocalSearchClient()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+            searchClient = searchClient,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_local_search_invalid_topic"),
+                "web_search_local",
+                """{"query":"AI news","topic":"sports"}""",
+            ),
+        )
+
+        assertEquals("invalid_tool_arguments", execution.result.error?.code)
+        assertEquals("topic 仅支持 general、news 或 finance。", execution.result.error?.message)
+        assertEquals(emptyList<LocalSearchRequest>(), searchClient.requests)
+    }
+
+    @Test
     fun executeLocalSearchMapsHttpExceptionCode() = runTest {
         val repository = RecordingToolInvocationRepository()
         val executor = toolExecutor(
@@ -614,6 +793,36 @@ class ToolExecutorTest {
 
         assertEquals("local_search_http_401", execution.result.error?.code)
         assertEquals("Unauthorized", execution.result.error?.message)
+        assertTrue(execution.messageContent.contains(""""statusCode":401"""))
+        assertTrue(execution.messageContent.contains(""""retryable":false"""))
+        assertTrue(repository.savedResults.value.single().rawOutputJson.orEmpty().contains(""""statusCode":401"""))
+    }
+
+    @Test
+    fun executeLocalSearchMarksRateLimitAsRetryable() = runTest {
+        val executor = toolExecutor(
+            clock = clock,
+            searchClient = RecordingLocalSearchClient(
+                error = LocalSearchHttpException(
+                    statusCode = 429,
+                    code = "local_search_http_429",
+                    message = "Rate limit exceeded",
+                ),
+            ),
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(
+                ToolCallId("call_local_search_429"),
+                "web_search_local",
+                """{"query":"AI news"}""",
+            ),
+        )
+
+        assertEquals("local_search_http_429", execution.result.error?.code)
+        assertTrue(execution.messageContent.contains(""""statusCode":429"""))
+        assertTrue(execution.messageContent.contains(""""retryable":true"""))
     }
 
     @Test
@@ -1511,6 +1720,7 @@ private class RecordingScriptRunner(
         timedOut = false,
         truncated = false,
     ),
+    private val error: Throwable? = null,
 ) : LocalScriptRunner {
     val requests = mutableListOf<LocalScriptRunRequest>()
 
@@ -1518,6 +1728,7 @@ private class RecordingScriptRunner(
 
     override suspend fun run(request: LocalScriptRunRequest): LocalScriptRunResult {
         requests += request
+        error?.let { throw it }
         return result
     }
 }

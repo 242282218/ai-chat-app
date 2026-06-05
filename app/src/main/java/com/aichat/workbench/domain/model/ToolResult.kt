@@ -47,4 +47,6 @@ sealed interface ToolOutput {
 data class ToolError(
     val code: String,
     val message: String,
+    val statusCode: Int? = null,
+    val retryable: Boolean? = null,
 )

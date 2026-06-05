@@ -49,15 +49,15 @@ class TextTransformTool : LocalTool {
 
     private fun regexPreview(args: TextTransformArguments): TextTransformOutput {
         val regex = args.requiredRegex()
-        val matches = regex.findAll(args.text)
-            .take(MAX_REGEX_MATCHES)
+        val matchesWithOverflow = regex.findAll(args.text)
+            .take(MAX_REGEX_MATCHES + 1)
             .map { it.value }
             .toList()
         return TextTransformOutput(
             operation = "regex_preview",
             inputLength = args.text.length,
-            matches = matches,
-            truncated = matches.size == MAX_REGEX_MATCHES,
+            matches = matchesWithOverflow.take(MAX_REGEX_MATCHES),
+            truncated = matchesWithOverflow.size > MAX_REGEX_MATCHES,
         )
     }
 

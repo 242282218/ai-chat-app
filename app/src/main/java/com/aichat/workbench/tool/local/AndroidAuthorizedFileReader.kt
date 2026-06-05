@@ -99,7 +99,9 @@ private val textLikeMimes = setOf(
     "application/xml",
     "application/javascript",
     "application/x-javascript",
+    "application/typescript",
     "application/x-sh",
+    "application/x-python-code",
 )
 
 private val textLikeExtensions = setOf(

@@ -44,7 +44,6 @@ class FileReadTool(
                         sizeBytes = result.sizeBytes,
                         status = status,
                         preview = result.content?.linePreview(),
-                        content = result.content,
                         truncated = result.truncated,
                         unsupportedReason = result.unsupportedReason,
                         sentToModel = false,
@@ -67,7 +66,7 @@ val FileReadToolDescriptor: ToolDescriptor = ToolDescriptor(
           "properties": {
             "uri": {
               "type": "string",
-              "description": "Android OpenDocument 返回的 content:// URI。"
+              "description": "Android OpenDocument 返回的 content:// URI；必须来自系统文件选择器，不能手写本地路径或扫描文件夹。"
             },
             "maxBytes": {
               "type": "integer",
@@ -100,7 +99,6 @@ private data class FileReadOutput(
     val sizeBytes: Long?,
     val status: String,
     val preview: String?,
-    val content: String?,
     val truncated: Boolean,
     val unsupportedReason: String?,
     val sentToModel: Boolean,

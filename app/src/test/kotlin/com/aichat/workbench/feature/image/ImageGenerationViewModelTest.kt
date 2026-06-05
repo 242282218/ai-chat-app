@@ -22,6 +22,11 @@ import com.aichat.workbench.provider.image.GeneratedImage
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
+import com.aichat.workbench.provider.api.ProviderConnectionResult
+import com.aichat.workbench.provider.api.ProviderConnectionTestClient
+import com.aichat.workbench.provider.api.ProviderError
+import com.aichat.workbench.provider.api.ProviderHttpException
+import java.net.UnknownHostException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -37,6 +42,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -172,6 +178,99 @@ class ImageGenerationViewModelTest {
         assertEquals("test-key", imageProvider.requests.single().apiKey)
         assertEquals("Draw a test scene", imageProvider.requests.single().prompt)
         assertEquals(ImageGenerationStatus.Completed, repository.generations.value.single().status)
+    }
+
+    @Test
+    fun regenerateFromHistoryReusesStoredModelSizeQualityAndCount() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "openai-key-ref")
+        val historyProvider = provider("history-provider", ProviderType.OpenAI, apiKeyRef = "history-key-ref")
+        val imageProvider = RecordingImageProvider(
+            response = ImageGenerationProviderResponse(
+                images = listOf(
+                    base64Image(byteArrayOf(1)),
+                    base64Image(byteArrayOf(2)),
+                ),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider, historyProvider),
+                apiKeys = mapOf(
+                    openAiProvider.id to "openai-key",
+                    historyProvider.id to "history-key",
+                ),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+        viewModel.selectProvider(openAiProvider.id.value)
+        advanceUntilIdle()
+
+        viewModel.regenerate(
+            imageGeneration().copy(
+                prompt = "Draw a forest",
+                providerId = historyProvider.id,
+                model = "history-image-model",
+                size = "1536x1024",
+                quality = "high",
+                count = 2,
+            ),
+        )
+        advanceUntilIdle()
+
+        val request = imageProvider.requests.single()
+        assertEquals("Draw a forest", request.prompt)
+        assertEquals("history-image-model", request.model)
+        assertEquals("1536x1024", request.size)
+        assertEquals("high", request.quality)
+        assertEquals(2, request.count)
+        assertEquals(historyProvider.id, request.provider.id)
+        assertEquals("history-key", request.apiKey)
+        assertEquals(historyProvider.id.value, viewModel.state.value.selectedProviderId)
+        assertEquals("history-image-model", viewModel.state.value.model)
+        assertEquals("1536x1024", viewModel.state.value.size)
+        assertEquals("high", viewModel.state.value.quality)
+        assertEquals("2", viewModel.state.value.count)
+    }
+
+    @Test
+    fun generateProviderRateLimitShowsRecoverySummaryInPageError() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val imageProvider = RecordingImageProvider(
+            error = ProviderHttpException(
+                ProviderError(
+                    code = "rate_limited",
+                    message = "too many image requests",
+                    statusCode = 429,
+                    retryable = true,
+                ),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        advanceUntilIdle()
+
+        assertEquals(
+            "too many image requests（code: rate_limited，HTTP 429，可重试） 请求被限流，请稍后重试或切换模型/Provider。",
+            viewModel.state.value.error,
+        )
+        assertEquals(ImageGenerationStatus.Failed, repository.generations.value.single().status)
+        assertEquals(viewModel.state.value.error, repository.generations.value.single().errorSummary)
     }
 
     @Test
@@ -351,6 +450,108 @@ class ImageGenerationViewModelTest {
         assertEquals("gpt-image-1", viewModel.state.value.model)
     }
 
+    @Test
+    fun testConnectionUsesSavedApiKeyAndStoresResult() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val connectionTester = RecordingProviderConnectionTestClient(
+            result = ProviderConnectionResult(ok = true, statusCode = 200, message = "连接成功"),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            connectionTester = connectionTester,
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+
+        assertEquals("test-key", connectionTester.requests.single().apiKey)
+        assertEquals(openAiProvider.id, connectionTester.requests.single().provider.id)
+        assertEquals("连接成功", viewModel.state.value.connectionTestMessage)
+        assertEquals(true, viewModel.state.value.connectionTestOk)
+        val diagnostic = viewModel.state.value.connectionTestDiagnostic.orEmpty()
+        assertTrue(diagnostic.contains("图片模型连接测试"))
+        assertTrue(diagnostic.contains("Provider：openai"))
+        assertTrue(diagnostic.contains("模型：gpt-image-1"))
+        assertTrue(diagnostic.contains("结果：连接成功"))
+        assertTrue(diagnostic.contains("HTTP：200"))
+        assertFalse(diagnostic.contains("test-key"))
+    }
+
+    @Test
+    fun testConnectionWithoutSavedApiKeyDoesNotCallTester() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
+        val connectionTester = RecordingProviderConnectionTestClient()
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+            connectionTester = connectionTester,
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+
+        assertEquals(emptyList<ProviderConnectionRequest>(), connectionTester.requests)
+        assertEquals("API Key 缺失。", viewModel.state.value.connectionTestMessage)
+        assertEquals(false, viewModel.state.value.connectionTestOk)
+    }
+
+    @Test
+    fun testConnectionFailureUsesModelConnectionFallbackMessage() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val connectionTester = RecordingProviderConnectionTestClient(error = RuntimeException())
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            connectionTester = connectionTester,
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+
+        assertEquals("模型连接测试失败。", viewModel.state.value.connectionTestMessage)
+        assertEquals(false, viewModel.state.value.connectionTestOk)
+        assertTrue(viewModel.state.value.connectionTestDiagnostic.orEmpty().contains("结果：连接失败"))
+        assertFalse(viewModel.state.value.connectionTestDiagnostic.orEmpty().contains("test-key"))
+    }
+
+    @Test
+    fun testConnectionNetworkFailureUsesConnectivityHint() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val connectionTester = RecordingProviderConnectionTestClient(error = UnknownHostException("api.example.test"))
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            connectionTester = connectionTester,
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+
+        assertEquals(
+            "Provider 网络不可达，无法解析服务地址。请检查网络连接、Base URL 或 DNS 后重试。",
+            viewModel.state.value.connectionTestMessage,
+        )
+        assertEquals(false, viewModel.state.value.connectionTestOk)
+    }
+
     private fun viewModel(
         repository: ImageGenerationRepository,
         storage: ImageStorage,
@@ -358,6 +559,7 @@ class ImageGenerationViewModelTest {
         preferencesRepository: ImageGenerationPreferencesRepository = FakeImageGenerationPreferencesRepository(),
         modelRolePreferenceRepository: ModelRolePreferenceRepository = FakeModelRolePreferenceRepository(),
         imageProvider: ImageGenerationProvider = NoopImageProvider(),
+        connectionTester: ProviderConnectionTestClient = RecordingProviderConnectionTestClient(),
     ): ImageGenerationViewModel =
         ImageGenerationViewModel(
             imageRepository = repository,
@@ -366,6 +568,7 @@ class ImageGenerationViewModelTest {
             modelRolePreferenceRepository = modelRolePreferenceRepository,
             imageProvider = imageProvider,
             imageStorage = storage,
+            connectionTester = connectionTester,
             clock = clock,
         )
 
@@ -577,6 +780,7 @@ private class NoopImageProvider : ImageGenerationProvider {
 
 private class RecordingImageProvider(
     private val response: ImageGenerationProviderResponse = ImageGenerationProviderResponse(emptyList()),
+    private val error: Throwable? = null,
 ) : ImageGenerationProvider {
     val requests = mutableListOf<ImageGenerationProviderRequest>()
 
@@ -584,6 +788,29 @@ private class RecordingImageProvider(
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse {
         requests += request
+        error?.let { throw it }
         return response
+    }
+}
+
+private data class ProviderConnectionRequest(
+    val provider: ProviderConfig,
+    val apiKey: String?,
+)
+
+private class RecordingProviderConnectionTestClient(
+    private val result: ProviderConnectionResult = ProviderConnectionResult(
+        ok = false,
+        statusCode = null,
+        message = "测试失败",
+    ),
+    private val error: Throwable? = null,
+) : ProviderConnectionTestClient {
+    val requests = mutableListOf<ProviderConnectionRequest>()
+
+    override suspend fun test(provider: ProviderConfig, apiKey: String?): ProviderConnectionResult {
+        requests += ProviderConnectionRequest(provider, apiKey)
+        error?.let { throw it }
+        return result
     }
 }

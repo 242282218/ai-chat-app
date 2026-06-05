@@ -7,8 +7,9 @@ import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
-import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.ProviderStreamEvent
+import com.aichat.workbench.provider.api.providerFailureSummary
+import com.aichat.workbench.provider.api.recoverySummary
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -75,7 +76,7 @@ class SendMessageUseCase(
                         is ProviderStreamEvent.Failed -> current.withContent(
                             content = current.content,
                             status = MessageStatus.Failed,
-                            errorSummary = event.error.message,
+                            errorSummary = event.error.recoverySummary(),
                         )
                     }
                     dirty = true
@@ -129,10 +130,7 @@ class SendMessageUseCase(
         if (isBlank()) emptyList() else listOf(MessagePart.Text(this))
 
     private fun Throwable.summary(): String =
-        when (this) {
-            is ProviderHttpException -> error.message
-            else -> message ?: "Provider 请求失败。"
-        }
+        providerFailureSummary("Provider 请求失败。")
 
     private fun MessageStatus.isTerminal(): Boolean =
         this == MessageStatus.Completed || this == MessageStatus.Failed || this == MessageStatus.Cancelled

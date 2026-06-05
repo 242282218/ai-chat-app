@@ -10,6 +10,8 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolPermissionLevel
+import com.aichat.workbench.domain.model.ToolResult
+import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.SendMessageUseCase
@@ -26,7 +28,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class GenerationController(
     private val conversationRepository: ConversationRepository,
@@ -71,6 +75,12 @@ class GenerationController(
         scope: CoroutineScope,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
+        pendingToolApproval?.let { approval ->
+            if (approval.complete(ToolApprovalDecision.Cancelled)) {
+                onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
+                return
+            }
+        }
         val active = activeAssistantMessage
         generationJob?.cancel()
         generationJob = null
@@ -292,27 +302,62 @@ class GenerationController(
         } else {
             ToolApprovalDecision.Approved(toolCall)
         }
-        val approvedToolCall = (decision as? ToolApprovalDecision.Approved)?.toolCall
-        val execution = if (approvedToolCall != null) {
-            if (approvedToolCall != toolCall) {
-                conversationRepository.saveMessage(
-                    assistant.copy(
-                        toolCalls = assistant.toolCalls.map {
-                            if (it.id == approvedToolCall.id) approvedToolCall else it
-                        },
-                        updatedAt = clock.instant(),
-                    ),
+        val execution = try {
+            when (decision) {
+                is ToolApprovalDecision.Approved -> {
+                    if (decision.toolCall != toolCall) {
+                        conversationRepository.saveMessage(
+                            assistant.copy(
+                                toolCalls = assistant.toolCalls.map {
+                                    if (it.id == decision.toolCall.id) decision.toolCall else it
+                                },
+                                updatedAt = clock.instant(),
+                            ),
+                        )
+                    }
+                    toolExecutor.execute(conversation.id, decision.toolCall, descriptor)
+                }
+                ToolApprovalDecision.Denied -> toolExecutor.deny(conversation.id, toolCall, descriptor)
+                ToolApprovalDecision.Cancelled -> toolExecutor.cancel(conversation.id, toolCall, descriptor)
+            }
+        } catch (error: ToolExecutionCancelledException) {
+            withContext(NonCancellable) {
+                saveToolExecutionMessage(
+                    conversation = conversation,
+                    provider = provider,
+                    model = model,
+                    assistant = assistant,
+                    toolCall = toolCall,
+                    toolCallId = (decision as? ToolApprovalDecision.Approved)?.toolCall?.id ?: toolCall.id,
+                    execution = error.execution,
                 )
             }
-            toolExecutor.execute(conversation.id, approvedToolCall, descriptor)
-        } else {
-            toolExecutor.deny(conversation.id, toolCall, descriptor)
+            throw error
         }
-        val status = if (execution.result.status == com.aichat.workbench.domain.model.ToolStatus.Completed) {
-            MessageStatus.Completed
-        } else {
-            MessageStatus.Failed
+        saveToolExecutionMessage(
+            conversation = conversation,
+            provider = provider,
+            model = model,
+            assistant = assistant,
+            toolCall = toolCall,
+            toolCallId = (decision as? ToolApprovalDecision.Approved)?.toolCall?.id ?: toolCall.id,
+            execution = execution,
+        )
+        if (decision == ToolApprovalDecision.Cancelled) {
+            throw CancellationException("工具执行已取消。")
         }
+    }
+
+    private suspend fun saveToolExecutionMessage(
+        conversation: Conversation,
+        provider: ProviderConfig,
+        model: String,
+        assistant: Message,
+        toolCall: ToolCall,
+        toolCallId: com.aichat.workbench.domain.model.ToolCallId,
+        execution: ToolExecution,
+    ) {
+        val status = execution.result.status.toMessageStatus()
         val toolMessage = conversationManager.createMessage(
             conversation = conversation,
             role = MessageRole.Tool,
@@ -321,9 +366,12 @@ class GenerationController(
             provider = provider,
             model = model,
             parentMessageId = assistant.id,
-            toolCallId = approvedToolCall?.id ?: toolCall.id,
+            toolCallId = toolCallId,
             toolResult = execution.messageContent,
-            errorSummary = execution.result.error?.message,
+            errorSummary = execution.result.toolMessageErrorSummary(
+                toolName = toolCall.name,
+                toolResult = execution.messageContent,
+            ),
             contentParts = execution.contentParts.ifEmpty { listOf(MessagePart.Text(execution.messageContent)) },
         )
         conversationRepository.saveMessage(toolMessage)
@@ -354,7 +402,6 @@ class GenerationController(
             onStateChanged { it.copy(pendingToolCall = null) }
         }
     }
-
     private fun providerClient(provider: ProviderConfig): ChatProvider =
         providerRegistry.get(provider.type.value)
 
@@ -376,7 +423,6 @@ class GenerationController(
         hasImageInput: Boolean,
     ): List<ToolDescriptor> {
         if (!supportsToolCalling(model, providerSupportsTools)) return emptyList()
-        if (type == ProviderType.OpenAI && !hasImageInput) return officialHostedTools()
         val executableTools = toolExecutor.availableTools()
         if (hasImageInput || executableTools.any { it.name == "web_search" }) {
             return executableTools
@@ -387,31 +433,6 @@ class GenerationController(
             executableTools
         }
     }
-
-    private fun officialHostedTools(): List<ToolDescriptor> =
-        listOf(
-            officialHostedWebSearchTool(),
-            ToolDescriptor(
-                name = "code_interpreter",
-                displayName = "Code Interpreter",
-                description = "Run small code tasks using the provider's official hosted code interpreter.",
-                permissionLevel = ToolPermissionLevel.ReadOnly,
-                inputSchemaJson = "{}",
-                outputSchemaJson = null,
-                timeoutSeconds = null,
-                source = ToolSource.Official,
-            ),
-            ToolDescriptor(
-                name = "image_generation",
-                displayName = "Image Generation",
-                description = "Generate images using the provider's official hosted image generation tool.",
-                permissionLevel = ToolPermissionLevel.ReadOnly,
-                inputSchemaJson = "{}",
-                outputSchemaJson = null,
-                timeoutSeconds = null,
-                source = ToolSource.Official,
-            ),
-        )
 
     private fun officialHostedWebSearchTool(): ToolDescriptor =
         ToolDescriptor(
@@ -544,6 +565,7 @@ class GenerationController(
     private sealed interface ToolApprovalDecision {
         data class Approved(val toolCall: ToolCall) : ToolApprovalDecision
         data object Denied : ToolApprovalDecision
+        data object Cancelled : ToolApprovalDecision
     }
 
     private companion object {
@@ -588,5 +610,29 @@ class GenerationController(
             """\b(kotlin|java|golang|rust|python|typescript|javascript|sql|json|yaml|gradle|android|vue|regex)\b""",
         )
         val CODE_BLOCK_PATTERN = Regex("""```|\b(class|fun|func|def|fn|const|let|var|package|import|interface|struct|enum)\b""")
+    }
+}
+
+private fun ToolStatus.toMessageStatus(): MessageStatus =
+    when (this) {
+        ToolStatus.Completed -> MessageStatus.Completed
+        ToolStatus.Denied,
+        ToolStatus.Canceled,
+        ToolStatus.Cancelled,
+        -> MessageStatus.Cancelled
+        else -> MessageStatus.Failed
+    }
+
+private fun ToolResult.toolMessageErrorSummary(
+    toolName: String,
+    toolResult: String,
+): String? {
+    val error = error ?: return null
+    val structuredError = extractToolErrorResult(toolResult) ?: return error.message
+    return buildString {
+        append(structuredError.message)
+        structuredError.statusCode?.let { append("\nHTTP：$it") }
+        structuredError.retryable?.let { append("\n可重试：${if (it) "是" else "否"}") }
+        append("\n建议：${structuredError.recoveryHint(toolName)}")
     }
 }

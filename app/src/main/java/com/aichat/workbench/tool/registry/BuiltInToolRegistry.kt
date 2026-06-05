@@ -23,6 +23,35 @@ object BuiltInToolRegistry {
         FileReadToolDescriptor,
         ProviderConnectionTestToolDescriptor,
         ToolDescriptor(
+            name = "image_upload_to_model",
+            displayName = "图片发送给模型",
+            description = "把用户已选择的图片作为多模态输入发送给当前模型；必须通过聊天输入栏确认，工具不会自动读取或上传本地图片。",
+            permissionLevel = ToolPermissionLevel.HighRisk,
+            inputSchemaJson = """
+                {
+                  "type": "object",
+                  "required": ["imageUri"],
+                  "properties": {
+                    "imageUri": {
+                      "type": "string",
+                      "description": "用户通过系统图片选择器加入聊天草稿的图片 URI；不能手写本地路径。"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "发送给模型前向用户说明的分析目的。"
+                    }
+                  }
+                }
+            """.trimIndent(),
+            outputSchemaJson = """{"type":"object"}""",
+            timeoutSeconds = null,
+            source = ToolSource.BuiltIn,
+            riskLevel = ToolRiskLevel.High,
+            requiresNetwork = true,
+            requiresFileAccess = true,
+            defaultPermissionPolicy = ToolPermissionPolicy.AskEveryTime,
+        ),
+        ToolDescriptor(
             name = "image_generation",
             displayName = "图片生成",
             description = "通过已配置的图片 Provider 生成图片。",

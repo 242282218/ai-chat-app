@@ -27,7 +27,6 @@ import com.aichat.workbench.provider.api.ResponsesRequest
 import com.aichat.workbench.provider.api.ResponsesResponse
 import com.aichat.workbench.provider.api.ResponsesSseEvent
 import com.aichat.workbench.provider.api.ResponsesTool
-import com.aichat.workbench.provider.api.ResponsesToolContainer
 import com.aichat.workbench.provider.api.ToolChoice
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
@@ -269,15 +268,10 @@ open class OpenAiChatProvider(
         }
 
     private fun List<ToolDescriptor>.toResponsesTools(): List<ResponsesTool>? =
-        takeIf { it.isNotEmpty() }?.mapNotNull { tool ->
+        mapNotNull { tool ->
             if (tool.source == ToolSource.Official) {
                 when (tool.name) {
                     "web_search" -> ResponsesTool(type = "web_search_preview")
-                    "code_interpreter" -> ResponsesTool(
-                        type = "code_interpreter",
-                        container = ResponsesToolContainer(type = "auto"),
-                    )
-                    "image_generation" -> ResponsesTool(type = "image_generation")
                     else -> null
                 }
             } else {
@@ -289,7 +283,7 @@ open class OpenAiChatProvider(
                     strict = false,
                 )
             }
-        }
+        }.takeIf { it.isNotEmpty() }
 
     private fun List<ToolDescriptor>.toChatTools(): List<ChatCompletionTool>? =
         filter { it.source != ToolSource.Official }.takeIf { it.isNotEmpty() }?.map { tool ->

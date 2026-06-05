@@ -22,6 +22,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -191,7 +192,7 @@ class OpenAiChatProviderTest {
     }
 
     @Test
-    fun stream_withOfficialHostedToolsUsesResponsesApi() = runTest {
+    fun stream_withOfficialHostedToolsOnlySerializesSafeHostedSearch() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -220,10 +221,10 @@ class OpenAiChatProviderTest {
 
         assertEquals("/v1/responses", recorded.path)
         assertTrue(body.contains(""""type":"web_search_preview""""))
-        assertTrue(body.contains(""""type":"code_interpreter""""))
-        assertTrue(body.contains(""""container""""))
-        assertTrue(body.contains(""""type":"auto""""))
-        assertTrue(body.contains(""""type":"image_generation""""))
+        assertFalse(body.contains(""""type":"code_interpreter""""))
+        assertFalse(body.contains(""""container""""))
+        assertFalse(body.contains(""""type":"auto""""))
+        assertFalse(body.contains(""""type":"image_generation""""))
         assertEquals(listOf(ProviderStreamEvent.TextDelta("Found news"), ProviderStreamEvent.Completed), events)
     }
 

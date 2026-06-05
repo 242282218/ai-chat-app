@@ -36,6 +36,8 @@ import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
+import com.aichat.workbench.provider.api.ProviderError
+import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
 import com.aichat.workbench.provider.image.GeneratedImage
@@ -54,6 +56,7 @@ import com.aichat.workbench.tool.local.defaultLocalTools
 import com.aichat.workbench.tool.model.ToolPermissionPolicy
 import com.aichat.workbench.tool.model.ToolRuntimeSetting
 import com.aichat.workbench.tool.search.LocalSearchClient
+import com.aichat.workbench.tool.search.LocalSearchHttpException
 import com.aichat.workbench.tool.search.SearchConfig
 import com.aichat.workbench.tool.search.SearchProvider
 import com.aichat.workbench.tool.search.SearchResponse
@@ -61,6 +64,7 @@ import com.aichat.workbench.tool.search.SearchResult
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -179,6 +183,54 @@ class GenerationControllerTest {
         assertTrue(toolNames.contains("time"))
         assertTrue(toolNames.contains("image_generation"))
         assertTrue(toolNames.contains("web_search"))
+    }
+
+    @Test
+    fun openAiUsesLocalToolsWithoutHostedTools() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(flowOf(ProviderStreamEvent.TextDelta("Answer"), ProviderStreamEvent.Completed)),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAI.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(clock),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "openai-model", input = "Draw a cat"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Draw a cat",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        val toolNames = chatProvider.requests.single().tools.map { it.name }
+        assertTrue(toolNames.contains("time"))
+        assertTrue(toolNames.contains("image_generation"))
+        assertFalse(toolNames.contains("web_search"))
+        assertFalse(toolNames.contains("code_interpreter"))
     }
 
     @Test
@@ -451,6 +503,106 @@ class GenerationControllerTest {
     }
 
     @Test
+    fun failedImageToolCallUsesImageSpecificRecoverySummary() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("new-api", ProviderType.NewApi).copy(
+            models = listOf(
+                toolCapableModel("chat-model"),
+                imageCapableModel("gpt-image-1"),
+            ),
+            defaultModel = "chat-model",
+        )
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "image-key"))
+        val toolRepository = GenerationControllerToolInvocationRepository()
+        val toolCall = ToolCall(
+            ToolCallId("call_image_failed"),
+            "image_generation",
+            """{"prompt":"Draw a cat","count":1}""",
+        )
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(
+                flowOf(ProviderStreamEvent.ToolCallDelta(toolCall), ProviderStreamEvent.Completed),
+                flowOf(ProviderStreamEvent.TextDelta("Image failure handled"), ProviderStreamEvent.Completed),
+            ),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.NewApi.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(
+                clock = clock,
+                toolInvocationRepository = toolRepository,
+                providerRepository = providerRepository,
+                modelRolePreferenceRepository = GenerationControllerModelRolePreferenceRepository(
+                    listOf(
+                        ModelRolePreference(
+                            id = ModelRolePreferenceId("new-api:Image"),
+                            providerId = provider.id,
+                            role = ModelRole.Image,
+                            model = "gpt-image-1",
+                            updatedAt = clock.instant(),
+                        ),
+                    ),
+                ),
+                imageProvider = GenerationControllerImageProvider(
+                    error = ProviderHttpException(
+                        ProviderError(
+                            code = "rate_limited",
+                            message = "too many image requests",
+                            statusCode = 429,
+                            retryable = true,
+                        ),
+                    ),
+                ),
+                toolSettingsProvider = {
+                    mapOf(
+                        "image_generation" to ToolRuntimeSetting(
+                            toolName = "image_generation",
+                            permissionPolicy = ToolPermissionPolicy.AllowWithoutPrompt,
+                        ),
+                    )
+                },
+            ),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "chat-model", input = "Generate image"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Generate image",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+
+        assertEquals(MessageStatus.Failed, toolMessage.status)
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("HTTP：429"))
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("图片生成请求被限流"))
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("切换图片模型/Provider"))
+        assertFalse(toolMessage.errorSummary.orEmpty().contains("搜索 Provider"))
+        assertEquals("rate_limited", toolRepository.savedResults.value.single().error?.code)
+        assertTrue(conversationRepository.allMessages().any { it.content == "Image failure handled" })
+    }
+
+    @Test
     fun highRiskToolIgnoresAllowPolicyAndWaitsForApproval() = runTest(mainDispatcherRule.testDispatcher) {
         val provider = provider("compatible", ProviderType.OpenAICompatible)
         val conversationRepository = GenerationControllerConversationRepository(clock)
@@ -521,7 +673,81 @@ class GenerationControllerTest {
         assertFalse(state.isGenerating)
         assertEquals("tool_denied", toolRepository.savedResults.value.single().error?.code)
         assertEquals(ToolStatus.Denied, toolRepository.savedResults.value.single().status)
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+        assertEquals(MessageStatus.Cancelled, toolMessage.status)
+        assertEquals("用户拒绝执行工具。", toolMessage.errorSummary)
         assertTrue(conversationRepository.allMessages().any { it.content == "Final answer" && it.status == MessageStatus.Completed })
+    }
+
+    @Test
+    fun stopPendingHighRiskToolWritesCancelledResultToChatStream() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("compatible", ProviderType.OpenAICompatible)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val toolRepository = GenerationControllerToolInvocationRepository()
+        val toolCall = ToolCall(
+            ToolCallId("call_file_stop"),
+            "file_read",
+            """{"uri":"content://docs/notes.md"}""",
+        )
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(
+                flowOf(ProviderStreamEvent.ToolCallDelta(toolCall), ProviderStreamEvent.Completed),
+                flowOf(ProviderStreamEvent.TextDelta("Should not continue"), ProviderStreamEvent.Completed),
+            ),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAICompatible.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(
+                clock = clock,
+                toolInvocationRepository = toolRepository,
+            ),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "gpt-test", input = "Read file"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Read file",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        assertTrue(state.isGenerating)
+        assertEquals(toolCall, state.pendingToolCall?.toolCall)
+
+        controller.stop(this, onStateChanged = { transform -> state = transform(state) })
+        advanceUntilIdle()
+
+        val savedResult = toolRepository.savedResults.value.single()
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+        assertFalse(state.isGenerating)
+        assertEquals(null, state.pendingToolCall)
+        assertEquals(ToolStatus.Cancelled, savedResult.status)
+        assertEquals("tool_cancelled", savedResult.error?.code)
+        assertEquals(MessageStatus.Cancelled, toolMessage.status)
+        assertEquals(toolCall.id, toolMessage.toolCallId)
+        assertTrue(toolMessage.toolResult.orEmpty().contains("tool_cancelled"))
+        assertFalse(conversationRepository.allMessages().any { it.content == "Should not continue" })
     }
 
     @Test
@@ -600,6 +826,78 @@ class GenerationControllerTest {
         assertTrue(toolMessage.content.contains(""""output":"{\"ok\":true}""""))
         assertTrue(chatProvider.requests[1].messages.any { it.role == MessageRole.Tool && it.toolCallId == toolCall.id })
         assertTrue(conversationRepository.allMessages().any { it.content == "JS result summarized" })
+    }
+
+    @Test
+    fun cancelledLocalJsToolWritesCancelledResultToChatStream() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("compatible", ProviderType.OpenAICompatible)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val toolRepository = GenerationControllerToolInvocationRepository()
+        val toolCall = ToolCall(
+            ToolCallId("call_js_cancelled"),
+            "local_js",
+            """{"code":"return 1;"}""",
+        )
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(
+                flowOf(ProviderStreamEvent.ToolCallDelta(toolCall), ProviderStreamEvent.Completed),
+                flowOf(ProviderStreamEvent.TextDelta("Should not continue"), ProviderStreamEvent.Completed),
+            ),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAICompatible.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(
+                clock = clock,
+                toolInvocationRepository = toolRepository,
+                localToolExecutor = localToolExecutor(
+                    scriptRunner = GenerationControllerScriptRunner(
+                        error = CancellationException("user stopped"),
+                    ),
+                ),
+            ),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "gpt-test", input = "Run this JS"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Run this JS",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        controller.confirmToolCall()
+        advanceUntilIdle()
+
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+        val savedResult = toolRepository.savedResults.value.single()
+        assertFalse(state.isGenerating)
+        assertEquals(ToolStatus.Cancelled, savedResult.status)
+        assertEquals(MessageStatus.Cancelled, toolMessage.status)
+        assertEquals(toolCall.id, toolMessage.toolCallId)
+        assertTrue(toolMessage.toolResult.orEmpty().contains("tool_cancelled"))
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("工具执行已取消"))
+        assertFalse(conversationRepository.allMessages().any { it.content == "Should not continue" })
     }
 
     @Test
@@ -856,6 +1154,89 @@ class GenerationControllerTest {
         assertTrue(toolMessage.content.contains("example.com"))
         assertTrue(chatProvider.requests[1].messages.any { it.role == MessageRole.Tool && it.content.contains("https://example.com/ai-news") })
         assertTrue(conversationRepository.allMessages().any { it.content == "Search summarized" })
+    }
+
+    @Test
+    fun failedLocalSearchToolPersistsRecoverySummaryInChatStream() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("compatible", ProviderType.OpenAICompatible)
+        val conversationRepository = GenerationControllerConversationRepository(clock)
+        val providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key"))
+        val toolRepository = GenerationControllerToolInvocationRepository()
+        val searchClient = GenerationControllerSearchClient(
+            error = LocalSearchHttpException(
+                statusCode = 429,
+                code = "local_search_http_429",
+                message = "Rate limit exceeded",
+            ),
+        )
+        val toolCall = ToolCall(
+            ToolCallId("call_search"),
+            "web_search_local",
+            """{"query":"AI news","maxResults":1,"topic":"news"}""",
+        )
+        val chatProvider = GenerationControllerChatProvider(
+            listOf(
+                flowOf(ProviderStreamEvent.ToolCallDelta(toolCall), ProviderStreamEvent.Completed),
+                flowOf(ProviderStreamEvent.TextDelta("Search failure handled"), ProviderStreamEvent.Completed),
+            ),
+        )
+        val controller = GenerationController(
+            conversationRepository = conversationRepository,
+            providerRepository = providerRepository,
+            conversationManager = ConversationManager(conversationRepository, clock),
+            conversationCompactor = ConversationCompactor(conversationRepository, clock),
+            providerRegistry = ProviderRegistry().apply {
+                register(ProviderType.OpenAICompatible.value, chatProvider)
+            },
+            toolExecutor = toolExecutor(
+                clock = clock,
+                toolInvocationRepository = toolRepository,
+                localToolExecutor = localToolExecutor(
+                    searchConfigProvider = { enabledSearchConfig() },
+                    searchClient = searchClient,
+                ),
+                toolSettingsProvider = {
+                    mapOf(
+                        "web_search_local" to ToolRuntimeSetting(
+                            toolName = "web_search_local",
+                            permissionPolicy = ToolPermissionPolicy.AllowWithoutPrompt,
+                        ),
+                    )
+                },
+            ),
+            clock = clock,
+        )
+        var state = ChatUiState(
+            providers = listOf(provider),
+            selectedProviderId = provider.id.value,
+            draft = DraftState(model = "gpt-test", input = "Search AI news"),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "Search AI news",
+            editedMessage = null,
+            retryFailedMessage = null,
+            onConversationReady = { conversation ->
+                state = state.copy(
+                    conversations = state.conversations + conversation,
+                    selectedConversationId = conversation.id,
+                )
+            },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        val toolMessage = conversationRepository.allMessages().single { it.role == MessageRole.Tool }
+
+        assertFalse(state.isGenerating)
+        assertEquals(MessageStatus.Failed, toolMessage.status)
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("HTTP：429"))
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("可重试：是"))
+        assertTrue(toolMessage.errorSummary.orEmpty().contains("请求被限流，稍后重试，或切换搜索 Provider。"))
+        assertEquals("local_search_http_429", toolRepository.savedResults.value.single().error?.code)
+        assertTrue(conversationRepository.allMessages().any { it.content == "Search failure handled" })
     }
 
     @Test
@@ -1682,11 +2063,14 @@ private class GenerationControllerImageGenerationRepository : ImageGenerationRep
 
 private class GenerationControllerImageProvider(
     private val response: ImageGenerationProviderResponse = ImageGenerationProviderResponse(emptyList()),
+    private val error: RuntimeException? = null,
 ) : ImageGenerationProvider {
     override suspend fun generate(
         request: ImageGenerationProviderRequest,
-    ): ImageGenerationProviderResponse =
-        response
+    ): ImageGenerationProviderResponse {
+        error?.let { throw it }
+        return response
+    }
 }
 
 private class GenerationControllerImageStorage : ImageStorage {
@@ -1706,6 +2090,7 @@ private class GenerationControllerScriptRunner(
         timedOut = false,
         truncated = false,
     ),
+    private val error: Throwable? = null,
 ) : LocalScriptRunner {
     val requests = mutableListOf<LocalScriptRunRequest>()
 
@@ -1713,6 +2098,7 @@ private class GenerationControllerScriptRunner(
 
     override suspend fun run(request: LocalScriptRunRequest): LocalScriptRunResult {
         requests += request
+        error?.let { throw it }
         return result
     }
 }
@@ -1746,11 +2132,13 @@ private class GenerationControllerSearchClient(
         fetchedAt = Instant.parse("2026-06-01T00:00:00Z"),
         results = emptyList(),
     ),
+    private val error: Throwable? = null,
 ) : LocalSearchClient {
     val requests = mutableListOf<GenerationControllerSearchRequest>()
 
     override suspend fun search(query: String, config: SearchConfig): SearchResponse {
         requests += GenerationControllerSearchRequest(query, config)
+        error?.let { throw it }
         return response.copy(query = query)
     }
 }

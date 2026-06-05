@@ -68,11 +68,14 @@ fun AppNavHost() {
                 ImageGenerationScreen(
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
+                    onSendToChat = { draft -> navController.navigateToNewChat(draft, temporary = false) },
                     showBackButton = false,
                 )
             }
             composable(AppDestination.ToolsHub.route) {
-                ToolsHubScreen()
+                ToolsHubScreen(
+                    onSendToChat = { draft -> navController.navigateToNewChat(draft, temporary = false) },
+                )
             }
             composable(AppDestination.SettingsHub.route) {
                 SettingsHubScreen(
@@ -92,6 +95,7 @@ fun AppNavHost() {
                         ?.let(::ConversationId),
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
+                    onOpenTools = { navController.navigateSingleTop(AppDestination.ToolsHub) },
                 )
             }
             composable(
@@ -114,6 +118,7 @@ fun AppNavHost() {
                     initialTemporary = entry.arguments?.getBoolean(CHAT_TEMPORARY_ARG) == true,
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
+                    onOpenTools = { navController.navigateSingleTop(AppDestination.ToolsHub) },
                 )
             }
             composable(AppDestination.ProviderSettings.route) {

@@ -32,13 +32,25 @@ class LocalWebSearchTool(
         if (settings.apiKey.isBlank()) {
             throw LocalToolUnavailableException("搜索 API Key 未配置，请在工具页保存搜索 Provider Key。")
         }
+        val maxResults = args.maxResults ?: settings.maxResults
+        if (maxResults !in MIN_LOCAL_SEARCH_RESULTS..MAX_LOCAL_SEARCH_RESULTS) {
+            throw InvalidLocalToolArgumentsException("maxResults 必须在 1 到 20 之间。")
+        }
+        val searchDepth = args.searchDepth?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: settings.searchDepth
+        if (searchDepth !in VALID_LOCAL_SEARCH_DEPTHS) {
+            throw InvalidLocalToolArgumentsException("searchDepth 仅支持 basic 或 advanced。")
+        }
+        val topic = args.topic?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: settings.topic
+        if (topic !in VALID_LOCAL_SEARCH_TOPICS) {
+            throw InvalidLocalToolArgumentsException("topic 仅支持 general、news 或 finance。")
+        }
 
         val response = searchClient.search(
             query = query,
             config = settings.copy(
-                maxResults = args.maxResults ?: settings.maxResults,
-                searchDepth = args.searchDepth?.trim()?.takeIf { it.isNotBlank() } ?: settings.searchDepth,
-                topic = args.topic?.trim()?.takeIf { it.isNotBlank() } ?: settings.topic,
+                maxResults = maxResults,
+                searchDepth = searchDepth,
+                topic = topic,
             ),
         )
         return LocalToolExecution(ToolOutput.Json(localToolJson.encodeToString(response.toOutput())))
@@ -91,6 +103,11 @@ private data class LocalWebSearchArguments(
     val searchDepth: String? = null,
     val topic: String? = null,
 )
+
+private const val MIN_LOCAL_SEARCH_RESULTS = 1
+private const val MAX_LOCAL_SEARCH_RESULTS = 20
+private val VALID_LOCAL_SEARCH_DEPTHS = setOf("basic", "advanced")
+private val VALID_LOCAL_SEARCH_TOPICS = setOf("general", "news", "finance")
 
 @Serializable
 private data class LocalWebSearchOutput(

@@ -48,9 +48,12 @@ import java.net.URI
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
@@ -62,6 +65,15 @@ data class ToolExecution(
     val messageContent: String,
     val contentParts: List<MessagePart> = emptyList(),
 )
+
+class ToolExecutionCancelledException(
+    val execution: ToolExecution,
+    cause: CancellationException,
+) : CancellationException(cause.message) {
+    init {
+        initCause(cause)
+    }
+}
 
 private data class ExecutedToolOutput(
     val output: ToolOutput,
@@ -104,11 +116,19 @@ class ToolExecutor(
         descriptor: ToolDescriptor?,
     ): ToolExecution {
         val toolDescriptor = descriptor
-            ?: return saveFailure(conversationId, toolCall, ToolPermissionLevel.HighRisk, "unknown_tool", "未知工具。")
+            ?: return saveFailure(
+                conversationId = conversationId,
+                toolCall = toolCall,
+                toolName = toolCall.name.canonicalToolName(),
+                permissionLevel = ToolPermissionLevel.HighRisk,
+                code = "unknown_tool",
+                message = "未知工具。",
+            )
         if (!toolSettingsProvider().runtimeSettingFor(toolDescriptor).enabled) {
             return saveFailure(
                 conversationId = conversationId,
                 toolCall = toolCall,
+                toolName = toolDescriptor.name,
                 permissionLevel = toolDescriptor.permissionLevel,
                 code = "tool_disabled",
                 message = "工具已禁用。",
@@ -118,9 +138,20 @@ class ToolExecutor(
             return saveFailure(
                 conversationId = conversationId,
                 toolCall = toolCall,
+                toolName = toolDescriptor.name,
                 permissionLevel = toolDescriptor.permissionLevel,
                 code = "hosted_tool_not_executable_locally",
                 message = "官方 Hosted Tool 由 Provider 执行，本地不执行。",
+            )
+        }
+        if (toolDescriptor.name == "image_upload_to_model") {
+            return saveFailure(
+                conversationId = conversationId,
+                toolCall = toolCall,
+                toolName = toolDescriptor.name,
+                permissionLevel = toolDescriptor.permissionLevel,
+                code = "image_upload_requires_chat_confirmation",
+                message = "图片发送给模型必须通过聊天输入栏选择图片，并在发送前二次确认；工具不能自动读取或上传本地图片。",
             )
         }
         val startedAt = clock.instant()
@@ -157,13 +188,30 @@ class ToolExecutor(
                 ToolExecution(result, output.asModelContent(), executed.contentParts)
             },
             onFailure = { error ->
+                if (error is CancellationException) {
+                    val execution = withContext(NonCancellable) {
+                        saveFailure(
+                            conversationId = conversationId,
+                            toolCall = toolCall,
+                            toolName = toolDescriptor.name,
+                            permissionLevel = toolDescriptor.permissionLevel,
+                            code = "tool_cancelled",
+                            message = "工具执行已取消。",
+                            startedAt = startedAt,
+                            status = ToolStatus.Cancelled,
+                        )
+                    }
+                    throw ToolExecutionCancelledException(execution, error)
+                }
                 saveFailure(
                     conversationId = conversationId,
                     toolCall = toolCall,
+                    toolName = toolDescriptor.name,
                     permissionLevel = toolDescriptor.permissionLevel,
                     code = error.toToolErrorCode(),
                     message = error.message ?: "工具执行失败。",
                     startedAt = startedAt,
+                    cause = error,
                 )
             },
         )
@@ -180,10 +228,26 @@ class ToolExecutor(
         saveFailure(
             conversationId = conversationId,
             toolCall = toolCall,
+            toolName = descriptor?.name ?: toolCall.name.canonicalToolName(),
             permissionLevel = descriptor?.permissionLevel ?: ToolPermissionLevel.HighRisk,
             code = "tool_denied",
             message = "用户拒绝执行工具。",
             status = ToolStatus.Denied,
+        )
+
+    suspend fun cancel(
+        conversationId: ConversationId,
+        toolCall: ToolCall,
+        descriptor: ToolDescriptor?,
+    ): ToolExecution =
+        saveFailure(
+            conversationId = conversationId,
+            toolCall = toolCall,
+            toolName = descriptor?.name ?: toolCall.name.canonicalToolName(),
+            permissionLevel = descriptor?.permissionLevel ?: ToolPermissionLevel.HighRisk,
+            code = "tool_cancelled",
+            message = "工具执行已取消。",
+            status = ToolStatus.Cancelled,
         )
 
     private fun localTools(): List<ToolDescriptor> =
@@ -356,28 +420,45 @@ class ToolExecutor(
     private suspend fun saveFailure(
         conversationId: ConversationId,
         toolCall: ToolCall,
+        toolName: String,
         permissionLevel: ToolPermissionLevel,
         code: String,
         message: String,
         startedAt: java.time.Instant = clock.instant(),
         status: ToolStatus = ToolStatus.Failed,
+        cause: Throwable? = null,
     ): ToolExecution {
-        val output = ToolOutput.Json(toolJson.encodeToString(ToolErrorOutput(code, message)))
+        val output = ToolOutput.Json(
+            toolJson.encodeToString(
+                ToolErrorOutput(
+                    code = code,
+                    message = message,
+                    statusCode = cause.toolErrorStatusCode(),
+                    retryable = cause.toolErrorRetryable(),
+                ),
+            ),
+        )
         val finishedAt = clock.instant()
         val result = ToolResult(
             id = toolCall.id,
-            toolName = toolCall.name,
+            toolName = toolName,
             permissionLevel = permissionLevel,
             inputSummary = toolCall.arguments.toInputSummary(),
             output = output,
             status = status,
             startedAt = startedAt,
             finishedAt = finishedAt,
-            error = ToolError(code, message),
+            error = ToolError(
+                code = code,
+                message = message,
+                statusCode = cause.toolErrorStatusCode(),
+                retryable = cause.toolErrorRetryable(),
+            ),
             conversationId = conversationId,
             rawInputJson = toolCall.arguments,
             rawOutputJson = output.value,
             durationMs = startedAt.durationUntilMs(finishedAt),
+            canceledAt = finishedAt.takeIf { status == ToolStatus.Canceled || status == ToolStatus.Cancelled },
         )
         toolInvocationRepository.saveToolResult(conversationId, result)
         return ToolExecution(result, output.asModelContent())
@@ -446,6 +527,20 @@ class ToolExecutor(
             else -> "tool_failed"
         }
 
+    private fun Throwable?.toolErrorStatusCode(): Int? =
+        when (this) {
+            is GatewayHttpException -> statusCode
+            is LocalSearchHttpException -> statusCode
+            else -> null
+        }
+
+    private fun Throwable?.toolErrorRetryable(): Boolean? =
+        when (this) {
+            is GatewayHttpException -> statusCode == 429 || statusCode in 500..599
+            is LocalSearchHttpException -> statusCode == 429 || statusCode in 500..599
+            else -> null
+        }
+
     private fun String.isValidGatewayUrl(): Boolean {
         val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
         return uri.host != null && uri.scheme?.lowercase() in setOf("http", "https")
@@ -504,7 +599,7 @@ private class GatewaySettingsException(
 ) : RuntimeException(message)
 
 private val REMOTE_TOOLS_CACHE_TTL: Duration = Duration.ofMinutes(5)
-private val LOCAL_TOOL_NAMES = setOf("image_generation")
+private val LOCAL_TOOL_NAMES = setOf("image_upload_to_model", "image_generation")
 private val LOCAL_EXECUTABLE_TOOL_NAMES =
     setOf(
         "time",
@@ -547,7 +642,12 @@ private data class ImageGenerationArguments(
 )
 
 @Serializable
-private data class ToolErrorOutput(val code: String, val message: String)
+private data class ToolErrorOutput(
+    val code: String,
+    val message: String,
+    val statusCode: Int? = null,
+    val retryable: Boolean? = null,
+)
 
 @Serializable
 private data class ImageGenerationOutput(

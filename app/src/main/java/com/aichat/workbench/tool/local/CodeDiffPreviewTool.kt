@@ -14,6 +14,9 @@ class CodeDiffPreviewTool : LocalTool {
 
     override suspend fun execute(request: LocalToolRequest): LocalToolExecution {
         val args = decodeLocalToolArguments<CodeDiffPreviewArguments>(request.toolCall.arguments)
+        if (args.original.isBlank() && args.modified.isBlank()) {
+            throw InvalidLocalToolArgumentsException("original 和 modified 不能同时为空。")
+        }
         val originalLines = args.original.lines()
         val modifiedLines = args.modified.lines()
         val output = CodeDiffPreviewOutput(

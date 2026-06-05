@@ -1,11 +1,6 @@
 package com.aichat.workbench.feature.image
 
-import android.content.ContentValues
-import android.content.Context
-import android.content.Intent
 import android.graphics.BitmapFactory
-import android.os.Build
-import android.provider.MediaStore
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,8 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
@@ -59,12 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.ui.component.InlineNotice
@@ -75,7 +73,6 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.WorkbenchPanel
-import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
@@ -84,6 +81,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ImageGenerationScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
+    onSendToChat: (String) -> Unit,
     modifier: Modifier = Modifier,
     showBackButton: Boolean = true,
     viewModel: ImageGenerationViewModel = koinViewModel(),
@@ -137,6 +135,7 @@ fun ImageGenerationScreen(
                 ImageGenerationForm(
                     state = state,
                     onOpenProviders = onOpenProviders,
+                    onSendToChat = onSendToChat,
                     controlsExpanded = controlsExpanded,
                     onToggleControls = { controlsExpanded = !controlsExpanded },
                     viewModel = viewModel,
@@ -157,9 +156,10 @@ fun ImageGenerationScreen(
                     ImageGenerationRow(
                         generation = generation,
                         onReusePrompt = { viewModel.reusePrompt(generation.prompt) },
-                        onRegenerate = { viewModel.regenerate(generation.prompt) },
-                        onSave = { generation.originalPath?.let { saveImage(context, generation.id.value, it) } },
-                        onShare = { generation.originalPath?.let { shareImage(context, it) } },
+                        onRegenerate = { viewModel.regenerate(generation) },
+                        onSave = { generation.originalPath?.let { saveGeneratedImage(context, generation.id.value, it) } },
+                        onShare = { generation.originalPath?.let { shareGeneratedImage(context, it) } },
+                        onSendToChat = { onSendToChat(generation.toChatReferenceDraft()) },
                     )
                 }
             }
@@ -254,10 +254,13 @@ private fun ImageLibraryHeader(
 private fun ImageGenerationForm(
     state: ImageGenerationUiState,
     onOpenProviders: () -> Unit,
+    onSendToChat: (String) -> Unit,
     controlsExpanded: Boolean,
     onToggleControls: () -> Unit,
     viewModel: ImageGenerationViewModel,
 ) {
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
     WorkbenchPanel(
         title = "图像创作台",
         description = "先描述画面，模型和尺寸按需展开。",
@@ -360,6 +363,40 @@ private fun ImageGenerationForm(
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = if (state.isGenerating) "停止生成" else "生成图片")
         }
+        OutlinedButton(
+            onClick = viewModel::testConnection,
+            enabled = state.selectedProvider != null && !state.isGenerating && !state.isTestingConnection,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = if (state.isTestingConnection) "测试中" else "测试模型连接")
+        }
+        state.connectionTestMessage?.let { message ->
+            InlineNotice(
+                text = message,
+                icon = Icons.Filled.Check,
+                tone = when (state.connectionTestOk) {
+                    true -> StatusTone.Success
+                    false -> StatusTone.Critical
+                    null -> StatusTone.Accent
+                },
+            ) {
+                state.connectionTestDiagnostic?.let { diagnostic ->
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.ContentCopy,
+                        label = "复制测试诊断",
+                        onClick = { clipboard.setText(AnnotatedString(diagnostic)) },
+                    )
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.Chat,
+                        label = "带入聊天",
+                        onClick = { onSendToChat(diagnostic.toConnectionTestChatDraft()) },
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
         state.error?.let {
             InlineNotice(
                 text = it,
@@ -369,6 +406,16 @@ private fun ImageGenerationForm(
         }
     }
 }
+
+internal fun String.toConnectionTestChatDraft(): String =
+    """
+        请根据下面的图片模型连接测试诊断，判断配置是否可用于图片生成，并给出下一步处理建议。
+        只能基于诊断字段分析，不要要求我粘贴 API Key，也不要输出或推测 API Key 明文。
+
+        ```text
+        ${trim()}
+        ```
+    """.trimIndent()
 
 private fun imageTopBarSubtitle(state: ImageGenerationUiState): String {
     val provider = state.selectedProvider?.name ?: "需要图片模型"
@@ -555,6 +602,7 @@ private fun ImageGenerationRow(
     onRegenerate: () -> Unit,
     onSave: () -> Unit,
     onShare: () -> Unit,
+    onSendToChat: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -595,7 +643,7 @@ private fun ImageGenerationRow(
                 )
                 generation.errorSummary?.let {
                     Text(
-                        text = "$it\n提示词已保留，可复用后修改并重试。",
+                        text = "$it\n参数已保留，可复用后修改并重试。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -618,6 +666,13 @@ private fun ImageGenerationRow(
                         onClick = onRegenerate,
                         enabled = generation.canRegenerate(),
                         tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                item {
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.Chat,
+                        label = "发到聊天",
+                        onClick = onSendToChat,
                     )
                 }
                 item {
@@ -730,40 +785,6 @@ private fun LocalThumbnail(path: String) {
             contentScale = ContentScale.Crop,
         )
     }
-}
-
-private fun saveImage(context: Context, id: String, path: String) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-        shareImage(context, path)
-        return
-    }
-    val file = File(path)
-    if (!file.exists()) return
-    val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "$id.png")
-        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/AI Chat")
-    }
-    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        ?: return
-    context.contentResolver.openOutputStream(uri)?.use { output ->
-        file.inputStream().use { input -> input.copyTo(output) }
-    }
-}
-
-private fun shareImage(context: Context, path: String) {
-    val file = File(path)
-    if (!file.exists()) return
-    val uri = FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file,
-    )
-    val intent = Intent(Intent.ACTION_SEND)
-        .setType("image/png")
-        .putExtra(Intent.EXTRA_STREAM, uri)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(intent, "分享图片"))
 }
 
 private fun String.preview(maxLength: Int): String {

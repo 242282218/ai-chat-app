@@ -82,13 +82,22 @@ class RoomToolInvocationRepository(
     }
 
     private fun ToolError.toJson(): String =
-        repositoryJson.encodeToString(ToolErrorJson(code = code, message = message))
+        repositoryJson.encodeToString(
+            ToolErrorJson(
+                code = code,
+                message = message,
+                statusCode = statusCode,
+                retryable = retryable,
+            ),
+        )
 
     private fun String.toToolError(): ToolError {
         val json = repositoryJson.decodeFromString<ToolErrorJson>(this)
         return ToolError(
             code = json.code,
             message = json.message,
+            statusCode = json.statusCode,
+            retryable = json.retryable,
         )
     }
 
@@ -111,4 +120,6 @@ private data class ToolOutputJson(
 private data class ToolErrorJson(
     val code: String,
     val message: String,
+    val statusCode: Int? = null,
+    val retryable: Boolean? = null,
 )

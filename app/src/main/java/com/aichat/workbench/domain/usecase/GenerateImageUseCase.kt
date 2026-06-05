@@ -7,7 +7,7 @@ import com.aichat.workbench.domain.model.ImageGenerationStatus
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
-import com.aichat.workbench.provider.api.ProviderHttpException
+import com.aichat.workbench.provider.api.providerFailureSummary
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import java.time.Clock
@@ -104,8 +104,5 @@ class GenerateImageUseCase(
         )
 
     private fun Throwable.summary(): String =
-        when (this) {
-            is ProviderHttpException -> error.message
-            else -> message ?: "图片生成失败。"
-        }
+        providerFailureSummary("图片生成失败。")
 }

@@ -236,8 +236,8 @@ fun ProviderSettingsScreen(
         val normalizedModels = models
             .withManualModel(type, trimmedModel)
             .withManualImageModel(trimmedImageModel)
-            .withManualModel(type, trimmedToolModel)
-            .withManualModel(type, trimmedCodeModel)
+            .withManualToolModel(trimmedToolModel)
+            .withManualCodeModel(trimmedCodeModel)
         return ProviderConfig(
             id = providerId,
             name = name.trim(),
@@ -437,8 +437,8 @@ fun ProviderSettingsScreen(
                                             models = discoveredModels
                                                 .withManualModel(type, defaultModel)
                                                 .withManualImageModel(imageModel)
-                                                .withManualModel(type, toolModel)
-                                                .withManualModel(type, codeModel),
+                                                .withManualToolModel(toolModel)
+                                                .withManualCodeModel(codeModel),
                                             defaultModel = defaultModel.ifBlank { null },
                                         )
                                     }
@@ -1275,25 +1275,22 @@ internal fun List<ModelConfig>.withManualModel(type: ProviderType, model: String
         ).distinctBy { it.id }
 }
 
-internal fun List<ModelConfig>.withManualImageModel(model: String): List<ModelConfig> {
-    val trimmedModel = model.trim()
-    val normalizedModels = map { item ->
-        val id = item.id.trim()
-        if (id == trimmedModel) {
-            item.copy(
-                id = id,
-                displayName = item.displayName.trim().ifBlank { id },
-                capability = imageGenerationCapability(id),
-            )
-        } else {
-            item.copy(
-                id = id,
-                displayName = item.displayName.trim().ifBlank { id },
-                capability = item.capability?.copy(model = item.capability.model.trim()),
-            )
-        }
-    }.filter { it.id.isNotBlank() }
+internal fun List<ModelConfig>.withManualImageModel(model: String): List<ModelConfig> =
+    withManualRoleModel(model, ::imageGenerationCapability)
 
+internal fun List<ModelConfig>.withManualToolModel(model: String): List<ModelConfig> =
+    withManualRoleModel(model, ::toolCallingCapability)
+
+internal fun List<ModelConfig>.withManualCodeModel(model: String): List<ModelConfig> =
+    withManualRoleModel(model, ::codeGenerationCapability)
+
+private fun List<ModelConfig>.withManualRoleModel(
+    model: String,
+    capabilityFor: (String) -> ModelCapability,
+): List<ModelConfig> {
+    val trimmedModel = model.trim()
+    val normalizedModels = map { item -> item.normalizedForRoleModel(trimmedModel, capabilityFor) }
+        .filter { it.id.isNotBlank() }
     if (trimmedModel.isBlank() || normalizedModels.any { it.id == trimmedModel }) {
         return normalizedModels.distinctBy { it.id }
     }
@@ -1303,9 +1300,25 @@ internal fun List<ModelConfig>.withManualImageModel(model: String): List<ModelCo
             ModelConfig(
                 id = trimmedModel,
                 displayName = trimmedModel,
-                capability = imageGenerationCapability(trimmedModel),
+                capability = capabilityFor(trimmedModel),
             )
         ).distinctBy { it.id }
+}
+
+private fun ModelConfig.normalizedForRoleModel(
+    roleModel: String,
+    capabilityFor: (String) -> ModelCapability,
+): ModelConfig {
+    val normalizedId = id.trim()
+    return copy(
+        id = normalizedId,
+        displayName = displayName.trim().ifBlank { normalizedId },
+        capability = if (normalizedId == roleModel) {
+            capabilityFor(normalizedId)
+        } else {
+            capability?.copy(model = capability.model.trim())
+        },
+    )
 }
 
 private fun List<ModelConfig>.explicitImageModel(): String =
@@ -1322,6 +1335,32 @@ private fun imageGenerationCapability(model: String): ModelCapability =
         imageGeneration = true,
         toolCalling = false,
         structuredOutput = false,
+        longContext = false,
+        maxContextTokens = null,
+        source = ModelCapabilitySource.UserOverride,
+    )
+
+private fun toolCallingCapability(model: String): ModelCapability =
+    ModelCapability(
+        model = model,
+        text = true,
+        vision = false,
+        imageGeneration = false,
+        toolCalling = true,
+        structuredOutput = true,
+        longContext = false,
+        maxContextTokens = null,
+        source = ModelCapabilitySource.UserOverride,
+    )
+
+private fun codeGenerationCapability(model: String): ModelCapability =
+    ModelCapability(
+        model = model,
+        text = true,
+        vision = false,
+        imageGeneration = false,
+        toolCalling = false,
+        structuredOutput = true,
         longContext = false,
         maxContextTokens = null,
         source = ModelCapabilitySource.UserOverride,

@@ -303,6 +303,32 @@ class ProviderDraftsTest {
         assertTrue(imageModel.capability?.imageGeneration == true)
     }
 
+    @Test
+    fun addsManualToolModelWithToolCallingCapability() {
+        val models = listOf(
+            model("gpt-5.4", text = true, imageGeneration = false),
+        ).withManualToolModel("tool-router")
+
+        val toolModel = models.first { it.id == "tool-router" }
+        assertTrue(toolModel.capability?.text == true)
+        assertTrue(toolModel.capability?.toolCalling == true)
+        assertTrue(toolModel.capability?.structuredOutput == true)
+        assertFalse(toolModel.capability?.imageGeneration == true)
+    }
+
+    @Test
+    fun manualCodeModelOverridesDiscoveredImageCapabilityForSameModel() {
+        val models = listOf(
+            model("code-helper", text = false, imageGeneration = true),
+        ).withManualCodeModel("code-helper")
+
+        val codeModel = models.single()
+        assertTrue(codeModel.capability?.text == true)
+        assertFalse(codeModel.capability?.toolCalling == true)
+        assertTrue(codeModel.capability?.structuredOutput == true)
+        assertFalse(codeModel.capability?.imageGeneration == true)
+    }
+
     private fun provider(
         type: ProviderType = ProviderType.OpenAI,
         name: String = "Provider",
