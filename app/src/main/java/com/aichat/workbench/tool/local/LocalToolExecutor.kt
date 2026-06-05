@@ -32,7 +32,9 @@ interface LocalTool {
 class LocalToolExecutor(
     tools: List<LocalTool>,
 ) {
-    private val toolsByName = tools.associateBy { it.descriptor.name }
+    private val toolsByName = tools.associateBy { it.descriptor.name }.also { toolsByName ->
+        require(toolsByName.size == tools.size) { "本地工具名称重复。" }
+    }
 
     val descriptors: List<ToolDescriptor> = tools.map { it.descriptor }
 

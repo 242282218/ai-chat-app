@@ -33,7 +33,7 @@ import com.aichat.workbench.data.local.entity.ToolInvocationEntity
         ToolInvocationEntity::class,
         ImageGenerationEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class AiChatDatabase : RoomDatabase() {
@@ -172,7 +172,8 @@ abstract class AiChatDatabase : RoomDatabase() {
                         model TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
-                        PRIMARY KEY(id)
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(provider_id) REFERENCES provider_configs(id) ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                     """.trimIndent(),
                 )
@@ -191,6 +192,51 @@ abstract class AiChatDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE tool_invocations ADD COLUMN raw_output_json TEXT")
                 db.execSQL("ALTER TABLE tool_invocations ADD COLUMN duration_ms INTEGER")
                 db.execSQL("ALTER TABLE tool_invocations ADD COLUMN canceled_at INTEGER")
+            }
+        }
+
+        val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Keep persisted tool status names aligned with the domain enum.
+                db.execSQL("UPDATE tool_invocations SET status = 'Cancelled' WHERE status = 'Canceled'")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS model_role_preferences_new (
+                        id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(provider_id) REFERENCES provider_configs(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO model_role_preferences_new (
+                        id, provider_id, role, model, created_at, updated_at
+                    )
+                    SELECT
+                        preference.id,
+                        preference.provider_id,
+                        preference.role,
+                        preference.model,
+                        preference.created_at,
+                        preference.updated_at
+                    FROM model_role_preferences AS preference
+                    INNER JOIN provider_configs AS provider ON provider.id = preference.provider_id
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE model_role_preferences")
+                db.execSQL("ALTER TABLE model_role_preferences_new RENAME TO model_role_preferences")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_model_role_preferences_provider_id_role ON model_role_preferences(provider_id, role)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_model_role_preferences_provider_id ON model_role_preferences(provider_id)",
+                )
             }
         }
     }

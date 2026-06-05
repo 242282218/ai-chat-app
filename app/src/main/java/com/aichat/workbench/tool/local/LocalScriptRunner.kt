@@ -49,15 +49,18 @@ fun truncateUtf8(value: String, limitBytes: Int): TruncatedText {
         return TruncatedText(value, truncated = false, byteCount = bytes.size)
     }
 
-    var end = value.length
-    while (end > 0 && value.substring(0, end).toByteArray(StandardCharsets.UTF_8).size > limitBytes) {
+    var end = limitBytes
+    while (end > 0 && (bytes[end].toInt() and UTF8_CONTINUATION_BYTE_MASK) == UTF8_CONTINUATION_BYTE_PREFIX) {
         end -= 1
     }
-    val truncated = value.substring(0, end)
+    if (end == 0) {
+        return TruncatedText(text = "", truncated = true, byteCount = 0)
+    }
+    val truncated = String(bytes, 0, end, StandardCharsets.UTF_8)
     return TruncatedText(
         text = truncated,
         truncated = true,
-        byteCount = truncated.toByteArray(StandardCharsets.UTF_8).size,
+        byteCount = end,
     )
 }
 
@@ -66,3 +69,6 @@ data class TruncatedText(
     val truncated: Boolean,
     val byteCount: Int,
 )
+
+private const val UTF8_CONTINUATION_BYTE_MASK = 0xC0
+private const val UTF8_CONTINUATION_BYTE_PREFIX = 0x80

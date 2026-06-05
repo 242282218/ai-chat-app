@@ -42,7 +42,7 @@ class CodeDiffPreviewTool : LocalTool {
         return buildString {
             appendLine("--- $fileName")
             appendLine("+++ $fileName")
-            appendLine("@@ -${prefixSize + 1} +${prefixSize + 1} @@")
+            appendLine("@@ -${diffRange(prefixSize, originalChanged.size)} +${diffRange(prefixSize, modifiedChanged.size)} @@")
             originalChanged.forEach { appendLine("-$it") }
             modifiedChanged.forEach { appendLine("+$it") }
         }.trimEnd()
@@ -71,6 +71,11 @@ class CodeDiffPreviewTool : LocalTool {
     private fun List<String>.changedSlice(prefixSize: Int, suffixSize: Int): List<String> {
         val end = size - suffixSize
         return if (prefixSize >= end) emptyList() else subList(prefixSize, end)
+    }
+
+    private fun diffRange(prefixSize: Int, changedCount: Int): String {
+        val start = if (changedCount == 0) prefixSize else prefixSize + 1
+        return "$start,$changedCount"
     }
 
     private fun List<String>.countChangedFrom(other: List<String>): Int {

@@ -148,7 +148,7 @@ fun ModelRolePreferenceEntity.toDomain(): ModelRolePreference =
     ModelRolePreference(
         id = ModelRolePreferenceId(id),
         providerId = ProviderId(providerId),
-        role = ModelRole.valueOf(role),
+        role = ModelRole.entries.firstOrNull { it.name == role } ?: ModelRole.Chat,
         model = model,
         updatedAt = Instant.ofEpochMilli(updatedAt),
     )

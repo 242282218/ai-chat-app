@@ -36,7 +36,7 @@ class RoomToolInvocationRepository(
             permissionLevel = ToolPermissionLevel.valueOf(permissionLevel),
             inputSummary = inputSummary,
             output = outputJson.toToolOutput(),
-            status = ToolStatus.valueOf(status),
+            status = status.toToolStatus(),
             startedAt = Instant.ofEpochMilli(startedAt),
             finishedAt = finishedAt?.let(Instant::ofEpochMilli),
             error = errorJson?.toToolError(),
@@ -92,7 +92,8 @@ class RoomToolInvocationRepository(
         )
 
     private fun String.toToolError(): ToolError {
-        val json = repositoryJson.decodeFromString<ToolErrorJson>(this)
+        val json = runCatching { repositoryJson.decodeFromString<ToolErrorJson>(this) }.getOrNull()
+            ?: return ToolError(code = "unknown_error", message = this)
         return ToolError(
             code = json.code,
             message = json.message,
@@ -100,6 +101,12 @@ class RoomToolInvocationRepository(
             retryable = json.retryable,
         )
     }
+
+    private fun String.toToolStatus(): ToolStatus =
+        when (this) {
+            "Canceled" -> ToolStatus.Cancelled
+            else -> runCatching { ToolStatus.valueOf(this) }.getOrDefault(ToolStatus.Failed)
+        }
 
     private companion object {
         val repositoryJson = Json {

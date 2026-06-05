@@ -85,6 +85,7 @@ val appModule: Module = module {
             AiChatDatabase.MIGRATION_6_7,
             AiChatDatabase.MIGRATION_7_8,
             AiChatDatabase.MIGRATION_8_9,
+            AiChatDatabase.MIGRATION_9_10,
         ).build()
     }
     single<SecretStore> { AndroidSecretStore(androidContext()) }

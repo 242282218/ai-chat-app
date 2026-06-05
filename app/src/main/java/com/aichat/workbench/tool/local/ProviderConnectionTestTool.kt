@@ -4,6 +4,7 @@ import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolPermissionPolicy
 import com.aichat.workbench.tool.model.ToolRiskLevel
@@ -26,6 +27,9 @@ class ProviderConnectionTestTool(
         val provider = providerRepository.getProvider(ProviderId(providerId))
             ?: throw InvalidLocalToolArgumentsException("Provider 不存在：$providerId")
         val apiKey = providerRepository.getApiKey(provider.id)
+        if (provider.requiresApiKey() && apiKey.isNullOrBlank()) {
+            throw InvalidLocalToolArgumentsException("API Key 缺失。")
+        }
         val result = runner.test(provider, apiKey)
 
         return LocalToolExecution(

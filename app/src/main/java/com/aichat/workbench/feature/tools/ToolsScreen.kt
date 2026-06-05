@@ -1998,7 +1998,6 @@ private fun ToolStatus.displayLabel(): String =
         ToolStatus.Completed -> "完成"
         ToolStatus.Failed -> "失败"
         ToolStatus.Denied -> "已拒绝"
-        ToolStatus.Canceled,
         ToolStatus.Cancelled -> "已取消"
     }
 
@@ -2013,7 +2012,6 @@ private fun ToolStatus.tone(): StatusTone =
         ToolStatus.Completed -> StatusTone.Success
         ToolStatus.Failed -> StatusTone.Critical
         ToolStatus.Denied -> StatusTone.Warning
-        ToolStatus.Canceled,
         ToolStatus.Cancelled -> StatusTone.Neutral
     }
 
@@ -2025,7 +2023,6 @@ private fun ToolStatus.errorTone(): StatusTone =
 
 private fun ToolStatus.isUserStopped(): Boolean =
     this == ToolStatus.Denied ||
-        this == ToolStatus.Canceled ||
         this == ToolStatus.Cancelled
 
 private fun ToolOutput.asPlainText(): String =

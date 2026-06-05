@@ -9,7 +9,21 @@ import java.io.ByteArrayOutputStream
 class AndroidAuthorizedFileReader(
     private val context: Context,
 ) : AuthorizedFileReader {
-    override suspend fun read(request: AuthorizedFileReadRequest): AuthorizedFileReadResult {
+    override suspend fun read(request: AuthorizedFileReadRequest): AuthorizedFileReadResult =
+        try {
+            readInternal(request)
+        } catch (e: SecurityException) {
+            AuthorizedFileReadResult(
+                fileName = null,
+                mimeType = null,
+                sizeBytes = null,
+                content = null,
+                truncated = false,
+                unsupportedReason = "文件访问权限已被撤销，请重新选择文件。",
+            )
+        }
+
+    private fun readInternal(request: AuthorizedFileReadRequest): AuthorizedFileReadResult {
         val uri = Uri.parse(request.uri)
         val resolver = context.contentResolver
         val mimeType = resolver.getType(uri)
@@ -35,30 +49,51 @@ class AndroidAuthorizedFileReader(
             )
         }
 
+        var truncated = false
         val bytes = resolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             val output = ByteArrayOutputStream()
-            while (output.size() <= request.maxBytes) {
+            while (output.size() < request.maxBytes) {
                 val read = input.read(buffer)
                 if (read < 0) break
-                val remaining = request.maxBytes + 1 - output.size()
-                output.write(buffer, 0, read.coerceAtMost(remaining))
-                if (read > remaining) break
+                val remaining = request.maxBytes - output.size()
+                if (read > remaining) {
+                    output.write(buffer, 0, remaining)
+                    truncated = true
+                    break
+                }
+                output.write(buffer, 0, read)
+            }
+            if (!truncated && input.read() >= 0) {
+                truncated = true
             }
             output.toByteArray()
         } ?: throw LocalToolUnavailableException("无法打开授权文件。")
-        val truncated = bytes.size > request.maxBytes
-        val contentBytes = if (truncated) bytes.copyOf(request.maxBytes) else bytes
+        val content = bytes.toString(Charsets.UTF_8)
+        val encodingWarning = if (content.hasHighReplacementCharRatio()) {
+            "文件可能不是 UTF-8 编码，部分内容可能显示异常。"
+        } else {
+            null
+        }
         return AuthorizedFileReadResult(
             fileName = metadata.fileName,
             mimeType = mimeType,
             sizeBytes = metadata.sizeBytes,
-            content = contentBytes.toString(Charsets.UTF_8),
+            content = content,
             truncated = truncated,
-            unsupportedReason = null,
+            unsupportedReason = encodingWarning,
         )
     }
 }
+
+// Avoid passing replacement-heavy mojibake to the model as if it were real file content.
+private fun String.hasHighReplacementCharRatio(): Boolean {
+    if (length < 20) return false
+    val replacementCount = count { it == '�' }
+    return replacementCount > length * REPLACEMENT_CHAR_RATIO_THRESHOLD
+}
+
+private const val REPLACEMENT_CHAR_RATIO_THRESHOLD = 0.05
 
 private data class FileMetadata(
     val fileName: String?,

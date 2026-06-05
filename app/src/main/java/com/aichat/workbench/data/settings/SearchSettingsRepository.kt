@@ -23,7 +23,7 @@ class SearchSettingsRepository(
     private val secretStore: SecretStore,
 ) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val settings = MutableStateFlow(readSettingsWithoutKey())
+    private val settings = MutableStateFlow(readSettingsWithoutKey().copy(enabled = false))
 
     fun observeSettings(): StateFlow<SearchSettings> =
         settings.asStateFlow()
@@ -45,11 +45,7 @@ class SearchSettingsRepository(
         topic: String,
     ) {
         val trimmedKey = apiKey.trim()
-        if (trimmedKey.isBlank()) {
-            secretStore.deleteSecret(SEARCH_API_KEY_REF)
-        } else {
-            secretStore.putSecret(SEARCH_API_KEY_REF, trimmedKey)
-        }
+        // Persist preferences even when the platform keystore is temporarily unavailable.
         preferences.edit()
             .putBoolean(KEY_ENABLED, enabled)
             .putString(KEY_PROVIDER, provider.name)
@@ -65,6 +61,14 @@ class SearchSettingsRepository(
                 }
             }
             .apply()
+        // Keep settings changes visible even if secret storage rejects the key update.
+        runCatching {
+            if (trimmedKey.isBlank()) {
+                secretStore.deleteSecret(SEARCH_API_KEY_REF)
+            } else {
+                secretStore.putSecret(SEARCH_API_KEY_REF, trimmedKey)
+            }
+        }
         settings.value = readSettings()
     }
 

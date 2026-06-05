@@ -11,6 +11,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
+import java.nio.charset.StandardCharsets
 
 class LocalJsTool(
     private val scriptRunner: LocalScriptRunner,
@@ -28,6 +29,9 @@ class LocalJsTool(
             throw InvalidLocalToolArgumentsException("JavaScript 代码不能为空。")
         }
         val inputJson = args.inputJson.normalizedInputJson()
+        if (inputJson != null && inputJson.toByteArray(Charsets.UTF_8).size > MAX_LOCAL_JS_INPUT_BYTES) {
+            throw InvalidLocalToolArgumentsException("inputJson 不能超过 ${MAX_LOCAL_JS_INPUT_BYTES / 1024}KB。")
+        }
         if (!scriptRunner.isSupported()) {
             throw LocalToolUnavailableException("当前设备不支持本地 JavaScript 沙箱。")
         }
@@ -143,3 +147,4 @@ private const val MAX_LOCAL_JS_TIMEOUT_MS = 5_000L
 private const val DEFAULT_LOCAL_JS_OUTPUT_LIMIT_BYTES = 8_192
 private const val MIN_LOCAL_JS_OUTPUT_LIMIT_BYTES = 64
 private const val MAX_LOCAL_JS_OUTPUT_LIMIT_BYTES = 32_768
+private const val MAX_LOCAL_JS_INPUT_BYTES = 32 * 1024

@@ -1470,9 +1470,10 @@ class AiChatDatabaseTest {
 
         val migrated = migrationHelper.runMigrationsAndValidate(
             databaseName,
-            9,
+            10,
             true,
             AiChatDatabase.MIGRATION_8_9,
+            AiChatDatabase.MIGRATION_9_10,
         )
         val cursor = migrated.query(
             """

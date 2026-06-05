@@ -823,7 +823,7 @@ class ToolsViewModelTest {
         assertEquals(
             false,
             viewModel.state.value.canRerunToolResult(
-                toolResult(id = "local-search-canceled", toolName = "web_search_local", status = ToolStatus.Canceled),
+                toolResult(id = "local-search-cancelled", toolName = "web_search_local", status = ToolStatus.Cancelled),
             ),
         )
         assertEquals(

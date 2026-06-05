@@ -2,11 +2,20 @@ package com.aichat.workbench.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "model_role_preferences",
+    foreignKeys = [
+        ForeignKey(
+            entity = ProviderConfigEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["provider_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
     indices = [
         Index(value = ["provider_id", "role"], unique = true),
         Index(value = ["provider_id"]),

@@ -617,7 +617,6 @@ private fun ToolStatus.toMessageStatus(): MessageStatus =
     when (this) {
         ToolStatus.Completed -> MessageStatus.Completed
         ToolStatus.Denied,
-        ToolStatus.Canceled,
         ToolStatus.Cancelled,
         -> MessageStatus.Cancelled
         else -> MessageStatus.Failed

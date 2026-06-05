@@ -459,7 +459,7 @@ class ToolExecutor(
             rawInputJson = toolCall.arguments,
             rawOutputJson = output.value,
             durationMs = startedAt.durationUntilMs(finishedAt),
-            canceledAt = finishedAt.takeIf { status == ToolStatus.Canceled || status == ToolStatus.Cancelled },
+            canceledAt = finishedAt.takeIf { status == ToolStatus.Cancelled },
         )
         toolInvocationRepository.saveToolResult(conversationId, result)
         return ToolExecution(result, output.asModelContent())

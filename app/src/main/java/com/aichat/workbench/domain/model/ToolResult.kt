@@ -35,7 +35,6 @@ enum class ToolStatus {
     Completed,
     Failed,
     Denied,
-    Canceled,
     Cancelled,
 }
 

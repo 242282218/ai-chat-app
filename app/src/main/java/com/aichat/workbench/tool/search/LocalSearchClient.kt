@@ -78,6 +78,7 @@ class TavilyLocalSearchClient(
     private fun postJson(url: String, body: String, apiKey: String): Request {
         val trimmedKey = apiKey.trim()
         require(trimmedKey.isNotBlank()) { "搜索 API Key 未配置。" }
+        require(url.isAllowedTavilyEndpoint()) { "搜索 Base URL 必须使用 Tavily HTTPS 域名。" }
         return Request.Builder()
             .url(url)
             .post(body.toRequestBody(JSON))
@@ -99,7 +100,11 @@ class TavilyLocalSearchClient(
     }
 
     private fun Response.bodyText(): String =
-        body?.string().orEmpty()
+        body?.string() ?: throw LocalSearchHttpException(
+            statusCode = code,
+            code = "local_search_empty_body",
+            message = "本地搜索响应体为空。",
+        )
 }
 
 class LocalSearchHttpException(
@@ -110,6 +115,13 @@ class LocalSearchHttpException(
 
 private fun String.searchUrl(): String =
     trim().trimEnd('/') + "/search"
+
+private fun String.isAllowedTavilyEndpoint(): Boolean {
+    val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
+    val host = uri.host?.lowercase()?.removePrefix("www.") ?: return false
+    return uri.scheme?.lowercase() == "https" && (host == "api.tavily.com" || host.endsWith(".tavily.com")) ||
+        uri.scheme?.lowercase() == "http" && host in LOCAL_SEARCH_TEST_HOSTS
+}
 
 private fun String.tavilySearchDepth(): String =
     trim().lowercase().takeIf { it in setOf("basic", "advanced") } ?: "basic"
@@ -166,6 +178,7 @@ private val JSON = "application/json; charset=utf-8".toMediaType()
 private const val MIN_RESULTS = 1
 private const val MAX_RESULTS = 20
 private const val MAX_ERROR_PREVIEW_LENGTH = 240
+private val LOCAL_SEARCH_TEST_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 private val errorWhitespace = Regex("\\s+")
 
 private val searchJson = Json {

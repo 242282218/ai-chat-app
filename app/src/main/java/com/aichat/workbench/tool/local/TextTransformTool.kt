@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.coroutines.withTimeoutOrNull
 
 class TextTransformTool : LocalTool {
     override val descriptor: ToolDescriptor = TextTransformToolDescriptor
@@ -22,8 +23,8 @@ class TextTransformTool : LocalTool {
             "uppercase" -> transformed(args, args.text.uppercase())
             "lowercase" -> transformed(args, args.text.lowercase())
             "json_format" -> jsonFormatted(args)
-            "regex_preview" -> regexPreview(args)
-            "regex_replace" -> regexReplace(args)
+            "regex_preview" -> regexPreviewSafely(args)
+            "regex_replace" -> regexReplaceSafely(args)
             else -> throw InvalidLocalToolArgumentsException("不支持的文本转换操作：$operation")
         }
         return LocalToolExecution(ToolOutput.Json(localToolJson.encodeToString(output)))
@@ -47,12 +48,15 @@ class TextTransformTool : LocalTool {
         )
     }
 
-    private fun regexPreview(args: TextTransformArguments): TextTransformOutput {
+    private suspend fun regexPreviewSafely(args: TextTransformArguments): TextTransformOutput {
         val regex = args.requiredRegex()
-        val matchesWithOverflow = regex.findAll(args.text)
-            .take(MAX_REGEX_MATCHES + 1)
-            .map { it.value }
-            .toList()
+        val input = args.text.take(MAX_REGEX_INPUT_LENGTH)
+        val matchesWithOverflow = withTimeoutOrNull(REGEX_TIMEOUT_MS) {
+            regex.findAll(input)
+                .take(MAX_REGEX_MATCHES + 1)
+                .map { it.value }
+                .toList()
+        } ?: throw InvalidLocalToolArgumentsException("正则预览超时，请简化正则表达式或缩短输入文本。")
         return TextTransformOutput(
             operation = "regex_preview",
             inputLength = args.text.length,
@@ -61,18 +65,25 @@ class TextTransformTool : LocalTool {
         )
     }
 
-    private fun regexReplace(args: TextTransformArguments): TextTransformOutput {
+    private suspend fun regexReplaceSafely(args: TextTransformArguments): TextTransformOutput {
         val regex = args.requiredRegex()
+        val input = args.text.take(MAX_REGEX_INPUT_LENGTH)
+        val result = withTimeoutOrNull(REGEX_TIMEOUT_MS) {
+            regex.replace(input, args.replacement.orEmpty())
+        } ?: throw InvalidLocalToolArgumentsException("正则替换超时，请简化正则表达式或缩短输入文本。")
         return TextTransformOutput(
             operation = "regex_replace",
             inputLength = args.text.length,
-            output = regex.replace(args.text, args.replacement.orEmpty()),
+            output = result,
         )
     }
 
     private fun TextTransformArguments.requiredRegex(): Regex {
         val pattern = regex?.takeIf { it.isNotBlank() }
             ?: throw InvalidLocalToolArgumentsException("regex 操作必须提供 regex。")
+        if (pattern.hasNestedQuantifier()) {
+            throw InvalidLocalToolArgumentsException("正则表达式包含嵌套量词，可能导致执行时间不可控。")
+        }
         return runCatching { Regex(pattern) }
             .getOrElse { throw InvalidLocalToolArgumentsException("正则表达式无效：${it.message}", it) }
     }
@@ -99,7 +110,7 @@ val TextTransformToolDescriptor: ToolDescriptor = ToolDescriptor(
         }
     """.trimIndent(),
     outputSchemaJson = """{"type":"object"}""",
-    timeoutSeconds = null,
+    timeoutSeconds = 5,
     source = ToolSource.BuiltIn,
     riskLevel = ToolRiskLevel.Low,
     requiresNetwork = false,
@@ -126,6 +137,13 @@ private data class TextTransformOutput(
 )
 
 private const val MAX_REGEX_MATCHES = 50
+private const val MAX_REGEX_INPUT_LENGTH = 50_000
+private const val REGEX_TIMEOUT_MS = 3_000L
+
+private fun String.hasNestedQuantifier(): Boolean =
+    contains(NESTED_QUANTIFIER_PATTERN)
+
+private val NESTED_QUANTIFIER_PATTERN = Regex("""\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]""")
 
 private val compactJson = Json { ignoreUnknownKeys = false }
 private val prettyJson = Json {
