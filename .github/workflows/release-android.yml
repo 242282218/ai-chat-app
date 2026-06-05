@@ -73,6 +73,17 @@ jobs:
           EOF
           fi
 
+      - name: Verify release APK asset
+        run: |
+          set -euo pipefail
+          case "$APK_PATH" in
+            *release-unsigned*)
+              echo "Refusing to publish unsigned release APK: $APK_PATH" >&2
+              exit 1
+              ;;
+          esac
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK_PATH"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
