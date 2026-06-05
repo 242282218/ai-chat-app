@@ -263,6 +263,7 @@ class AiChatDatabaseTest {
     fun modelRolePreferences_storeOneModelPerProviderRole() = runTest {
         val repository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
         val providerId = ProviderId("provider-1")
+        database.providerConfigDao().upsertProvider(providerConfig(providerId).toEntity(clock.instant(), clock.instant()))
 
         repository.setRoleModel(providerId, ModelRole.Chat, "chat-model")
         repository.setRoleModel(providerId, ModelRole.Image, "image-model")
@@ -1420,9 +1421,11 @@ class AiChatDatabaseTest {
 
         val migrated = migrationHelper.runMigrationsAndValidate(
             databaseName,
-            8,
+            10,
             true,
             AiChatDatabase.MIGRATION_7_8,
+            AiChatDatabase.MIGRATION_8_9,
+            AiChatDatabase.MIGRATION_9_10,
         )
         migrated.execSQL(
             """

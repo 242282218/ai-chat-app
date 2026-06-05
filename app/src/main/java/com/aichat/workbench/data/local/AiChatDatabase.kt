@@ -172,8 +172,7 @@ abstract class AiChatDatabase : RoomDatabase() {
                         model TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
-                        PRIMARY KEY(id),
-                        FOREIGN KEY(provider_id) REFERENCES provider_configs(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                        PRIMARY KEY(id)
                     )
                     """.trimIndent(),
                 )

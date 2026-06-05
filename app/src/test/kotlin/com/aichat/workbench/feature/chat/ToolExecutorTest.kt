@@ -876,7 +876,10 @@ class ToolExecutorTest {
         val executor = toolExecutor(
             clock = clock,
             toolInvocationRepository = repository,
-            providerRepository = RecordingProviderConfigRepository(providers = listOf(provider)),
+            providerRepository = RecordingProviderConfigRepository(
+                providers = listOf(provider),
+                apiKeys = mapOf(provider.id to "secret-provider-key"),
+            ),
             providerConnectionRunner = RecordingProviderConnectionTestRunner(
                 result = ProviderConnectionTestResult(
                     ok = false,
