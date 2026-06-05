@@ -19,6 +19,7 @@ build/
 
 gateway/bin/
 gateway/coverage.out
+ci-results/
 
 *.log
 
