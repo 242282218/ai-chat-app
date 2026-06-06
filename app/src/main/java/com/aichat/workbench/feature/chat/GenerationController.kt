@@ -14,6 +14,7 @@ import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.tool.ToolExecutor
 import com.aichat.workbench.domain.usecase.SendMessageUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider

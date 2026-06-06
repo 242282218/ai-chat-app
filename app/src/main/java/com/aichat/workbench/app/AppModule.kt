@@ -33,7 +33,7 @@ import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
-import com.aichat.workbench.feature.chat.ToolExecutor
+import com.aichat.workbench.domain.tool.ToolExecutor
 import com.aichat.workbench.feature.home.HomeViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
 import com.aichat.workbench.feature.settings.DataSettingsViewModel

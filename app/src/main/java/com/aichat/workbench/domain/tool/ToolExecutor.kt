@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+package com.aichat.workbench.domain.tool
 
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.ConversationId
