@@ -35,6 +35,18 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/**
+ * Coordinates the conversation generation lifecycle in the presentation layer.
+ *
+ * This class is correctly positioned in the feature layer because it:
+ * - Manages UI state (ChatUiState updates)
+ * - Handles user interactions (tool approval/denial, stop generation)
+ * - Coordinates multiple domain components (UseCase, ToolExecutor, etc.)
+ * - Manages coroutine lifecycle and concurrent state
+ *
+ * It is NOT a domain UseCase because it deals with presentation concerns
+ * and UI interaction rather than pure business logic.
+ */
 class GenerationController(
     private val conversationRepository: ConversationRepository,
     private val providerRepository: ProviderConfigRepository,
