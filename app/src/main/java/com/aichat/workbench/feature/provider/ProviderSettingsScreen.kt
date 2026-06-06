@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -136,20 +137,24 @@ fun ProviderSettingsScreen(
     val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selectableDescriptors = remember { ProviderRegistry.supportedBuiltInChatDescriptors() }
 
-    val hasProviderDraft = editingId != null ||
-        name != "OpenAI" ||
-        type != ProviderType.OpenAI ||
-        baseUrl != "https://api.openai.com/v1" ||
-        model.isNotBlank() ||
-        imageModel.isNotBlank() ||
-        toolModel.isNotBlank() ||
-        codeModel.isNotBlank() ||
-        models.isNotEmpty() ||
-        apiKey.isNotBlank() ||
-        headers.isNotBlank() ||
-        !enabled ||
-        allowHttp ||
-        storedApiKeyRef != null
+    val hasProviderDraft by remember {
+        derivedStateOf {
+            editingId != null ||
+                name != "OpenAI" ||
+                type != ProviderType.OpenAI ||
+                baseUrl != "https://api.openai.com/v1" ||
+                model.isNotBlank() ||
+                imageModel.isNotBlank() ||
+                toolModel.isNotBlank() ||
+                codeModel.isNotBlank() ||
+                models.isNotEmpty() ||
+                apiKey.isNotBlank() ||
+                headers.isNotBlank() ||
+                !enabled ||
+                allowHttp ||
+                storedApiKeyRef != null
+        }
+    }
 
     fun loadProvider(provider: ProviderConfig) {
         editingId = provider.id.value
