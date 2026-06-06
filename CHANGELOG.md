@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.23.0
+
+- Bumped Android application version to `0.23.0` / version code `24`.
+- Added a Chinese design note for the image generation configuration flow refactor.
+- Made image generation readiness depend on the usable stored API Key instead of only the saved key reference.
+- Added regression coverage for missing image API Key readiness and successful image provider generation state.
+
 ## v0.22.0
 
 - Bumped Android application version to `0.22.0` / version code `23`.

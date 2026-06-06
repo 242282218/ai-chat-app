@@ -161,5 +161,6 @@ private fun String.jsonStringLiteral(): String =
 
 private fun ImageGenerationUiState.selectedProviderMissingApiKey(): Boolean {
     val provider = selectedProvider ?: return false
-    return provider.requiresApiKey() && provider.apiKeyRef == null
+    if (!provider.requiresApiKey()) return false
+    return providerApiKeyAvailable[provider.id.value] != true
 }

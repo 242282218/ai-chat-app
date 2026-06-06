@@ -151,6 +151,24 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun readinessUsesUsableApiKeyInsteadOfOnlyApiKeyRef() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        advanceUntilIdle()
+
+        assertEquals(mapOf(openAiProvider.id.value to false), viewModel.state.value.providerApiKeyAvailable)
+        assertFalse(viewModel.state.value.canGenerateImages())
+        assertEquals("需要 API Key", viewModel.state.value.imageGenerationReadiness().label)
+    }
+
+    @Test
     fun generatePassesSavedApiKeyToImageProvider() = runTest(mainDispatcherRule.testDispatcher) {
         val repository = FakeImageGenerationRepository(emptyList())
         val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
@@ -175,6 +193,8 @@ class ImageGenerationViewModelTest {
         advanceUntilIdle()
 
         assertNull(viewModel.state.value.error)
+        assertEquals(mapOf(openAiProvider.id.value to true), viewModel.state.value.providerApiKeyAvailable)
+        assertTrue(viewModel.state.value.canGenerateImages())
         assertEquals("test-key", imageProvider.requests.single().apiKey)
         assertEquals("Draw a test scene", imageProvider.requests.single().prompt)
         assertEquals(ImageGenerationStatus.Completed, repository.generations.value.single().status)

@@ -34,7 +34,18 @@ class ImageDraftsTest {
         )
         assertFalse(missingKey.canGenerateImages())
 
-        assertTrue(missingKey.copy(providers = listOf(provider(apiKeyRef = "key-ref"))).canGenerateImages())
+        assertFalse(
+            missingKey.copy(
+                providers = listOf(provider(apiKeyRef = "key-ref")),
+                providerApiKeyAvailable = mapOf("provider-1" to false),
+            ).canGenerateImages(),
+        )
+        assertTrue(
+            missingKey.copy(
+                providers = listOf(provider(apiKeyRef = "key-ref")),
+                providerApiKeyAvailable = mapOf("provider-1" to true),
+            ).canGenerateImages(),
+        )
     }
 
     @Test
@@ -219,6 +230,9 @@ class ImageDraftsTest {
     ): ImageGenerationUiState =
         ImageGenerationUiState(
             providers = listOfNotNull(provider),
+            providerApiKeyAvailable = provider
+                ?.let { mapOf(it.id.value to (it.apiKeyRef != null)) }
+                .orEmpty(),
             selectedProviderId = provider?.id?.value,
             prompt = prompt,
             model = model,

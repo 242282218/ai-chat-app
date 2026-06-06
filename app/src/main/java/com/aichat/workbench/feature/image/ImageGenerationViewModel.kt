@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 data class ImageGenerationUiState(
     val generations: List<ImageGeneration> = emptyList(),
     val providers: List<ProviderConfig> = emptyList(),
+    val providerApiKeyAvailable: Map<String, Boolean> = emptyMap(),
     val selectedProviderId: String? = null,
     val prompt: String = "",
     val model: String = DEFAULT_OPENAI_IMAGE_MODEL,
@@ -87,10 +88,14 @@ class ImageGenerationViewModel(
             ) { providers, preferences, rolePreferences ->
                 Triple(providers, preferences, rolePreferences)
             }.collect { (providers, preferences, rolePreferences) ->
-                    _state.update { current ->
-                        current.withImageProviderSelection(providers, preferences, rolePreferences)
-                    }
-                }
+                val nextState = _state.value.withImageProviderSelection(
+                    providers = providers,
+                    preferences = preferences,
+                    rolePreferences = rolePreferences,
+                )
+                _state.value = nextState
+                refreshProviderApiKeyAvailability(nextState.providers)
+            }
         }
     }
 
@@ -304,6 +309,20 @@ class ImageGenerationViewModel(
             model = selectedImageModel(fallback, selectedProviderChanged, preferences, rolePreferences),
         )
     }
+
+    private suspend fun refreshProviderApiKeyAvailability(providers: List<ProviderConfig>) {
+        val availability = providers.associate { provider ->
+            provider.id.value to provider.hasUsableApiKey()
+        }
+        _state.update { current ->
+            current.copy(providerApiKeyAvailable = availability)
+        }
+    }
+
+    private suspend fun ProviderConfig.hasUsableApiKey(): Boolean =
+        !requiresApiKey() || runCatching {
+            providerRepository.getApiKey(id)?.isNotBlank() == true
+        }.getOrDefault(false)
 
     private fun ImageGenerationUiState.selectedImageModel(
         provider: ProviderConfig?,
