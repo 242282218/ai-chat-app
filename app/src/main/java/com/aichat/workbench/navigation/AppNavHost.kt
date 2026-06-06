@@ -19,7 +19,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.feature.chat.ChatScreen
-import com.aichat.workbench.feature.conversations.ConversationsScreen
+import com.aichat.workbench.feature.home.HomeScreen
 import com.aichat.workbench.feature.image.ImageGenerationScreen
 import com.aichat.workbench.feature.prompt.PromptPresetScreen
 import com.aichat.workbench.feature.provider.ProviderSettingsScreen
@@ -59,9 +59,11 @@ fun AppNavHost() {
             popExitTransition = { slideOutHorizontally { it / 5 } + fadeOut() },
         ) {
             composable(AppDestination.Conversations.route) {
-                ConversationsScreen(
+                HomeScreen(
+                    destinations = homeManagementDestinations,
+                    onDestinationClick = navController::navigateSingleTop,
+                    onStartChat = navController::navigateToNewChat,
                     onConversationClick = navController::navigateToConversation,
-                    onNewChat = { draft -> navController.navigateToNewChat(draft, temporary = false) },
                 )
             }
             composable(AppDestination.ImageGen.route) {
@@ -159,3 +161,11 @@ private const val CHAT_DRAFT_ARG = "draft"
 private const val CHAT_TEMPORARY_ARG = "temporary"
 private const val CHAT_CONVERSATION_ROUTE = "chat/{$CHAT_CONVERSATION_ID_ARG}"
 private const val CHAT_NEW_ROUTE = "chat?$CHAT_DRAFT_ARG={$CHAT_DRAFT_ARG}&$CHAT_TEMPORARY_ARG={$CHAT_TEMPORARY_ARG}"
+
+private val homeManagementDestinations = listOf(
+    AppDestination.ProviderSettings,
+    AppDestination.PromptPresets,
+    AppDestination.ToolsHub,
+    AppDestination.ImageGen,
+    AppDestination.DataSettings,
+)

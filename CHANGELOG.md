@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.22.0
+
+- Bumped Android application version to `0.22.0` / version code `23`.
+- Added persistent theme mode settings with System, Light, and Dark options.
+- Migrated image generation preferences from SharedPreferences to DataStore with legacy migration.
+- Switched OpenAI-compatible image generation requests to Retrofit.
+- Replaced the conversations tab entry with the richer Home workbench entry.
+- Added a Chinese architecture and code index document for quick project navigation.
+
 ## v0.21.0
 
 - Bumped Android application version to `0.21.0` / version code `22`.

@@ -5,18 +5,22 @@ import com.aichat.workbench.provider.api.ProviderErrorEnvelope
 import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
+import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import java.util.Base64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import retrofit2.http.Body
+import retrofit2.http.HeaderMap
+import retrofit2.http.POST
 
 class OpenAiImageGenerationProvider(
     private val client: OkHttpClient = OkHttpClient(),
@@ -25,15 +29,32 @@ class OpenAiImageGenerationProvider(
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse =
         withContext(Dispatchers.IO) {
-            val response = client.newCall(request.toHttpRequest()).execute()
-            response.use {
-                it.requireSuccessful()
-                parseResponse(it.bodyText())
-            }
-    }
+            val response = request.api().generateImages(
+                headers = request.headers(),
+                body = request.toApiBody(),
+            )
+            response.requireSuccessful()
+            parseResponse(requireNotNull(response.body()) { "Provider 未返回图片响应。" })
+        }
 
-    private fun ImageGenerationProviderRequest.toHttpRequest(): Request {
-        val body = OpenAiImageRequest(
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun ImageGenerationProviderRequest.api(): OpenAiImageApi =
+        Retrofit.Builder()
+            .baseUrl("${provider.openAiApiBaseUrl()}/")
+            .client(client)
+            .addConverterFactory(providerJson.asConverterFactory(JSON))
+            .build()
+            .create(OpenAiImageApi::class.java)
+
+    private fun ImageGenerationProviderRequest.headers(): Map<String, String> =
+        buildMap {
+            put("Accept", "application/json")
+            apiKey?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
+            provider.headers.forEach { (name, value) -> put(name, value) }
+        }
+
+    private fun ImageGenerationProviderRequest.toApiBody(): OpenAiImageRequest =
+        OpenAiImageRequest(
             model = model,
             prompt = prompt,
             count = count,
@@ -41,19 +62,7 @@ class OpenAiImageGenerationProvider(
             quality = quality?.takeIf { it.isNotBlank() },
         )
 
-        val builder = Request.Builder()
-            .url("${provider.openAiApiBaseUrl()}/images/generations")
-            .post(providerJson.encodeToString(body).toRequestBody(JSON))
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-
-        apiKey?.takeIf { it.isNotBlank() }?.let { builder.header("Authorization", "Bearer $it") }
-        provider.headers.forEach { (name, value) -> builder.header(name, value) }
-        return builder.build()
-    }
-
-    private fun parseResponse(body: String): ImageGenerationProviderResponse {
-        val response = providerJson.decodeFromString<OpenAiImageResponse>(body)
+    private fun parseResponse(response: OpenAiImageResponse): ImageGenerationProviderResponse {
         val images = response.data.map { item ->
             GeneratedImage(
                 base64 = item.base64?.takeIf { it.isNotBlank() }
@@ -65,13 +74,10 @@ class OpenAiImageGenerationProvider(
         return ImageGenerationProviderResponse(images = images)
     }
 
-    private fun Response.requireSuccessful() {
+    private fun Response<OpenAiImageResponse>.requireSuccessful() {
         if (isSuccessful) return
-        throw ProviderHttpException(parseHttpError(code, bodyText()))
+        throw ProviderHttpException(parseHttpError(code(), errorBody()?.string().orEmpty()))
     }
-
-    private fun Response.bodyText(): String =
-        body?.string().orEmpty()
 
     private fun parseHttpError(statusCode: Int, body: String): ProviderError {
         val message = runCatching {
@@ -119,6 +125,14 @@ class OpenAiImageGenerationProvider(
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
+}
+
+private interface OpenAiImageApi {
+    @POST("images/generations")
+    suspend fun generateImages(
+        @HeaderMap headers: Map<String, String>,
+        @Body body: OpenAiImageRequest,
+    ): Response<OpenAiImageResponse>
 }
 
 @Serializable

@@ -13,10 +13,11 @@ import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
 import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
 import com.aichat.workbench.data.repository.RoomToolInvocationRepository
+import com.aichat.workbench.data.settings.DataStoreImageGenerationPreferencesRepository
+import com.aichat.workbench.data.settings.DataStoreThemeSettingsRepository
 import com.aichat.workbench.data.settings.GatewaySettingsRepository
 import com.aichat.workbench.data.settings.SearchSettingsRepository
 import com.aichat.workbench.data.settings.ToolSettingsRepository
-import com.aichat.workbench.data.settings.SharedPreferencesImageGenerationPreferencesRepository
 import com.aichat.workbench.data.settings.toSearchConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
@@ -26,6 +27,7 @@ import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.repository.ThemeSettingsRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
@@ -35,6 +37,7 @@ import com.aichat.workbench.feature.chat.ToolExecutor
 import com.aichat.workbench.feature.home.HomeViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
 import com.aichat.workbench.feature.settings.DataSettingsViewModel
+import com.aichat.workbench.feature.settings.SettingsHubViewModel
 import com.aichat.workbench.feature.tools.ToolsViewModel
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
@@ -121,7 +124,10 @@ val appModule: Module = module {
     }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
     single<ImageGenerationPreferencesRepository> {
-        SharedPreferencesImageGenerationPreferencesRepository(androidContext())
+        DataStoreImageGenerationPreferencesRepository(androidContext(), dispatchers = get())
+    }
+    single<ThemeSettingsRepository> {
+        DataStoreThemeSettingsRepository(androidContext(), dispatchers = get())
     }
     single { GatewaySettingsRepository(androidContext(), secretStore = get()) }
     single { SearchSettingsRepository(androidContext(), secretStore = get()) }
@@ -255,6 +261,11 @@ val appModule: Module = module {
             localSearchClient = get(),
             toolInvocationRepository = get(),
             clock = get(),
+        )
+    }
+    viewModel {
+        SettingsHubViewModel(
+            themeSettingsRepository = get(),
         )
     }
     viewModel {

@@ -15,8 +15,8 @@ android {
         applicationId = "com.aichat.workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "0.21.0"
+        versionCode = 23
+        versionName = "0.22.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
 
     baselineProfile(project(":baselineprofile"))
 

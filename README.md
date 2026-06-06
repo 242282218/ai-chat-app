@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-- Android App：Kotlin、Jetpack Compose、Material 3、Room、OkHttp。
+- Android App：Kotlin、Jetpack Compose、Material 3、Room、DataStore、Retrofit、OkHttp。
 - Provider：支持 OpenAI、OpenAI-compatible、New API、Sub2 API、自定义兼容接口文本聊天，以及 OpenAI 兼容图片生成。
 - 本地数据：会话、消息、Prompt、模型偏好、Provider 配置、工具结果、图片历史。
 - 隐私：API Key 通过 Android Keystore 支持的存储保存；备份导出不包含 API Key，默认不导出敏感会话和临时会话。
@@ -37,6 +37,13 @@ GitHub Actions 会执行同等 Android 检查并上传测试报告、lint 报告
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+图片生成配置：
+
+- 在设置页添加一个支持图片生成的 Provider，例如 New API 或自定义兼容接口。
+- `API_BASE_URL` 对应 Provider 的 Base URL；根地址会自动规范化为 `/v1`。
+- `IMAGE_API_KEY` 对应该图片 Provider 的 API Key，保存到 Android Keystore 支持的本地安全存储。
+- 图片生成固定调用 OpenAI-compatible `POST /v1/images/generations`，聊天 Provider 和图片 Provider 可以分开配置。
 
 模拟器访问本地网关时，默认网关地址使用：
 
@@ -92,7 +99,7 @@ cd gateway
 go test ./...
 ```
 
-当前优化优先级和已知风险见 `docs/plans/2026-06-04-移动端codex工作台重构蓝图.md`。
+当前目录、架构、核心模型和页面代码入口见 `docs/基础架构与代码索引.md`。
 
 ## 隐私边界
 
