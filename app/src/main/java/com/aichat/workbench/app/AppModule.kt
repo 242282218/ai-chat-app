@@ -70,6 +70,7 @@ import org.koin.dsl.module
 
 val appModule: Module = module {
     single { AppDispatchers() }
+    single { ApplicationScope(dispatchers = get()) }
     single { Clock.systemUTC() }
     single<OkHttpClient>(named("jsonHttpClient")) { WorkbenchHttpClients.json() }
     single<OkHttpClient>(named("streamingHttpClient")) { WorkbenchHttpClients.streaming() }
@@ -117,7 +118,10 @@ val appModule: Module = module {
         RoomPromptPresetRepository(get<AiChatDatabase>().promptPresetDao())
     }
     single<ImageGenerationRepository> {
-        RoomImageGenerationRepository(get<AiChatDatabase>().imageGenerationDao())
+        RoomImageGenerationRepository(
+            dao = get<AiChatDatabase>().imageGenerationDao(),
+            imageStorage = get(),
+        )
     }
     single<ToolInvocationRepository> {
         RoomToolInvocationRepository(get<AiChatDatabase>().toolInvocationDao())
@@ -238,6 +242,7 @@ val appModule: Module = module {
             conversationManager = get(),
             generationController = get(),
             providerRegistry = get(),
+            applicationScope = get(),
         )
     }
     viewModel {

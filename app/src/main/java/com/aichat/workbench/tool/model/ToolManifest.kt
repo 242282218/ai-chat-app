@@ -22,6 +22,8 @@ data class ToolDescriptor(
     val requiresNetwork: Boolean = permissionLevel == ToolPermissionLevel.Network,
     val requiresFileAccess: Boolean = false,
     val defaultPermissionPolicy: ToolPermissionPolicy = permissionLevel.defaultPermissionPolicy(),
+    // Fields that contain sensitive data and should be sanitized before persistence
+    val sensitiveInputFields: Set<String> = emptySet(),
 )
 
 enum class ToolSource {

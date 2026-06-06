@@ -23,7 +23,7 @@ import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 
 class OpenAiImageGenerationProvider(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient,
 ) : ImageGenerationProvider {
     override suspend fun generate(
         request: ImageGenerationProviderRequest,
@@ -49,9 +49,22 @@ class OpenAiImageGenerationProvider(
     private fun ImageGenerationProviderRequest.headers(): Map<String, String> =
         buildMap {
             put("Accept", "application/json")
+            // Apply provider headers first
+            provider.headers.forEach { (name, value) ->
+                // Prevent provider headers from overriding security-critical headers
+                if (name.lowercase() !in FORBIDDEN_HEADERS) {
+                    put(name, value)
+                }
+            }
+            // Always set Authorization last to ensure API key has highest priority
             apiKey?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
-            provider.headers.forEach { (name, value) -> put(name, value) }
         }
+
+    private companion object {
+        val JSON = "application/json; charset=utf-8".toMediaType()
+        val FORBIDDEN_HEADERS = setOf("authorization", "x-api-key", "api-key")
+        const val MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB limit
+    }
 
     private fun ImageGenerationProviderRequest.toApiBody(): OpenAiImageRequest =
         OpenAiImageRequest(
@@ -60,9 +73,13 @@ class OpenAiImageGenerationProvider(
             count = count,
             size = size?.takeIf { it.isNotBlank() },
             quality = quality?.takeIf { it.isNotBlank() },
+            responseFormat = "b64_json",
         )
 
     private fun parseResponse(response: OpenAiImageResponse): ImageGenerationProviderResponse {
+        require(response.data.isNotEmpty()) {
+            "Provider 返回空图片列表，可能是模型不支持或参数无效。"
+        }
         val images = response.data.map { item ->
             GeneratedImage(
                 base64 = item.base64?.takeIf { it.isNotBlank() }
@@ -76,17 +93,21 @@ class OpenAiImageGenerationProvider(
 
     private fun Response<OpenAiImageResponse>.requireSuccessful() {
         if (isSuccessful) return
-        throw ProviderHttpException(parseHttpError(code(), errorBody()?.string().orEmpty()))
+        throw ProviderHttpException(parseHttpError(code(), errorBody().readErrorBodySafely()))
     }
 
     private fun parseHttpError(statusCode: Int, body: String): ProviderError {
-        val message = runCatching {
+        val rawMessage = runCatching {
             providerJson.decodeFromString<ProviderErrorEnvelope>(body).error?.message
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "图片生成请求失败：HTTP $statusCode。"
-        val code = when (statusCode) {
-            401 -> "authentication_failed"
-            429 -> "rate_limited"
-            in 500..599 -> "provider_unavailable"
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        val message = rawMessage ?: "图片生成请求失败：HTTP $statusCode。"
+        // Classify error more precisely based on message content
+        val code = when {
+            statusCode == 401 -> "authentication_failed"
+            statusCode == 429 -> "rate_limited"
+            rawMessage?.contains("model", ignoreCase = true) == true -> "invalid_model"
+            rawMessage?.contains("quota", ignoreCase = true) == true -> "quota_exceeded"
+            statusCode in 500..599 -> "provider_unavailable"
             else -> "provider_error"
         }
         return ProviderError(
@@ -98,6 +119,11 @@ class OpenAiImageGenerationProvider(
     }
 
     private fun downloadImageAsBase64(url: String): String {
+        // Validate URL scheme to prevent file:// or other unexpected protocols
+        require(url.startsWith("https://") || url.startsWith("http://")) {
+            "只支持 HTTP/HTTPS 图片 URL，拒绝: $url"
+        }
+
         val response = client.newCall(
             Request.Builder()
                 .url(url)
@@ -116,15 +142,33 @@ class OpenAiImageGenerationProvider(
                     ),
                 )
             }
-            val bytes = it.body?.bytes() ?: ByteArray(0)
+
+            // Check Content-Type to ensure it's an image
+            val contentType = it.body?.contentType()
+            require(contentType?.type == "image") {
+                "响应非图片类型：$contentType"
+            }
+
+            // Check Content-Length before reading to prevent OOM
+            val contentLength = it.body?.contentLength() ?: -1
+            require(contentLength <= MAX_IMAGE_SIZE_BYTES) {
+                "图片大小超过限制：$contentLength bytes (最大 $MAX_IMAGE_SIZE_BYTES bytes)"
+            }
+
+            // Read with size limit protection
+            val bytes = it.body?.byteStream()?.use { stream ->
+                stream.readNBytes(MAX_IMAGE_SIZE_BYTES + 1)
+            } ?: ByteArray(0)
+
             require(bytes.isNotEmpty()) { "图片 URL 下载结果为空。" }
+            require(bytes.size <= MAX_IMAGE_SIZE_BYTES) {
+                "图片实际大小超过限制：${bytes.size} bytes"
+            }
+
             return Base64.getEncoder().encodeToString(bytes)
         }
     }
 
-    private companion object {
-        val JSON = "application/json; charset=utf-8".toMediaType()
-    }
 }
 
 private interface OpenAiImageApi {
@@ -142,6 +186,7 @@ private data class OpenAiImageRequest(
     @SerialName("n") val count: Int,
     val size: String? = null,
     val quality: String? = null,
+    @SerialName("response_format") val responseFormat: String? = null,
 )
 
 @Serializable

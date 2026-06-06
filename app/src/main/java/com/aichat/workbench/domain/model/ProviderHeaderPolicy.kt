@@ -11,10 +11,15 @@ val persistableProviderHeaderDisplayNames: List<String> =
         "X-Request-Id",
         "X-Client-Id",
         "X-Trace",
-        "HTTP-Referer",
-        "Referer",
         "X-Title",
     )
 
 private val persistableProviderHeaderNames =
     persistableProviderHeaderDisplayNames.map { it.lowercase() }.toSet()
+
+// Security: Headers that must never be persisted or overridden by provider configs
+private val forbiddenProviderHeaderNames = setOf(
+    "authorization",
+    "x-api-key",
+    "api-key",
+)

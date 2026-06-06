@@ -58,8 +58,7 @@ class RoomConversationRepository(
         dao.getMessages(conversationId.value).map { it.toDomain() }
 
     override suspend fun saveMessage(message: Message) {
-        dao.upsertMessage(message.toEntity())
-        dao.touchConversation(message.conversationId.value, message.updatedAt.toEpochMilli())
+        dao.saveMessageAndTouch(message.toEntity(), message.updatedAt.toEpochMilli())
     }
 
     override suspend fun deleteMessages(conversationId: ConversationId) {
@@ -83,7 +82,16 @@ class RoomConversationRepository(
         val tokens = trim().split(Regex("\\s+")).filter { it.isNotBlank() }
         if (tokens.isEmpty()) return null
         return tokens.joinToString(separator = " ") { token ->
-            "\"${token.replace("\"", "\"\"")}\""
+            // Escape FTS special characters to prevent query syntax errors
+            val escaped = token
+                .replace("\"", "\"\"")  // Escape double quotes
+                .replace("*", "")       // Remove asterisk (prefix matching operator)
+                .replace("-", "")       // Remove minus (exclusion operator)
+                .replace("^", "")       // Remove caret (anchor operator)
+                .replace("(", "")       // Remove open paren (grouping operator)
+                .replace(")", "")       // Remove close paren (grouping operator)
+                .replace(":", "")       // Remove colon (column filter)
+            "\"$escaped\""
         }
     }
 }

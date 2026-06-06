@@ -66,6 +66,16 @@ interface ConversationDao {
     @Upsert
     suspend fun upsertMessage(message: MessageEntity)
 
+    /**
+     * Atomically upserts a message and updates the conversation's timestamp.
+     * Ensures conversation ordering stays consistent even if one step fails.
+     */
+    @Transaction
+    suspend fun saveMessageAndTouch(message: MessageEntity, updatedAt: Long) {
+        upsertMessage(message)
+        touchConversation(message.conversationId, updatedAt)
+    }
+
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteMessages(conversationId: String)
 

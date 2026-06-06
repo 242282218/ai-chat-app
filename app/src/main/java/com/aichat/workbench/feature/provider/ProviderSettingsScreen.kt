@@ -122,7 +122,7 @@ fun ProviderSettingsScreen(
     var imageModel by rememberSaveable { mutableStateOf("") }
     var toolModel by rememberSaveable { mutableStateOf("") }
     var codeModel by rememberSaveable { mutableStateOf("") }
-    var models by remember { mutableStateOf<List<ModelConfig>>(emptyList()) }
+    var models by rememberSaveable { mutableStateOf<List<ModelConfig>>(emptyList()) }
     var apiKey by rememberSaveable { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
     var enabled by rememberSaveable { mutableStateOf(true) }
@@ -131,8 +131,8 @@ fun ProviderSettingsScreen(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingResetForm by rememberSaveable { mutableStateOf(false) }
     var showProviderEditor by rememberSaveable { mutableStateOf(false) }
-    var pendingLoadProvider by remember { mutableStateOf<ProviderConfig?>(null) }
-    var pendingDeleteProvider by remember { mutableStateOf<ProviderConfig?>(null) }
+    var pendingLoadProvider by rememberSaveable { mutableStateOf<ProviderConfig?>(null) }
+    var pendingDeleteProvider by rememberSaveable { mutableStateOf<ProviderConfig?>(null) }
     val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selectableDescriptors = remember { ProviderRegistry.supportedBuiltInChatDescriptors() }
 

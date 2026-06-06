@@ -30,6 +30,7 @@ import com.aichat.workbench.provider.api.ResponsesTool
 import com.aichat.workbench.provider.api.ToolChoice
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
+import com.aichat.workbench.provider.api.readErrorBodySafely
 import com.aichat.workbench.provider.http.parseSse
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.ToolSource
@@ -169,8 +170,15 @@ open class OpenAiChatProvider(
             .header("Accept", if (stream) "text/event-stream" else "application/json")
             .header("Content-Type", "application/json")
 
+        // Apply provider headers first
+        provider.headers.forEach { (name, value) ->
+            // Prevent provider headers from overriding security-critical headers
+            if (name.lowercase() !in FORBIDDEN_HEADERS) {
+                builder.header(name, value)
+            }
+        }
+        // Always set Authorization last to ensure API key has highest priority
         apiKey?.takeIf { it.isNotBlank() }?.let { builder.header("Authorization", "Bearer $it") }
-        provider.headers.forEach { (name, value) -> builder.header(name, value) }
         return builder.build()
     }
 
@@ -378,7 +386,8 @@ open class OpenAiChatProvider(
 
     private fun Response.requireSuccessful() {
         if (isSuccessful) return
-        val bodyText = bodyText()
+        // Use size-limited reading for error bodies to prevent OOM
+        val bodyText = body?.readErrorBodySafely().orEmpty()
         throw ProviderHttpException(parseHttpError(code, bodyText))
     }
 
@@ -389,13 +398,16 @@ open class OpenAiChatProvider(
         requireNotNull(body) { "Provider 响应 body 为空。" }
 
     private fun parseHttpError(statusCode: Int, body: String): ProviderError {
-        val message = runCatching {
+        val rawMessage = runCatching {
             providerJson.decodeFromString<ProviderErrorEnvelope>(body).error?.message
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Provider 请求失败。"
-        val code = when (statusCode) {
-            401 -> "authentication_failed"
-            429 -> "rate_limited"
-            in 500..599 -> "provider_unavailable"
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        val message = rawMessage ?: "Provider 请求失败。"
+        val code = when {
+            statusCode == 401 -> "authentication_failed"
+            statusCode == 429 -> "rate_limited"
+            rawMessage?.contains("model", ignoreCase = true) == true -> "invalid_model"
+            rawMessage?.contains("quota", ignoreCase = true) == true -> "quota_exceeded"
+            statusCode in 500..599 -> "provider_unavailable"
             else -> "provider_error"
         }
         return ProviderError(
@@ -424,6 +436,7 @@ open class OpenAiChatProvider(
 
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
+        val FORBIDDEN_HEADERS = setOf("authorization", "x-api-key", "api-key")
     }
 }
 

@@ -43,6 +43,15 @@ class AndroidImageStorage(
             )
         }
 
+    override suspend fun deleteImage(id: ImageGenerationId) {
+        withContext(Dispatchers.IO) {
+            val originalFile = File(originals, "${id.value}.png")
+            val thumbnailFile = File(thumbnails, "${id.value}.png")
+            originalFile.delete()
+            thumbnailFile.delete()
+        }
+    }
+
     override suspend fun deleteAllImages() {
         withContext(Dispatchers.IO) {
             imageRoot.deleteRecursively()

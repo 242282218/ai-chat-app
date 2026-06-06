@@ -181,7 +181,10 @@ class ToolExecutor(
                     finishedAt = finishedAt,
                     error = null,
                     conversationId = conversationId,
-                    rawInputJson = toolCall.arguments,
+                    rawInputJson = com.aichat.workbench.tool.model.SensitiveDataSanitizer.sanitize(
+                        toolCall.arguments,
+                        toolDescriptor.sensitiveInputFields
+                    ),
                     rawOutputJson = output.rawJsonOrNull(),
                     durationMs = startedAt.durationUntilMs(finishedAt),
                 )
@@ -456,7 +459,10 @@ class ToolExecutor(
                 retryable = cause.toolErrorRetryable(),
             ),
             conversationId = conversationId,
-            rawInputJson = toolCall.arguments,
+            rawInputJson = com.aichat.workbench.tool.model.SensitiveDataSanitizer.sanitize(
+                toolCall.arguments,
+                toolDescriptor?.sensitiveInputFields ?: emptySet()
+            ),
             rawOutputJson = output.value,
             durationMs = startedAt.durationUntilMs(finishedAt),
             canceledAt = finishedAt.takeIf { status == ToolStatus.Cancelled },

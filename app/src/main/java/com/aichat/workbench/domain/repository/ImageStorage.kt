@@ -10,5 +10,7 @@ data class StoredImagePaths(
 interface ImageStorage {
     suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths
 
+    suspend fun deleteImage(id: ImageGenerationId)
+
     suspend fun deleteAllImages()
 }

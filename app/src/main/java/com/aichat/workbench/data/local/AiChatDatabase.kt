@@ -198,6 +198,24 @@ abstract class AiChatDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Keep persisted tool status names aligned with the domain enum.
                 db.execSQL("UPDATE tool_invocations SET status = 'Cancelled' WHERE status = 'Canceled'")
+
+                // Identify and log orphaned model_role_preferences before cleanup
+                val orphanedCount = db.query(
+                    """
+                    SELECT COUNT(*) FROM model_role_preferences
+                    WHERE provider_id NOT IN (SELECT id FROM provider_configs)
+                    """.trimIndent()
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                }
+                if (orphanedCount > 0) {
+                    android.util.Log.w(
+                        "AiChatDatabase",
+                        "Migration 9->10: Found $orphanedCount orphaned model_role_preferences rows. " +
+                        "These will be excluded from the new table (provider was deleted in earlier version)."
+                    )
+                }
+
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS model_role_preferences_new (

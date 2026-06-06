@@ -170,18 +170,19 @@ fun ChatScreen(
     }
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
 
+    // Track whether the initial conversation selection has been performed, so it
+    // runs exactly once when the target appears — not on every conversations update.
+    var initialSelectionDone by rememberSaveable(initialConversationId) { mutableStateOf(false) }
     LaunchedEffect(initialConversationId, state.conversations) {
         if (
+            !initialSelectionDone &&
             initialConversationId != null &&
             state.selectedConversationId != initialConversationId &&
             state.conversations.any { it.id == initialConversationId }
         ) {
             viewModel.selectConversation(initialConversationId)
+            initialSelectionDone = true
         }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { viewModel.deleteTemporaryConversationOnExit() }
     }
 
     LaunchedEffect(initialDraft, initialTemporary) {
@@ -432,6 +433,7 @@ private fun ChatErrorPanel(
     onOpenProviders: () -> Unit,
     onRetry: (() -> Unit)?,
 ) {
+    // LocalClipboardManager is deprecated but still the standard way to access clipboard in Compose
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     InlineNotice(
@@ -1292,6 +1294,7 @@ private fun ToolImageResultRow(message: Message) {
     }
 }
 
+// LocalClipboardManager is deprecated but still the standard way to access clipboard in Compose
 @Composable
 @Suppress("DEPRECATION")
 private fun ToolImageResultActions(
@@ -2133,7 +2136,7 @@ private fun EmptyConversationPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(top = 2.dp),
             ) {
-                items(chatStarterPrompts) { prompt ->
+                items(chatStarterPrompts, key = { it.label }) { prompt ->
                     AssistChip(
                         onClick = { onUseStarterPrompt(prompt) },
                         leadingIcon = {

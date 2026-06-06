@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 
 class RoomImageGenerationRepository(
     private val dao: ImageGenerationDao,
+    private val imageStorage: com.aichat.workbench.domain.repository.ImageStorage,
 ) : ImageGenerationRepository {
     override fun observeImageGenerations(): Flow<List<ImageGeneration>> =
         dao.observeImageGenerations().map { entities ->
@@ -25,6 +26,9 @@ class RoomImageGenerationRepository(
     }
 
     override suspend fun deleteImageGeneration(id: ImageGenerationId) {
+        // First delete the image files from storage
+        imageStorage.deleteImage(id)
+        // Then delete the database record
         dao.deleteImageGeneration(id.value)
     }
 

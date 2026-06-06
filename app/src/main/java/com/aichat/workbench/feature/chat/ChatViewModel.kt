@@ -35,6 +35,7 @@ class ChatViewModel(
     private val conversationManager: ConversationManager,
     private val generationController: GenerationController,
     private val providerRegistry: ProviderRegistry,
+    private val applicationScope: com.aichat.workbench.app.ApplicationScope,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatUiState(draft = DraftState.fromSavedState(savedStateHandle)))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -208,10 +209,19 @@ class ChatViewModel(
     fun deleteTemporaryConversationOnExit() {
         val conversation = conversationManager.selectedConversation(_state.value)
         if (conversation?.isTemporary != true) return
-        viewModelScope.launch {
+        // Use applicationScope so deletion survives ViewModel clearing (real exit),
+        // but this is NOT called on configuration changes (see onCleared).
+        applicationScope.launch {
             conversationRepository.deleteConversation(conversation.id)
-            clearSelection()
         }
+        clearSelection()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // onCleared only fires on genuine exit (back navigation / process death),
+        // NOT on configuration changes — the correct place to clean up temp conversations.
+        deleteTemporaryConversationOnExit()
     }
 
     fun clearContext() {

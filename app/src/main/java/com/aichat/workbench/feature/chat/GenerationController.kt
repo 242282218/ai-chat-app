@@ -30,6 +30,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class GenerationController(
@@ -41,6 +43,8 @@ class GenerationController(
     private val toolExecutor: ToolExecutor,
     private val clock: Clock,
 ) {
+    // Mutex to protect concurrent access to generation state
+    private val stateMutex = Mutex()
     private var generationJob: Job? = null
     private var activeAssistantMessage: Message? = null
     private var pendingToolApproval: CompletableDeferred<ToolApprovalDecision>? = null
@@ -75,35 +79,52 @@ class GenerationController(
         scope: CoroutineScope,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
-        pendingToolApproval?.let { approval ->
-            if (approval.complete(ToolApprovalDecision.Cancelled)) {
+        scope.launch {
+            stateMutex.withLock {
+                // Check if tool approval is pending and try to complete it
+                pendingToolApproval?.let { approval ->
+                    if (approval.complete(ToolApprovalDecision.Cancelled)) {
+                        onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
+                        return@launch
+                    }
+                }
+
+                // Capture active message before cancellation
+                val active = activeAssistantMessage
+                val job = generationJob
+
+                // Cancel the job
+                job?.cancel()
+                generationJob = null
+
+                // Save message state even if cancellation occurs
+                if (active != null) {
+                    withContext(NonCancellable) {
+                        conversationRepository.saveMessage(
+                            active.copy(
+                                status = MessageStatus.Cancelled,
+                                errorSummary = "已停止，已保留当前回复内容。",
+                                updatedAt = clock.instant(),
+                            ),
+                        )
+                    }
+                }
+
+                // Clean up state
+                activeAssistantMessage = null
+                pendingToolApproval?.complete(ToolApprovalDecision.Denied)
+                pendingToolApproval = null
                 onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
-                return
             }
         }
-        val active = activeAssistantMessage
-        generationJob?.cancel()
-        generationJob = null
-        if (active != null) {
-            scope.launch {
-                conversationRepository.saveMessage(
-                    active.copy(
-                        status = MessageStatus.Cancelled,
-                        errorSummary = "已停止，已保留当前回复内容。",
-                        updatedAt = clock.instant(),
-                    ),
-                )
-            }
-        }
-        activeAssistantMessage = null
-        pendingToolApproval?.complete(ToolApprovalDecision.Denied)
-        pendingToolApproval = null
-        onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
     }
 
     fun confirmToolCall() {
         val toolCall = activePendingToolCall ?: return
-        pendingToolApproval?.complete(ToolApprovalDecision.Approved(toolCall))
+        val completed = pendingToolApproval?.complete(ToolApprovalDecision.Approved(toolCall)) ?: false
+        if (!completed) {
+            android.util.Log.w("GenerationController", "confirmToolCall ignored: approval already resolved.")
+        }
     }
 
     fun updatePendingToolArguments(arguments: String) {
@@ -111,7 +132,10 @@ class GenerationController(
     }
 
     fun denyToolCall() {
-        pendingToolApproval?.complete(ToolApprovalDecision.Denied)
+        val completed = pendingToolApproval?.complete(ToolApprovalDecision.Denied) ?: false
+        if (!completed) {
+            android.util.Log.w("GenerationController", "denyToolCall ignored: approval already resolved.")
+        }
     }
 
     private suspend fun runGeneration(

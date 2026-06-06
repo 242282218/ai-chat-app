@@ -80,8 +80,10 @@ fun ToolCallPanel(
     val displayResult = result ?: outcome.fallbackResult()
     val clipboard = LocalClipboardManager.current
 
-    LaunchedEffect(toolCall.arguments, outcome) {
-        if (outcome == ToolCallPanelOutcome.Pending && editableArguments != toolCall.arguments) {
+    // Sync editableArguments only when the underlying toolCall.arguments identity changes
+    // (keyed on toolCall.id), avoiding overwriting user edits on every recomposition.
+    LaunchedEffect(toolCall.id.value, toolCall.arguments) {
+        if (outcome == ToolCallPanelOutcome.Pending) {
             editableArguments = toolCall.arguments
         }
     }
