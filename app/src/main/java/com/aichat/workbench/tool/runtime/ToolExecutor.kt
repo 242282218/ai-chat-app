@@ -214,9 +214,6 @@ class ToolExecutor(
         )
     }
 
-    override suspend fun deny(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
-        deny(conversationId, toolCall, descriptorFor(toolCall.name))
-
     override suspend fun deny(
         conversationId: ConversationId,
         toolCall: ToolCall,
