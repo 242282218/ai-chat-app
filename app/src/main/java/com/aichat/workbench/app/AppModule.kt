@@ -65,6 +65,7 @@ import java.time.Clock
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
+import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
@@ -233,19 +234,7 @@ val appModule: Module = module {
             providerRepository = get(),
         )
     }
-    viewModel {
-        ChatViewModel(
-            savedStateHandle = get(),
-            conversationRepository = get(),
-            providerRepository = get(),
-            modelRolePreferenceRepository = get(),
-            promptPresetRepository = get(),
-            conversationManager = get(),
-            generationController = get(),
-            providerRegistry = get(),
-            applicationScope = get(),
-        )
-    }
+    viewModelOf(::ChatViewModel)
     viewModel {
         ImageGenerationViewModel(
             imageRepository = get(),
