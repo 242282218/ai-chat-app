@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
 import androidx.navigation.NavType
@@ -30,6 +31,7 @@ import com.aichat.workbench.feature.tools.ToolsHubScreen
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
+    val draftHandoffRepository = remember { DraftHandoffRepository() }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBar = AppDestination.bottomTabs.any { it.route == currentRoute }
@@ -62,7 +64,9 @@ fun AppNavHost() {
                 HomeScreen(
                     destinations = homeManagementDestinations,
                     onDestinationClick = navController::navigateSingleTop,
-                    onStartChat = navController::navigateToNewChat,
+                    onStartChat = { draft, temporary ->
+                        navController.navigateToNewChat(draft, temporary, draftHandoffRepository)
+                    },
                     onConversationClick = navController::navigateToConversation,
                 )
             }
@@ -70,13 +74,17 @@ fun AppNavHost() {
                 ImageGenerationScreen(
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
-                    onSendToChat = { draft -> navController.navigateToNewChat(draft, temporary = false) },
+                    onSendToChat = { draft ->
+                        navController.navigateToNewChat(draft, temporary = false, draftHandoffRepository)
+                    },
                     showBackButton = false,
                 )
             }
             composable(AppDestination.ToolsHub.route) {
                 ToolsHubScreen(
-                    onSendToChat = { draft -> navController.navigateToNewChat(draft, temporary = false) },
+                    onSendToChat = { draft ->
+                        navController.navigateToNewChat(draft, temporary = false, draftHandoffRepository)
+                    },
                 )
             }
             composable(AppDestination.SettingsHub.route) {
@@ -108,6 +116,11 @@ fun AppNavHost() {
                         nullable = true
                         defaultValue = null
                     },
+                    navArgument(CHAT_DRAFT_REF_ARG) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
                     navArgument(CHAT_TEMPORARY_ARG) {
                         type = NavType.BoolType
                         defaultValue = false
@@ -116,7 +129,9 @@ fun AppNavHost() {
             ) { entry ->
                 ChatScreen(
                     initialConversationId = null,
-                    initialDraft = entry.arguments?.getString(CHAT_DRAFT_ARG).orEmpty(),
+                    initialDraft = draftHandoffRepository
+                        .take(entry.arguments?.getString(CHAT_DRAFT_REF_ARG))
+                        ?: entry.arguments?.getString(CHAT_DRAFT_ARG).orEmpty(),
                     initialTemporary = entry.arguments?.getBoolean(CHAT_TEMPORARY_ARG) == true,
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
@@ -148,9 +163,17 @@ private fun NavController.navigateToConversation(conversationId: ConversationId)
     }
 }
 
-private fun NavController.navigateToNewChat(draft: String, temporary: Boolean) {
+private fun NavController.navigateToNewChat(
+    draft: String,
+    temporary: Boolean,
+    draftHandoffRepository: DraftHandoffRepository,
+) {
+    val draftRef = draft
+        .takeIf { it.length > MAX_ROUTE_DRAFT_LENGTH }
+        ?.let(draftHandoffRepository::put)
+    val routeDraft = draft.takeIf { draftRef == null }.orEmpty()
     navigate(
-        "${AppDestination.Chat.route}?$CHAT_DRAFT_ARG=${Uri.encode(draft)}&$CHAT_TEMPORARY_ARG=$temporary",
+        "${AppDestination.Chat.route}?$CHAT_DRAFT_ARG=${Uri.encode(routeDraft)}&$CHAT_DRAFT_REF_ARG=${Uri.encode(draftRef.orEmpty())}&$CHAT_TEMPORARY_ARG=$temporary",
     ) {
         launchSingleTop = true
     }
@@ -158,9 +181,11 @@ private fun NavController.navigateToNewChat(draft: String, temporary: Boolean) {
 
 private const val CHAT_CONVERSATION_ID_ARG = "conversationId"
 private const val CHAT_DRAFT_ARG = "draft"
+private const val CHAT_DRAFT_REF_ARG = "draftRef"
 private const val CHAT_TEMPORARY_ARG = "temporary"
+private const val MAX_ROUTE_DRAFT_LENGTH = 1024
 private const val CHAT_CONVERSATION_ROUTE = "chat/{$CHAT_CONVERSATION_ID_ARG}"
-private const val CHAT_NEW_ROUTE = "chat?$CHAT_DRAFT_ARG={$CHAT_DRAFT_ARG}&$CHAT_TEMPORARY_ARG={$CHAT_TEMPORARY_ARG}"
+private const val CHAT_NEW_ROUTE = "chat?$CHAT_DRAFT_ARG={$CHAT_DRAFT_ARG}&$CHAT_DRAFT_REF_ARG={$CHAT_DRAFT_REF_ARG}&$CHAT_TEMPORARY_ARG={$CHAT_TEMPORARY_ARG}"
 
 private val homeManagementDestinations = listOf(
     AppDestination.ProviderSettings,

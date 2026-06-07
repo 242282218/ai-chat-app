@@ -35,7 +35,7 @@
 - UI 状态放 ViewModel/UiState，Compose 保持声明式。
 - data entity 不直接泄漏到 domain/feature，使用 mapper。
 - 新依赖注册到 [AppModule.kt](app/src/main/java/com/aichat/workbench/app/AppModule.kt)。
-- Room 当前 schema version 7；改 entity/DAO/Database 时同步 migration、schema JSON 和迁移测试。
+- Room 当前 schema version 10，以 [AiChatDatabase.kt](app/src/main/java/com/aichat/workbench/data/local/AiChatDatabase.kt) 为准；改 entity/DAO/Database 时同步 migration、schema JSON 和迁移测试。
 
 ## Gateway 约定
 

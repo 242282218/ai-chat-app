@@ -70,11 +70,11 @@ type GatewayError struct {
 }
 
 func NewMux(version string) http.Handler {
-	return NewMuxWithDependencies(version, sandbox.NewDockerRunner(), search.MockAdapter{}, Options{})
+	return NewMuxWithDependencies(version, sandbox.NewDockerRunner(), search.DisabledAdapter{}, Options{})
 }
 
 func NewMuxWithSandboxRunner(version string, sandboxRunner sandbox.Runner) http.Handler {
-	return NewMuxWithDependencies(version, sandboxRunner, search.MockAdapter{}, Options{})
+	return NewMuxWithDependencies(version, sandboxRunner, search.DisabledAdapter{}, Options{})
 }
 
 func OptionsFromConfig(cfg config.Config) Options {

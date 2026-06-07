@@ -5,6 +5,9 @@ import com.aichat.workbench.provider.api.ProviderErrorEnvelope
 import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.providerJson
+import com.aichat.workbench.provider.api.readErrorBodySafely
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -157,7 +160,7 @@ class OpenAiImageGenerationProvider(
 
             // Read with size limit protection
             val bytes = it.body?.byteStream()?.use { stream ->
-                stream.readNBytes(MAX_IMAGE_SIZE_BYTES + 1)
+                stream.readAtMost(MAX_IMAGE_SIZE_BYTES + 1)
             } ?: ByteArray(0)
 
             require(bytes.isNotEmpty()) { "图片 URL 下载结果为空。" }
@@ -167,6 +170,19 @@ class OpenAiImageGenerationProvider(
 
             return Base64.getEncoder().encodeToString(bytes)
         }
+    }
+
+    private fun InputStream.readAtMost(maxBytes: Int): ByteArray {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        val output = ByteArrayOutputStream(maxBytes.coerceAtMost(DEFAULT_BUFFER_SIZE))
+        var remaining = maxBytes
+        while (remaining > 0) {
+            val read = read(buffer, 0, minOf(buffer.size, remaining))
+            if (read == -1) break
+            output.write(buffer, 0, read)
+            remaining -= read
+        }
+        return output.toByteArray()
     }
 
 }

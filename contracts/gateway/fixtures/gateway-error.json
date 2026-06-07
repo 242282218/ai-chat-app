@@ -1,0 +1,6 @@
+{
+  "code": "invalid_query",
+  "message": "Search query 不能为空。",
+  "requestId": "request-1",
+  "details": null
+}

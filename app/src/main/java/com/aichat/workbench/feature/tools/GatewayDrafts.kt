@@ -43,7 +43,7 @@ internal fun ToolsUiState.searchActionStatus(): GatewayActionStatus =
         isLoading -> GatewayActionStatus(label = "处理中", isReady = false, isBusy = true)
         localSearchEnabled && !localSearchBaseUrlDraft.isValidGatewayBaseUrl() ->
             GatewayActionStatus(label = "搜索 URL 无效", isReady = false)
-        localSearchEnabled && localSearchApiKeyDraft.isBlank() ->
+        localSearchEnabled && !localSearchApiKeyAvailable ->
             GatewayActionStatus(label = "需要搜索 Key", isReady = false)
         localSearchEnabled && localSearchMaxResultsDraft.toIntOrNull()?.let { it in 1..20 } != true ->
             GatewayActionStatus(label = "数量无效", isReady = false)
@@ -53,7 +53,7 @@ internal fun ToolsUiState.searchActionStatus(): GatewayActionStatus =
         !gatewayEnabled -> GatewayActionStatus(label = "网关关闭", isReady = false)
         !gatewayBaseUrlDraft.isValidGatewayBaseUrl() ->
             GatewayActionStatus(label = gatewayBaseUrlDraft.gatewayUrlStatus().label, isReady = false)
-        gatewayApiTokenDraft.isBlank() -> GatewayActionStatus(label = "需要 Token", isReady = false)
+        !gatewayApiTokenAvailable -> GatewayActionStatus(label = "需要 Token", isReady = false)
         !hasGatewaySearchTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
         searchQuery.isBlank() -> GatewayActionStatus(label = "需要关键词", isReady = false)
         else -> GatewayActionStatus(label = "就绪", isReady = true)
@@ -65,7 +65,7 @@ internal fun ToolsUiState.sandboxActionStatus(): GatewayActionStatus =
         !gatewayEnabled -> GatewayActionStatus(label = "网关关闭", isReady = false)
         !gatewayBaseUrlDraft.isValidGatewayBaseUrl() ->
             GatewayActionStatus(label = gatewayBaseUrlDraft.gatewayUrlStatus().label, isReady = false)
-        gatewayApiTokenDraft.isBlank() -> GatewayActionStatus(label = "需要 Token", isReady = false)
+        !gatewayApiTokenAvailable -> GatewayActionStatus(label = "需要 Token", isReady = false)
         !hasSandboxTool() -> GatewayActionStatus(label = "需要工具清单", isReady = false)
         sandboxCode.isBlank() -> GatewayActionStatus(label = "需要代码", isReady = false)
         else -> GatewayActionStatus(label = "就绪", isReady = true)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,7 +117,29 @@ func TestToolManifestMatchesContractFixture(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-	server := httptest.NewServer(newAuthenticatedTestMux())
+	fetchedAt := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	publishedAt := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(newAuthenticatedTestMuxWithSearch(staticSearchAdapter{
+		response: search.Response{
+			Query:     "AI news",
+			FetchedAt: fetchedAt,
+			Results: []search.Result{
+				{
+					Title:       "AI funding rises",
+					Summary:     "A concise summary.",
+					URL:         "https://example.com/ai-funding",
+					Source:      "Example News",
+					PublishedAt: &publishedAt,
+				},
+				{
+					Title:   "AI policy update",
+					Summary: "",
+					URL:     "https://example.com/ai-policy",
+					Source:  "Example Wire",
+				},
+			},
+		},
+	}))
 	defer server.Close()
 
 	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, testToken)
@@ -129,26 +152,34 @@ func TestSearch(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body struct {
-		Query   string `json:"query"`
-		Results []struct {
-			Title  string `json:"title"`
-			URL    string `json:"url"`
-			Source string `json:"source"`
-		} `json:"results"`
+	actual := decodeCanonicalJSON(t, resp.Body)
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "search-response.json")))
+
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("search response does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
+}
+
+func TestSearchDisabledReturnsUnavailable(t *testing.T) {
+	server := httptest.NewServer(newAuthenticatedTestMuxWithSearch(search.DisabledAdapter{}))
+	defer server.Close()
+
+	resp, err := postJSON(server.URL+"/v1/search", `{"query":"AI news"}`, testToken)
+	if err != nil {
+		t.Fatalf("post search: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+
+	var body GatewayError
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-
-	if body.Query != "AI news" {
-		t.Fatalf("query = %q, want AI news", body.Query)
-	}
-	if len(body.Results) != 1 {
-		t.Fatalf("result count = %d, want 1", len(body.Results))
-	}
-	if body.Results[0].Source != "Mock Search" {
-		t.Fatalf("source = %q, want Mock Search", body.Results[0].Source)
+	if body.Code != "search_unavailable" {
+		t.Fatalf("code = %q, want search_unavailable", body.Code)
 	}
 }
 
@@ -156,7 +187,7 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 	server := httptest.NewServer(newAuthenticatedTestMux())
 	defer server.Close()
 
-	resp, err := postJSON(server.URL+"/v1/search", `{"query":" "}`, testToken)
+	resp, err := postJSONWithRequestID(server.URL+"/v1/search", `{"query":" "}`, testToken, "request-1")
 	if err != nil {
 		t.Fatalf("post search: %v", err)
 	}
@@ -170,8 +201,12 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Code != "invalid_query" {
-		t.Fatalf("code = %q, want invalid_query", body.Code)
+	var expected GatewayError
+	if err := json.Unmarshal(readContractFixture(t, "gateway-error.json"), &expected); err != nil {
+		t.Fatalf("decode gateway error fixture: %v", err)
+	}
+	if !reflect.DeepEqual(body, expected) {
+		t.Fatalf("gateway error does not match contract fixture\nactual: %#v\nexpected: %#v", body, expected)
 	}
 }
 
@@ -288,12 +323,10 @@ func TestSandboxRunReturnsStdout(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body sandbox.Response
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Stdout != "2\n" {
-		t.Fatalf("stdout = %q, want 2 newline", body.Stdout)
+	actual := decodeCanonicalJSON(t, resp.Body)
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "sandbox-run-response.json")))
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("sandbox response does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
 	if runner.request.Code != "print(1 + 1)" {
 		t.Fatalf("code = %q, want print snippet", runner.request.Code)
@@ -573,6 +606,10 @@ func newAuthenticatedTestMux() http.Handler {
 	return NewMuxWithDependencies("test", &fakeSandboxRunner{}, search.MockAdapter{}, Options{APIToken: testToken})
 }
 
+func newAuthenticatedTestMuxWithSearch(adapter search.Adapter) http.Handler {
+	return NewMuxWithDependencies("test", &fakeSandboxRunner{}, adapter, Options{APIToken: testToken})
+}
+
 func newAuthenticatedSandboxTestMux(runner sandbox.Runner, options Options) http.Handler {
 	return NewMuxWithDependencies("test", runner, search.MockAdapter{}, options)
 }
@@ -616,6 +653,27 @@ func readContractFixture(t *testing.T, name string) []byte {
 			t.Fatalf("fixture %s not found from %s", name, wd)
 		}
 	}
+}
+
+func decodeCanonicalJSON(t *testing.T, reader io.Reader) map[string]any {
+	t.Helper()
+	var value map[string]any
+	if err := json.NewDecoder(reader).Decode(&value); err != nil {
+		t.Fatalf("decode canonical json: %v", err)
+	}
+	return value
+}
+
+type staticSearchAdapter struct {
+	response search.Response
+	err      error
+}
+
+func (adapter staticSearchAdapter) Search(ctx context.Context, query string) (search.Response, error) {
+	if err := ctx.Err(); err != nil {
+		return search.Response{}, errors.Join(adapter.err, err)
+	}
+	return adapter.response, adapter.err
 }
 
 type fakeSandboxRunner struct {

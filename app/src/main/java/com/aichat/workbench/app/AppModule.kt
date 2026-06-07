@@ -29,11 +29,11 @@ import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ThemeSettingsRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
+import com.aichat.workbench.domain.tool.ToolExecutionService
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
-import com.aichat.workbench.domain.tool.ToolExecutor
 import com.aichat.workbench.feature.home.HomeViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
 import com.aichat.workbench.feature.settings.DataSettingsViewModel
@@ -58,6 +58,7 @@ import com.aichat.workbench.tool.local.LocalScriptRunner
 import com.aichat.workbench.tool.local.LocalToolExecutor
 import com.aichat.workbench.tool.local.ProviderConnectionTestRunner
 import com.aichat.workbench.tool.local.defaultLocalTools
+import com.aichat.workbench.tool.runtime.ToolExecutor
 import com.aichat.workbench.tool.search.LocalSearchClient
 import com.aichat.workbench.tool.search.TavilyLocalSearchClient
 import java.time.Clock
@@ -173,7 +174,7 @@ val appModule: Module = module {
             ),
         )
     }
-    single {
+    single<ToolExecutionService> {
         val settingsRepository = get<GatewaySettingsRepository>()
         val toolSettingsRepository = get<ToolSettingsRepository>()
         ToolExecutor(

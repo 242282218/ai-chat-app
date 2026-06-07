@@ -35,19 +35,3 @@ private val FILE_READ_INSTRUCTION_REGEX = Regex(
         Regex.escape(FILE_READ_INSTRUCTION_PREFIX) +
         "\\{\"uri\":\"(?:\\\\.|[^\"\\\\])*\",\"maxBytes\":65536}\\s*(?=\\n\\n|$)",
 )
-
-private fun String.jsonStringLiteral(): String =
-    buildString {
-        append('"')
-        this@jsonStringLiteral.forEach { char ->
-            when (char) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(char)
-            }
-        }
-        append('"')
-    }

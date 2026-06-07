@@ -10,6 +10,7 @@ data class GatewaySettings(
     val enabled: Boolean,
     val baseUrl: String,
     val apiToken: String,
+    val hasApiToken: Boolean = apiToken.isNotBlank(),
 )
 
 class GatewaySettingsRepository(
@@ -23,11 +24,14 @@ class GatewaySettingsRepository(
         settings.asStateFlow()
 
     suspend fun loadSettings() {
-        settings.value = readSettings()
+        settings.value = readSettingsWithoutToken(hasApiToken = readApiToken().isNotBlank())
     }
 
     suspend fun currentSettings(): GatewaySettings =
-        readSettings().also { settings.value = it }
+        readSettings().also { settings.value = it.withoutApiToken() }
+
+    suspend fun currentApiToken(): String =
+        readApiToken()
 
     suspend fun saveSettings(enabled: Boolean, baseUrl: String, apiToken: String) {
         val trimmedToken = apiToken.trim()
@@ -48,17 +52,20 @@ class GatewaySettingsRepository(
                 }
             }
             .apply()
-        settings.value = readSettings()
+        settings.value = readSettingsWithoutToken(hasApiToken = trimmedToken.isNotBlank())
     }
 
-    private suspend fun readSettings(): GatewaySettings =
-        readSettingsWithoutToken().copy(apiToken = readApiToken())
+    private suspend fun readSettings(): GatewaySettings {
+        val token = readApiToken()
+        return readSettingsWithoutToken(hasApiToken = token.isNotBlank()).copy(apiToken = token)
+    }
 
-    private fun readSettingsWithoutToken(): GatewaySettings =
+    private fun readSettingsWithoutToken(hasApiToken: Boolean = false): GatewaySettings =
         GatewaySettings(
             enabled = preferences.getBoolean(KEY_ENABLED, false),
             baseUrl = preferences.getString(KEY_BASE_URL, DEFAULT_BASE_URL).orEmpty().normalizedGatewayBaseUrl(),
             apiToken = "",
+            hasApiToken = hasApiToken,
         )
 
     private suspend fun readApiToken(): String {
@@ -94,6 +101,9 @@ class GatewaySettingsRepository(
 
     private fun String.normalizedGatewayBaseUrl(): String =
         trim().trimEnd('/')
+
+    private fun GatewaySettings.withoutApiToken(): GatewaySettings =
+        copy(apiToken = "", hasApiToken = hasApiToken || apiToken.isNotBlank())
 
     private companion object {
         const val PREFS_NAME = "gateway_settings"

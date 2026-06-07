@@ -1,4 +1,4 @@
-package com.aichat.workbench.domain.tool
+package com.aichat.workbench.tool.runtime
 
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.ConversationId
@@ -20,6 +20,9 @@ import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
+import com.aichat.workbench.domain.tool.ToolExecution
+import com.aichat.workbench.domain.tool.ToolExecutionCancelledException
+import com.aichat.workbench.domain.tool.ToolExecutionService
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
 import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.api.ProviderHttpException
@@ -61,21 +64,6 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-data class ToolExecution(
-    val result: ToolResult,
-    val messageContent: String,
-    val contentParts: List<MessagePart> = emptyList(),
-)
-
-class ToolExecutionCancelledException(
-    val execution: ToolExecution,
-    cause: CancellationException,
-) : CancellationException(cause.message) {
-    init {
-        initCause(cause)
-    }
-}
-
 private data class ExecutedToolOutput(
     val output: ToolOutput,
     val contentParts: List<MessagePart> = emptyList(),
@@ -94,24 +82,24 @@ class ToolExecutor(
     private val clock: Clock,
     private val localToolExecutor: LocalToolExecutor = LocalToolExecutor(defaultLocalTools(clock)),
     private val toolSettingsProvider: suspend () -> Map<String, ToolRuntimeSetting> = { emptyMap() },
-) {
+) : ToolExecutionService {
     private val gatewayClient: GatewayClient by lazy(gatewayClientProvider)
     private val remoteToolsMutex = Mutex()
     private var remoteToolsCache: RemoteToolsCache? = null
 
-    suspend fun availableTools(): List<ToolDescriptor> =
+    override suspend fun availableTools(): List<ToolDescriptor> =
         (localTools() + remoteTools()).filterEnabledTools()
 
-    suspend fun descriptorFor(name: String): ToolDescriptor? =
+    override suspend fun descriptorFor(name: String): ToolDescriptor? =
         availableTools().firstOrNull { it.name == name.canonicalToolName() }
 
-    suspend fun requiresConfirmation(descriptor: ToolDescriptor): Boolean =
+    override suspend fun requiresConfirmation(descriptor: ToolDescriptor): Boolean =
         descriptor.requiresConfirmation(toolSettingsProvider().runtimeSettingFor(descriptor).permissionPolicy)
 
-    suspend fun execute(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
+    override suspend fun execute(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
         execute(conversationId, toolCall, descriptorForExecution(toolCall.name))
 
-    suspend fun execute(
+    override suspend fun execute(
         conversationId: ConversationId,
         toolCall: ToolCall,
         descriptor: ToolDescriptor?,
@@ -133,6 +121,7 @@ class ToolExecutor(
                 permissionLevel = toolDescriptor.permissionLevel,
                 code = "tool_disabled",
                 message = "工具已禁用。",
+                sensitiveInputFields = toolDescriptor.sensitiveInputFields,
             )
         }
         if (toolDescriptor.source == ToolSource.Official) {
@@ -143,6 +132,7 @@ class ToolExecutor(
                 permissionLevel = toolDescriptor.permissionLevel,
                 code = "hosted_tool_not_executable_locally",
                 message = "官方 Hosted Tool 由 Provider 执行，本地不执行。",
+                sensitiveInputFields = toolDescriptor.sensitiveInputFields,
             )
         }
         if (toolDescriptor.name == "image_upload_to_model") {
@@ -153,6 +143,7 @@ class ToolExecutor(
                 permissionLevel = toolDescriptor.permissionLevel,
                 code = "image_upload_requires_chat_confirmation",
                 message = "图片发送给模型必须通过聊天输入栏选择图片，并在发送前二次确认；工具不能自动读取或上传本地图片。",
+                sensitiveInputFields = toolDescriptor.sensitiveInputFields,
             )
         }
         val startedAt = clock.instant()
@@ -203,6 +194,7 @@ class ToolExecutor(
                             message = "工具执行已取消。",
                             startedAt = startedAt,
                             status = ToolStatus.Cancelled,
+                            sensitiveInputFields = toolDescriptor.sensitiveInputFields,
                         )
                     }
                     throw ToolExecutionCancelledException(execution, error)
@@ -216,15 +208,16 @@ class ToolExecutor(
                     message = error.message ?: "工具执行失败。",
                     startedAt = startedAt,
                     cause = error,
+                    sensitiveInputFields = toolDescriptor.sensitiveInputFields,
                 )
             },
         )
     }
 
-    suspend fun deny(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
+    override suspend fun deny(conversationId: ConversationId, toolCall: ToolCall): ToolExecution =
         deny(conversationId, toolCall, descriptorFor(toolCall.name))
 
-    suspend fun deny(
+    override suspend fun deny(
         conversationId: ConversationId,
         toolCall: ToolCall,
         descriptor: ToolDescriptor?,
@@ -237,9 +230,10 @@ class ToolExecutor(
             code = "tool_denied",
             message = "用户拒绝执行工具。",
             status = ToolStatus.Denied,
+            sensitiveInputFields = descriptor?.sensitiveInputFields ?: emptySet(),
         )
 
-    suspend fun cancel(
+    override suspend fun cancel(
         conversationId: ConversationId,
         toolCall: ToolCall,
         descriptor: ToolDescriptor?,
@@ -252,6 +246,7 @@ class ToolExecutor(
             code = "tool_cancelled",
             message = "工具执行已取消。",
             status = ToolStatus.Cancelled,
+            sensitiveInputFields = descriptor?.sensitiveInputFields ?: emptySet(),
         )
 
     private fun localTools(): List<ToolDescriptor> =
@@ -431,6 +426,7 @@ class ToolExecutor(
         startedAt: java.time.Instant = clock.instant(),
         status: ToolStatus = ToolStatus.Failed,
         cause: Throwable? = null,
+        sensitiveInputFields: Set<String> = emptySet(),
     ): ToolExecution {
         val output = ToolOutput.Json(
             toolJson.encodeToString(
@@ -461,7 +457,7 @@ class ToolExecutor(
             conversationId = conversationId,
             rawInputJson = com.aichat.workbench.tool.model.SensitiveDataSanitizer.sanitize(
                 toolCall.arguments,
-                toolDescriptor?.sensitiveInputFields ?: emptySet()
+                sensitiveInputFields,
             ),
             rawOutputJson = output.value,
             durationMs = startedAt.durationUntilMs(finishedAt),

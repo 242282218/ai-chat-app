@@ -234,7 +234,7 @@ class ProviderDraftsTest {
             HeaderStatus(label = "2 个请求头", tone = StatusTone.Accent),
             """
             X-Trace: enabled
-            HTTP-Referer: https://example.com
+            X-Request-Id: request-1
             """.trimIndent().headerStatus(),
         )
         assertEquals(
@@ -259,19 +259,19 @@ class ProviderDraftsTest {
     fun parsesOnlyValidHeaderLines() {
         val headers = parseHeaderLines(
             """
-            HTTP-Referer: https://example.com
+            X-Request-Id: request-1
             Authorization: Bearer test
             Missing separator
             X-Trace: enabled
             """.trimIndent(),
         )
 
-        assertTrue("HTTP-Referer: https://example.com\nX-Trace: enabled".hasValidHeaderLines())
+        assertTrue("X-Request-Id: request-1\nX-Trace: enabled".hasValidHeaderLines())
         assertFalse("X-Team:".hasValidHeaderLines())
         assertFalse("Authorization: Bearer test".hasValidHeaderLines())
         assertEquals(
             mapOf(
-                "HTTP-Referer" to "https://example.com",
+                "X-Request-Id" to "request-1",
                 "X-Trace" to "enabled",
             ),
             headers,

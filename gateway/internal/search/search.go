@@ -2,10 +2,13 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
 )
+
+var ErrUnavailable = errors.New("search unavailable")
 
 type Result struct {
 	Title       string     `json:"title"`
@@ -23,6 +26,15 @@ type Response struct {
 
 type Adapter interface {
 	Search(ctx context.Context, query string) (Response, error)
+}
+
+type DisabledAdapter struct{}
+
+func (adapter DisabledAdapter) Search(ctx context.Context, query string) (Response, error) {
+	if err := ctx.Err(); err != nil {
+		return Response{}, fmt.Errorf("search canceled: %w", err)
+	}
+	return Response{}, ErrUnavailable
 }
 
 type MockAdapter struct {

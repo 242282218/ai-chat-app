@@ -164,6 +164,112 @@ class ToolsViewModelTest {
     }
 
     @Test
+    fun savedLocalSearchApiKeyIsClearedFromUiStateAndUsedForExecution() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val localSearchClient = RecordingLocalSearchClient()
+            val viewModel = viewModel(localSearchClient = localSearchClient)
+            advanceUntilIdle()
+
+            viewModel.updateToolPermissionPolicy("local-search", ToolPermissionPolicy.AllowWithoutPrompt)
+            advanceUntilIdle()
+            viewModel.updateLocalSearchEnabled(true)
+            viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+            viewModel.saveLocalSearchSettings("stored-search-key")
+            advanceUntilIdle()
+            viewModel.awaitNotLoading()
+
+            assertEquals(true, viewModel.state.value.localSearchHasApiKey)
+
+            viewModel.updateSearchQuery("release notes")
+            viewModel.requestSearch()
+            advanceUntilIdle()
+            viewModel.awaitNotLoading()
+
+            assertEquals("stored-search-key", localSearchClient.requests.single().config.apiKey)
+        }
+
+    @Test
+    fun clearLocalSearchApiKeyRemovesSavedKey() = runTest(mainDispatcherRule.testDispatcher) {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        viewModel.updateLocalSearchEnabled(true)
+        viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
+        viewModel.saveLocalSearchSettings("stored-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+
+        viewModel.saveLocalSearchSettings("")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+        viewModel.updateSearchQuery("release notes")
+        viewModel.requestSearch()
+
+        assertEquals(false, viewModel.state.value.localSearchHasApiKey)
+        assertEquals("搜索 API Key 未配置。", viewModel.state.value.status)
+        assertEquals("local_search_key_required", viewModel.state.value.searchError?.code)
+    }
+
+    @Test
+    fun savedGatewayTokenIsClearedFromUiStateAndUsedForSearchRequests() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val server = MockWebServer()
+            server.enqueue(manifestResponse("web_search"))
+            server.enqueue(searchResponse())
+            server.start()
+            try {
+                val viewModel = viewModel()
+                advanceUntilIdle()
+                viewModel.updateGatewayEnabled(true)
+                viewModel.updateGatewayBaseUrl(server.url("/").toString())
+                viewModel.saveGatewaySettings("stored-gateway-token")
+                advanceUntilIdle()
+                viewModel.awaitNotLoading()
+
+                assertEquals(true, viewModel.state.value.gatewayHasApiToken)
+
+                viewModel.fetchManifest()
+                advanceUntilIdle()
+                viewModel.awaitNotLoading()
+                viewModel.updateSearchQuery("release notes")
+                viewModel.requestSearch()
+
+                assertEquals("web_search", viewModel.state.value.pendingConfirmation?.name)
+
+                viewModel.confirmPermission()
+                advanceUntilIdle()
+                viewModel.awaitNotLoading()
+
+                assertEquals(null, server.takeRequest().getHeader("Authorization"))
+                assertEquals("Bearer stored-gateway-token", server.takeRequest().getHeader("Authorization"))
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun clearGatewayTokenRemovesSavedToken() = runTest(mainDispatcherRule.testDispatcher) {
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        viewModel.updateGatewayEnabled(true)
+        viewModel.updateGatewayBaseUrl("https://gateway.example.com")
+        viewModel.saveGatewaySettings("stored-gateway-token")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+
+        viewModel.saveGatewaySettings("")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
+        viewModel.updateSearchQuery("release notes")
+        viewModel.requestSearch()
+
+        assertEquals(false, viewModel.state.value.gatewayHasApiToken)
+        assertEquals("Gateway API token 未配置。", viewModel.state.value.status)
+        assertEquals("gateway_token_required", viewModel.state.value.searchError?.code)
+    }
+
+    @Test
     fun localSearchExecutesAndSavesToolResult() = runTest(mainDispatcherRule.testDispatcher) {
         val repository = RecordingToolInvocationRepository()
         val localSearchClient = RecordingLocalSearchClient()
@@ -175,7 +281,9 @@ class ToolsViewModelTest {
 
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
         viewModel.updateLocalSearchMaxResults("3")
         viewModel.updateLocalSearchDepth("advanced")
         viewModel.updateLocalSearchTopic("news")
@@ -229,7 +337,9 @@ class ToolsViewModelTest {
         advanceUntilIdle()
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
         viewModel.updateSearchQuery("AI release notes")
         viewModel.requestSearch()
         advanceUntilIdle()
@@ -262,7 +372,9 @@ class ToolsViewModelTest {
         advanceUntilIdle()
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
         viewModel.updateSearchQuery("AI release notes")
         viewModel.requestSearch()
         advanceUntilIdle()
@@ -288,7 +400,9 @@ class ToolsViewModelTest {
         advanceUntilIdle()
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
         viewModel.updateSearchQuery("AI release notes")
         viewModel.requestSearch()
         advanceUntilIdle()
@@ -644,7 +758,9 @@ class ToolsViewModelTest {
         advanceUntilIdle()
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
 
         val historyResult = toolResult(
             id = "search-1",
@@ -676,7 +792,9 @@ class ToolsViewModelTest {
         advanceUntilIdle()
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
 
         val historyResult = toolResult(
             id = "search-alias-1",
@@ -706,7 +824,9 @@ class ToolsViewModelTest {
 
         viewModel.updateLocalSearchEnabled(true)
         viewModel.updateLocalSearchBaseUrl("https://api.tavily.com")
-        viewModel.updateLocalSearchApiKey("test-search-key")
+        viewModel.saveLocalSearchSettings("test-search-key")
+        advanceUntilIdle()
+        viewModel.awaitNotLoading()
 
         viewModel.rerunToolResult(
             toolResult(
@@ -1481,6 +1601,25 @@ private fun manifestResponse(toolName: String): MockResponse =
               "description": "Remote tool",
               "permissionLevel": "Network",
               "inputSchema": {}
+            }
+          ]
+        }
+        """.trimIndent(),
+    )
+
+private fun searchResponse(): MockResponse =
+    MockResponse().setResponseCode(200).setBody(
+        """
+        {
+          "query": "release notes",
+          "fetchedAt": "2026-06-01T00:00:01Z",
+          "results": [
+            {
+              "title": "Result title",
+              "summary": "Result summary",
+              "url": "https://example.com/result",
+              "source": "example.com",
+              "publishedAt": "2026-05-31T00:00:00Z"
             }
           ]
         }

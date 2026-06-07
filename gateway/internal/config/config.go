@@ -12,7 +12,7 @@ import (
 const (
 	defaultAddr                  = "127.0.0.1:8080"
 	defaultVersion               = "dev"
-	defaultSearchProvider        = "mock"
+	defaultSearchProvider        = "disabled"
 	defaultMaxRequestBodyBytes   = 1 << 20
 	defaultMaxSandboxCodeBytes   = 64 << 10
 	defaultReadHeaderTimeoutSecs = 5

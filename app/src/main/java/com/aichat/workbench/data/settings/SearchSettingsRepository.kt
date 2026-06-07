@@ -16,6 +16,7 @@ data class SearchSettings(
     val maxResults: Int,
     val searchDepth: String,
     val topic: String,
+    val hasApiKey: Boolean = apiKey.isNotBlank(),
 )
 
 class SearchSettingsRepository(
@@ -29,11 +30,14 @@ class SearchSettingsRepository(
         settings.asStateFlow()
 
     suspend fun loadSettings() {
-        settings.value = readSettings()
+        settings.value = readSettingsWithoutKey(hasApiKey = hasReadableApiKey())
     }
 
     suspend fun currentSettings(): SearchSettings =
-        readSettings().also { settings.value = it }
+        readSettings().also { settings.value = it.withoutApiKey() }
+
+    suspend fun currentApiKey(): String =
+        readApiKey()
 
     suspend fun saveSettings(
         enabled: Boolean,
@@ -69,13 +73,15 @@ class SearchSettingsRepository(
                 secretStore.putSecret(SEARCH_API_KEY_REF, trimmedKey)
             }
         }
-        settings.value = readSettings()
+        settings.value = readSettingsWithoutKey(hasApiKey = hasReadableApiKey())
     }
 
-    private suspend fun readSettings(): SearchSettings =
-        readSettingsWithoutKey().copy(apiKey = readApiKey())
+    private suspend fun readSettings(): SearchSettings {
+        val key = readApiKey()
+        return readSettingsWithoutKey(hasApiKey = key.isNotBlank()).copy(apiKey = key)
+    }
 
-    private fun readSettingsWithoutKey(): SearchSettings =
+    private fun readSettingsWithoutKey(hasApiKey: Boolean = false): SearchSettings =
         SearchSettings(
             enabled = preferences.getBoolean(KEY_ENABLED, false),
             provider = preferences.getString(KEY_PROVIDER, null).toSearchProvider(),
@@ -91,6 +97,7 @@ class SearchSettingsRepository(
             topic = preferences.getString(KEY_TOPIC, DEFAULT_TOPIC)
                 .orEmpty()
                 .normalizedTopic(),
+            hasApiKey = hasApiKey,
         )
 
     private suspend fun readApiKey(): String {
@@ -102,10 +109,16 @@ class SearchSettingsRepository(
         return key
     }
 
+    private suspend fun hasReadableApiKey(): Boolean =
+        runCatching { readApiKey().isNotBlank() }.getOrDefault(false)
+
     private fun String?.toSearchProvider(): SearchProvider =
         SearchProvider.values()
             .firstOrNull { it.name.equals(this.orEmpty(), ignoreCase = true) }
             ?: SearchProvider.Tavily
+
+    private fun SearchSettings.withoutApiKey(): SearchSettings =
+        copy(apiKey = "", hasApiKey = hasApiKey || apiKey.isNotBlank())
 
     private companion object {
         const val PREFS_NAME = "search_settings"

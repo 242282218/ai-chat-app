@@ -38,6 +38,7 @@ import com.aichat.workbench.tool.local.LocalScriptRunRequest
 import com.aichat.workbench.tool.local.LocalScriptRunResult
 import com.aichat.workbench.tool.local.LocalScriptRunner
 import com.aichat.workbench.tool.local.LocalToolExecutor
+import com.aichat.workbench.tool.runtime.ToolExecutor
 import com.aichat.workbench.tool.local.ProviderConnectionTestResult
 import com.aichat.workbench.tool.local.ProviderConnectionTestRunner
 import com.aichat.workbench.tool.local.defaultLocalTools
@@ -1711,6 +1712,8 @@ private class RecordingImageStorage : ImageStorage {
             thumbnailPath = "thumb/${id.value}.png",
         )
     }
+
+    override suspend fun deleteImage(id: ImageGenerationId) = Unit
 
     override suspend fun deleteAllImages() = Unit
 }

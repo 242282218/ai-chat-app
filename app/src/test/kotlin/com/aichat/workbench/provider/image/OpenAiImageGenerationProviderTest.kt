@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.api.ProviderHttpException
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -34,7 +35,7 @@ class OpenAiImageGenerationProviderTest {
                 .setResponseCode(200)
                 .setBody("""{"data":[{"b64_json":"aW1hZ2U=","revised_prompt":"A cat"}]}"""),
         )
-        val provider = OpenAiImageGenerationProvider()
+        val provider = provider()
 
         val response = provider.generate(request())
         val recorded = server.takeRequest()
@@ -56,7 +57,7 @@ class OpenAiImageGenerationProviderTest {
                 .setResponseCode(200)
                 .setBody("""{"data":[{"b64_json":"aW1hZ2U="}]}"""),
         )
-        val provider = OpenAiImageGenerationProvider()
+        val provider = provider()
 
         provider.generate(
             request(
@@ -79,9 +80,10 @@ class OpenAiImageGenerationProviderTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
+                .setHeader("Content-Type", "image/png")
                 .setBody("image"),
         )
-        val provider = OpenAiImageGenerationProvider()
+        val provider = provider()
 
         val response = provider.generate(request())
         val postRequest = server.takeRequest()
@@ -100,7 +102,7 @@ class OpenAiImageGenerationProviderTest {
                 .setResponseCode(429)
                 .setBody("""{"error":{"message":"slow down"}}"""),
         )
-        val provider = OpenAiImageGenerationProvider()
+        val provider = provider()
 
         val error = runCatching {
             provider.generate(request())
@@ -119,7 +121,7 @@ class OpenAiImageGenerationProviderTest {
                 .setResponseCode(500)
                 .setBody("""{"error":{"message":"temporary outage"}}"""),
         )
-        val provider = OpenAiImageGenerationProvider()
+        val provider = provider()
 
         val error = runCatching {
             provider.generate(request())
@@ -155,4 +157,7 @@ class OpenAiImageGenerationProviderTest {
             quality = "auto",
             count = 1,
         )
+
+    private fun provider(): OpenAiImageGenerationProvider =
+        OpenAiImageGenerationProvider(client = OkHttpClient())
 }

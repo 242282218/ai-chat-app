@@ -35,11 +35,7 @@ class GatewayClientTest {
 
     @Test
     fun toolManifest_fetchesAndParsesContractFixture() = runTest {
-        val fixturePath = listOf(
-            Path.of("contracts", "gateway", "fixtures", "tool-manifest.json"),
-            Path.of("..", "contracts", "gateway", "fixtures", "tool-manifest.json"),
-        ).first(Files::exists)
-        val fixture = String(Files.readAllBytes(fixturePath))
+        val fixture = readContractFixture("tool-manifest.json")
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -163,30 +159,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody(
-                    """
-                    {
-                      "query": "AI news",
-                      "fetchedAt": "2026-05-31T00:00:00Z",
-                      "results": [
-                        {
-                          "title": "AI funding rises",
-                          "summary": "A concise summary.",
-                          "url": "https://example.com/ai-funding",
-                          "source": "Example News",
-                          "publishedAt": "2026-05-30T12:00:00Z"
-                        },
-                        {
-                          "title": "AI policy update",
-                          "summary": "",
-                          "url": "https://example.com/ai-policy",
-                          "source": "Example Wire",
-                          "publishedAt": null
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                ),
+                .setBody(readContractFixture("search-response.json")),
         )
         val client = GatewayClient()
 
@@ -212,16 +185,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(400)
-                .setBody(
-                    """
-                    {
-                      "code": "invalid_query",
-                      "message": "Search query 不能为空。",
-                      "requestId": "request-1",
-                      "details": null
-                    }
-                    """.trimIndent(),
-                ),
+                .setBody(readContractFixture("gateway-error.json")),
         )
         val client = GatewayClient()
 
@@ -289,19 +253,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody(
-                    """
-                    {
-                      "language": "python",
-                      "stdout": "2\n",
-                      "stderr": "",
-                      "exitCode": 0,
-                      "durationMs": 12,
-                      "timedOut": false,
-                      "truncated": false
-                    }
-                    """.trimIndent(),
-                ),
+                .setBody(readContractFixture("sandbox-run-response.json")),
         )
         val client = GatewayClient()
 
@@ -387,5 +339,13 @@ class GatewayClientTest {
         assertTrue(ToolPermissionLevel.Network.requiresConfirmation())
         assertTrue(ToolPermissionLevel.Execute.requiresConfirmation())
         assertTrue(ToolPermissionLevel.HighRisk.requiresConfirmation())
+    }
+
+    private fun readContractFixture(name: String): String {
+        val fixturePath = listOf(
+            Path.of("contracts", "gateway", "fixtures", name),
+            Path.of("..", "contracts", "gateway", "fixtures", name),
+        ).first(Files::exists)
+        return String(Files.readAllBytes(fixturePath))
     }
 }

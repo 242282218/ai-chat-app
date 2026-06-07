@@ -40,6 +40,7 @@ import com.aichat.workbench.provider.api.ProviderError
 import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
+import com.aichat.workbench.tool.runtime.ToolExecutor
 import com.aichat.workbench.provider.image.GeneratedImage
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
@@ -2085,6 +2086,8 @@ private class GenerationControllerImageStorage : ImageStorage {
             originalPath = "original/${id.value}.png",
             thumbnailPath = "thumb/${id.value}.png",
         )
+
+    override suspend fun deleteImage(id: ImageGenerationId) = Unit
 
     override suspend fun deleteAllImages() = Unit
 }

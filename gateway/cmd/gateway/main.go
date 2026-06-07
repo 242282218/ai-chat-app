@@ -69,7 +69,9 @@ func main() {
 
 func searchAdapterFromConfig(cfg config.Config) (search.Adapter, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.SearchProvider)) {
-	case "", "mock":
+	case "", "disabled":
+		return search.DisabledAdapter{}, nil
+	case "mock":
 		return search.MockAdapter{}, nil
 	case "searxng":
 		if strings.TrimSpace(cfg.SearXNGBaseURL) == "" {

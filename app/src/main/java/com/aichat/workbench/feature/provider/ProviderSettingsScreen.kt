@@ -124,7 +124,7 @@ fun ProviderSettingsScreen(
     var toolModel by rememberSaveable { mutableStateOf("") }
     var codeModel by rememberSaveable { mutableStateOf("") }
     var models by rememberSaveable { mutableStateOf<List<ModelConfig>>(emptyList()) }
-    var apiKey by rememberSaveable { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
     var enabled by rememberSaveable { mutableStateOf(true) }
     var allowHttp by rememberSaveable { mutableStateOf(false) }
@@ -702,7 +702,7 @@ private fun ProviderForm(
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showApiKey by rememberSaveable { mutableStateOf(false) }
+    var showApiKey by remember { mutableStateOf(false) }
     val hasAdvancedDraft = headers.isNotBlank() || allowHttp
     var advancedExpanded by rememberSaveable(formKey) { mutableStateOf(hasAdvancedDraft) }
 

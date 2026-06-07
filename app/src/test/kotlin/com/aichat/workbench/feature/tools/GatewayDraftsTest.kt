@@ -38,7 +38,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "gateway.local",
-            gatewayApiTokenDraft = "token",
+            gatewayHasApiToken = true,
             searchQuery = "release notes",
             remoteTools = listOf(tool("web_search", ToolPermissionLevel.Network)),
         )
@@ -52,7 +52,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "ftp://gateway.example.com",
-            gatewayApiTokenDraft = "token",
+            gatewayHasApiToken = true,
             sandboxCode = "print(1)",
             remoteTools = listOf(tool("code_sandbox", ToolPermissionLevel.Execute)),
         )
@@ -66,7 +66,7 @@ class GatewayDraftsTest {
         val base = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "https://gateway.example.com",
-            gatewayApiTokenDraft = "token",
+            gatewayHasApiToken = true,
             searchQuery = "release notes",
             sandboxCode = "print(1)",
             remoteTools = listOf(
@@ -129,7 +129,7 @@ class GatewayDraftsTest {
         val ready = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "https://gateway.example.com",
-            gatewayApiTokenDraft = "token",
+            gatewayHasApiToken = true,
             searchQuery = "release notes",
             remoteTools = listOf(tool("web_search", ToolPermissionLevel.Network)),
         )
@@ -152,7 +152,7 @@ class GatewayDraftsTest {
         )
         assertEquals(
             GatewayActionStatus(label = "需要 Token", isReady = false),
-            ready.copy(gatewayApiTokenDraft = "").searchActionStatus(),
+            ready.copy(gatewayHasApiToken = false).searchActionStatus(),
         )
         assertEquals(
             GatewayActionStatus(label = "需要工具清单", isReady = false),
@@ -169,7 +169,7 @@ class GatewayDraftsTest {
         val ready = ToolsUiState(
             localSearchEnabled = true,
             localSearchBaseUrlDraft = "https://api.tavily.com",
-            localSearchApiKeyDraft = "search-key",
+            localSearchHasApiKey = true,
             localSearchMaxResultsDraft = "5",
             searchQuery = "release notes",
         )
@@ -188,7 +188,7 @@ class GatewayDraftsTest {
         )
         assertEquals(
             GatewayActionStatus(label = "需要搜索 Key", isReady = false),
-            ready.copy(localSearchApiKeyDraft = "").searchActionStatus(),
+            ready.copy(localSearchHasApiKey = false).searchActionStatus(),
         )
         assertEquals(
             GatewayActionStatus(label = "数量无效", isReady = false),
@@ -205,7 +205,7 @@ class GatewayDraftsTest {
         val ready = ToolsUiState(
             gatewayEnabled = true,
             gatewayBaseUrlDraft = "https://gateway.example.com",
-            gatewayApiTokenDraft = "token",
+            gatewayHasApiToken = true,
             sandboxCode = "print(1)",
             remoteTools = listOf(tool("code_sandbox", ToolPermissionLevel.Execute)),
         )
@@ -228,7 +228,7 @@ class GatewayDraftsTest {
         )
         assertEquals(
             GatewayActionStatus(label = "需要 Token", isReady = false),
-            ready.copy(gatewayApiTokenDraft = "").sandboxActionStatus(),
+            ready.copy(gatewayHasApiToken = false).sandboxActionStatus(),
         )
         assertEquals(
             GatewayActionStatus(label = "需要工具清单", isReady = false),
@@ -255,8 +255,8 @@ class GatewayDraftsTest {
 
         assertFalse(base.canSearch())
         assertFalse(base.canRunSandbox())
-        assertTrue(base.copy(gatewayApiTokenDraft = "token").canSearch())
-        assertTrue(base.copy(gatewayApiTokenDraft = "token").canRunSandbox())
+        assertTrue(base.copy(gatewayHasApiToken = true).canSearch())
+        assertTrue(base.copy(gatewayHasApiToken = true).canRunSandbox())
     }
 
     private fun tool(

@@ -54,6 +54,25 @@ class GatewaySettingsRepositoryTest {
     }
 
     @Test
+    fun observeSettingsMarksSavedApiTokenWithoutExposingPlaintext() = runTest {
+        val secretStore = FakeSecretStore()
+        val repository = GatewaySettingsRepository(context, secretStore)
+
+        repository.saveSettings(
+            enabled = true,
+            baseUrl = "http://127.0.0.1:8080",
+            apiToken = "token-1",
+        )
+
+        val observed = repository.observeSettings().value
+
+        assertTrue(observed.hasApiToken)
+        assertEquals("", observed.apiToken)
+        assertEquals("token-1", repository.currentSettings().apiToken)
+        assertEquals("", repository.observeSettings().value.apiToken)
+    }
+
+    @Test
     fun currentSettingsMigratesLegacyPlaintextApiToken() = runTest {
         preferences.edit()
             .putBoolean("enabled", true)

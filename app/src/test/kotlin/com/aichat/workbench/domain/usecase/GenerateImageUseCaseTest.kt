@@ -343,6 +343,8 @@ class GenerateImageUseCaseTest {
             )
         }
 
+        override suspend fun deleteImage(id: ImageGenerationId) = Unit
+
         override suspend fun deleteAllImages() = Unit
     }
 

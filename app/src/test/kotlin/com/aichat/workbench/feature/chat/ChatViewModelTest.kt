@@ -1,6 +1,8 @@
 package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
+import com.aichat.workbench.app.AppDispatchers
+import com.aichat.workbench.app.ApplicationScope
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -29,6 +31,7 @@ import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
+import com.aichat.workbench.domain.tool.ToolExecutionService
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
@@ -39,6 +42,7 @@ import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import com.aichat.workbench.provider.image.ImageGenerationProviderResponse
 import com.aichat.workbench.tool.gateway.GatewayClient
+import com.aichat.workbench.tool.runtime.ToolExecutor
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -879,6 +883,35 @@ class ChatViewModelTest : KoinTest {
         assertEquals("已停止，已保留当前回复内容。", assistant.errorSummary)
     }
 
+    @Test
+    fun cleanupOnExitMarksActiveAssistantMessageCancelled() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val events = Channel<ProviderStreamEvent>(Channel.UNLIMITED)
+        val chatProvider = RecordingChatProvider(events.receiveAsFlow())
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = chatProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("Stream")
+        viewModel.sendMessage()
+        advanceUntilIdle()
+        events.send(ProviderStreamEvent.TextDelta("partial"))
+        advanceUntilIdle()
+
+        viewModel.cleanupOnExit()
+        advanceUntilIdle()
+
+        val assistant = conversationRepository.allMessages().single { it.role == MessageRole.Assistant }
+        assertFalse(viewModel.state.value.isGenerating)
+        assertEquals(MessageStatus.Cancelled, assistant.status)
+        assertEquals("partial", assistant.content)
+        assertEquals("已停止，已保留当前回复内容。", assistant.errorSummary)
+    }
+
     private fun startViewModel(
         conversationRepository: ConversationRepository,
         providerRepository: ProviderConfigRepository,
@@ -890,6 +923,14 @@ class ChatViewModelTest : KoinTest {
             modules(
                 module {
                     single { clock }
+                    single {
+                        AppDispatchers(
+                            main = mainDispatcherRule.testDispatcher,
+                            io = mainDispatcherRule.testDispatcher,
+                            default = mainDispatcherRule.testDispatcher,
+                        )
+                    }
+                    single { ApplicationScope(dispatchers = get()) }
                     single<ConversationRepository> { conversationRepository }
                     single<ProviderConfigRepository> { providerRepository }
                     single<PromptPresetRepository> { FakePromptPresetRepository() }
@@ -908,7 +949,7 @@ class ChatViewModelTest : KoinTest {
                     }
                     factory { SavedStateHandle() }
                     factory { ConversationManager(conversationRepository = get(), clock = get()) }
-                    factory {
+                    factory<ToolExecutionService> {
                         ToolExecutor(
                             gatewaySettingsProvider = { GatewaySettings(enabled = false, baseUrl = "", apiToken = "") },
                             gatewayClientProvider = { GatewayClient() },
@@ -941,6 +982,7 @@ class ChatViewModelTest : KoinTest {
                             conversationManager = get(),
                             generationController = get(),
                             providerRegistry = get(),
+                            applicationScope = get(),
                         )
                     }
                 },
@@ -1226,6 +1268,8 @@ private class FakeImageStorage : ImageStorage {
             originalPath = "original/${id.value}.png",
             thumbnailPath = "thumb/${id.value}.png",
         )
+
+    override suspend fun deleteImage(id: ImageGenerationId) = Unit
 
     override suspend fun deleteAllImages() = Unit
 }

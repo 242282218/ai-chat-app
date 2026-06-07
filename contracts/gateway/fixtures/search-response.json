@@ -1,0 +1,20 @@
+{
+  "query": "AI news",
+  "fetchedAt": "2026-05-31T00:00:00Z",
+  "results": [
+    {
+      "title": "AI funding rises",
+      "summary": "A concise summary.",
+      "url": "https://example.com/ai-funding",
+      "source": "Example News",
+      "publishedAt": "2026-05-30T12:00:00Z"
+    },
+    {
+      "title": "AI policy update",
+      "summary": "",
+      "url": "https://example.com/ai-policy",
+      "source": "Example Wire",
+      "publishedAt": null
+    }
+  ]
+}

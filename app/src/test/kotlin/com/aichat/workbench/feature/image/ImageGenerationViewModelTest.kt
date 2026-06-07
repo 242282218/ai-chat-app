@@ -703,6 +703,8 @@ private class FakeImageStorage(
             thumbnailPath = "thumb/${id.value}.png",
         )
 
+    override suspend fun deleteImage(id: ImageGenerationId) = Unit
+
     override suspend fun deleteAllImages() {
         if (failOnDelete) {
             throw IllegalStateException("无法删除图片文件。")

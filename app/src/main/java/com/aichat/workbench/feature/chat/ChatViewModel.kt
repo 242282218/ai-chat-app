@@ -219,6 +219,13 @@ class ChatViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        cleanupOnExit()
+    }
+
+    internal fun cleanupOnExit() {
+        applicationScope.launch {
+            generationController.cancelActiveGenerationAndPersist(::updateState)
+        }
         // onCleared only fires on genuine exit (back navigation / process death),
         // NOT on configuration changes — the correct place to clean up temp conversations.
         deleteTemporaryConversationOnExit()

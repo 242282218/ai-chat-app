@@ -14,7 +14,9 @@ import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.model.ToolStatus
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
-import com.aichat.workbench.domain.tool.ToolExecutor
+import com.aichat.workbench.domain.tool.ToolExecution
+import com.aichat.workbench.domain.tool.ToolExecutionCancelledException
+import com.aichat.workbench.domain.tool.ToolExecutionService
 import com.aichat.workbench.domain.usecase.SendMessageUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
@@ -53,7 +55,7 @@ class GenerationController(
     private val conversationManager: ConversationManager,
     private val conversationCompactor: ConversationCompactor,
     private val providerRegistry: ProviderRegistry,
-    private val toolExecutor: ToolExecutor,
+    private val toolExecutor: ToolExecutionService,
     private val clock: Clock,
 ) {
     // Mutex to protect concurrent access to generation state
@@ -93,43 +95,14 @@ class GenerationController(
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
         scope.launch {
-            stateMutex.withLock {
-                // Check if tool approval is pending and try to complete it
-                pendingToolApproval?.let { approval ->
-                    if (approval.complete(ToolApprovalDecision.Cancelled)) {
-                        onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
-                        return@launch
-                    }
-                }
-
-                // Capture active message before cancellation
-                val active = activeAssistantMessage
-                val job = generationJob
-
-                // Cancel the job
-                job?.cancel()
-                generationJob = null
-
-                // Save message state even if cancellation occurs
-                if (active != null) {
-                    withContext(NonCancellable) {
-                        conversationRepository.saveMessage(
-                            active.copy(
-                                status = MessageStatus.Cancelled,
-                                errorSummary = "已停止，已保留当前回复内容。",
-                                updatedAt = clock.instant(),
-                            ),
-                        )
-                    }
-                }
-
-                // Clean up state
-                activeAssistantMessage = null
-                pendingToolApproval?.complete(ToolApprovalDecision.Denied)
-                pendingToolApproval = null
-                onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
-            }
+            cancelActiveGeneration(onStateChanged, forceCancelJob = false)
         }
+    }
+
+    suspend fun cancelActiveGenerationAndPersist(
+        onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
+    ) {
+        cancelActiveGeneration(onStateChanged, forceCancelJob = true)
     }
 
     fun confirmToolCall() {
@@ -139,6 +112,45 @@ class GenerationController(
             android.util.Log.w("GenerationController", "confirmToolCall ignored: approval already resolved.")
         }
     }
+
+    private suspend fun cancelActiveGeneration(
+        onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
+        forceCancelJob: Boolean,
+    ) {
+        stateMutex.withLock {
+            pendingToolApproval?.let { approval ->
+                if (approval.complete(ToolApprovalDecision.Cancelled) && !forceCancelJob) {
+                    onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
+                    return
+                }
+            }
+
+            val active = activeAssistantMessage
+            val job = generationJob
+
+            job?.cancel()
+            generationJob = null
+
+            active?.let { message ->
+                withContext(NonCancellable) {
+                    conversationRepository.saveMessage(message.cancelledCopy())
+                }
+            }
+
+            activeAssistantMessage = null
+            pendingToolApproval?.complete(ToolApprovalDecision.Denied)
+            pendingToolApproval = null
+            activePendingToolCall = null
+            onStateChanged { it.copy(isGenerating = false, pendingToolCall = null) }
+        }
+    }
+
+    private fun Message.cancelledCopy(): Message =
+        copy(
+            status = MessageStatus.Cancelled,
+            errorSummary = "已停止，已保留当前回复内容。",
+            updatedAt = clock.instant(),
+        )
 
     fun updatePendingToolArguments(arguments: String) {
         activePendingToolCall = activePendingToolCall?.copy(arguments = arguments)
