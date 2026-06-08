@@ -123,7 +123,7 @@ fun ProviderSettingsScreen(
     var imageModel by rememberSaveable { mutableStateOf("") }
     var toolModel by rememberSaveable { mutableStateOf("") }
     var codeModel by rememberSaveable { mutableStateOf("") }
-    var models by rememberSaveable { mutableStateOf<List<ModelConfig>>(emptyList()) }
+    var models by remember { mutableStateOf<List<ModelConfig>>(emptyList()) }
     var apiKey by remember { mutableStateOf("") }
     var headers by rememberSaveable { mutableStateOf("") }
     var enabled by rememberSaveable { mutableStateOf(true) }
@@ -132,10 +132,12 @@ fun ProviderSettingsScreen(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingResetForm by rememberSaveable { mutableStateOf(false) }
     var showProviderEditor by rememberSaveable { mutableStateOf(false) }
-    var pendingLoadProvider by rememberSaveable { mutableStateOf<ProviderConfig?>(null) }
-    var pendingDeleteProvider by rememberSaveable { mutableStateOf<ProviderConfig?>(null) }
+    var pendingLoadProviderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeleteProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val selectableDescriptors = remember { ProviderRegistry.supportedBuiltInChatDescriptors() }
+    val pendingLoadProvider = providers.firstOrNull { it.id.value == pendingLoadProviderId }
+    val pendingDeleteProvider = providers.firstOrNull { it.id.value == pendingDeleteProviderId }
 
     val hasProviderDraft by remember {
         derivedStateOf {
@@ -225,7 +227,7 @@ fun ProviderSettingsScreen(
 
     fun requestLoadProvider(provider: ProviderConfig) {
         if (hasProviderDraft) {
-            pendingLoadProvider = provider
+            pendingLoadProviderId = provider.id.value
         } else {
             loadProvider(provider)
             showProviderEditor = true
@@ -370,7 +372,7 @@ fun ProviderSettingsScreen(
                         provider = provider,
                         modelRolePreferences = modelRolePreferences,
                         onClick = { requestLoadProvider(provider) },
-                        onDelete = { pendingDeleteProvider = provider },
+                        onDelete = { pendingDeleteProviderId = provider.id.value },
                     )
                 }
             }
@@ -504,7 +506,7 @@ fun ProviderSettingsScreen(
             message = "这会从本机删除「${provider.name}」及已保存的 API Key 引用。",
             confirmLabel = "删除",
             onConfirm = {
-                pendingDeleteProvider = null
+                pendingDeleteProviderId = null
                 scope.launch {
                     deleteProvider(provider.id)
                     if (editingId == provider.id.value) {
@@ -512,7 +514,7 @@ fun ProviderSettingsScreen(
                     }
                 }
             },
-            onDismiss = { pendingDeleteProvider = null },
+            onDismiss = { pendingDeleteProviderId = null },
         )
     }
 
@@ -522,11 +524,11 @@ fun ProviderSettingsScreen(
             message = "丢弃当前表单并载入「${provider.name}」。",
             confirmLabel = "载入",
             onConfirm = {
-                pendingLoadProvider = null
+                pendingLoadProviderId = null
                 loadProvider(provider)
                 showProviderEditor = true
             },
-            onDismiss = { pendingLoadProvider = null },
+            onDismiss = { pendingLoadProviderId = null },
             tone = StatusTone.Warning,
         )
     }
