@@ -7,6 +7,9 @@ import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.MemoryItem
+import com.aichat.workbench.domain.model.MemoryItemId
+import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelParameters
@@ -14,6 +17,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.MessageSearchResult
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
@@ -142,7 +146,77 @@ class ConversationCompactorTest {
         )
 
         assertEquals(0, chatProvider.requests.size)
-        assertEquals(listOf(completedTool.content, failedTool.content), context.history.map { it.content })
+        assertEquals(2, context.history.size)
+        assertTrue(context.history[0].content.contains("工具结果摘要"))
+        assertTrue(context.history[0].content.contains("status: Completed"))
+        assertTrue(context.history[0].content.contains(completedTool.content))
+        assertTrue(context.history[1].content.contains("status: Failed"))
+        assertTrue(context.history[1].content.contains(failedTool.content))
+        assertTrue(context.history.none { it.content.contains(cancelledTool.content) })
+        assertTrue(context.history.none { it.content.contains(deniedTool.content) })
+    }
+
+    @Test
+    fun relevantMemoriesAreInjectedIntoSystemPrompt() = runTest {
+        val repository = CompactingConversationRepository()
+        val memoryRepository = CompactingMemoryRepository(
+            listOf(
+                memory("memory-1", "用户偏好 Kotlin 简洁实现。"),
+                memory("memory-2", "项目约束：不要写入真实 API Key。"),
+            ),
+        )
+        val chatProvider = SummaryChatProvider("unused")
+        val compactor = ConversationCompactor(
+            conversationRepository = repository,
+            clock = clock,
+            memoryRepository = memoryRepository,
+        )
+        val conversation = conversation(systemPrompt = "Base system")
+
+        val context = compactor.compactIfNeeded(
+            conversation = conversation,
+            provider = provider(maxContextTokens = 1_000),
+            apiKey = "key",
+            model = "model-a",
+            messages = listOf(message("recent", "请按项目约束实现", createdAtOffset = 1)),
+            chatProvider = chatProvider,
+        )
+
+        assertEquals(0, chatProvider.requests.size)
+        assertTrue(context.systemPrompt.orEmpty().contains("用户手动保存的长期记忆"))
+        assertTrue(context.systemPrompt.orEmpty().contains("用户偏好 Kotlin 简洁实现"))
+        assertTrue(context.systemPrompt.orEmpty().contains("不要写入真实 API Key"))
+    }
+
+    @Test
+    fun longToolResultIsSummarizedAndTruncatedBeforeProviderContext() = runTest {
+        val repository = CompactingConversationRepository()
+        val chatProvider = SummaryChatProvider("unused")
+        val compactor = ConversationCompactor(repository, clock)
+        val longResult = "result-" + "x".repeat(2_000)
+
+        val context = compactor.compactIfNeeded(
+            conversation = conversation(systemPrompt = "Base system"),
+            provider = provider(maxContextTokens = 1_000),
+            apiKey = "key",
+            model = "model-a",
+            messages = listOf(
+                message(
+                    id = "tool-long",
+                    content = longResult,
+                    role = MessageRole.Tool,
+                    status = MessageStatus.Completed,
+                    createdAtOffset = 1,
+                ),
+            ),
+            chatProvider = chatProvider,
+        )
+
+        val content = context.history.single().content
+        assertTrue(content.startsWith("工具结果摘要"))
+        assertTrue(content.contains("status: Completed"))
+        assertTrue(content.contains("...[truncated]"))
+        assertTrue(content.length < longResult.length)
     }
 
     private fun conversation(systemPrompt: String?): Conversation =
@@ -210,6 +284,16 @@ class ConversationCompactorTest {
             toolCallId = null,
             parentMessageId = null,
         )
+
+    private fun memory(id: String, content: String): MemoryItem =
+        MemoryItem(
+            id = MemoryItemId(id),
+            kind = MemoryKind.UserFact,
+            content = content,
+            sourceConversationId = ConversationId("conversation-1"),
+            createdAt = clock.instant(),
+            updatedAt = clock.instant(),
+        )
 }
 
 private class SummaryChatProvider(private val summary: String) : ChatProvider {
@@ -259,4 +343,20 @@ private class CompactingConversationRepository : ConversationRepository {
 
     override fun searchMessages(query: String, limit: Int): Flow<List<MessageSearchResult>> =
         flowOf(emptyList())
+}
+
+private class CompactingMemoryRepository(
+    private val memories: List<MemoryItem>,
+) : MemoryRepository {
+    override fun observeMemories(): Flow<List<MemoryItem>> = flowOf(memories)
+
+    override suspend fun getMemory(id: MemoryItemId): MemoryItem? =
+        memories.firstOrNull { it.id == id }
+
+    override suspend fun saveMemory(memory: MemoryItem) = Unit
+
+    override suspend fun deleteMemory(id: MemoryItemId) = Unit
+
+    override suspend fun findRelevantMemories(query: String, limit: Int): List<MemoryItem> =
+        memories.take(limit.coerceAtLeast(0))
 }

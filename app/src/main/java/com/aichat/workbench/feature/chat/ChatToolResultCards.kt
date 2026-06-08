@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Archive
@@ -67,7 +66,11 @@ internal fun ToolImageResultRow(message: Message) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
     ) {
-        items(images, key = { it.uri.take(80) }) { image ->
+        items(
+            count = images.size,
+            key = { index -> chatLazyItemKey("tool-image", images[index].uri, index) },
+        ) { index ->
+            val image = images[index]
             InlineImageBubble(
                 imageUrl = image.uri,
                 prompt = extractImagePrompt(message.toolResult) ?: "生成图片",
@@ -163,7 +166,11 @@ internal fun ToolSearchCitationRow(
             description = "${citations.size} 个可追溯结果",
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(citations, key = { it.url }) { citation ->
+            items(
+                count = citations.size,
+                key = { index -> chatLazyItemKey("search-citation", citations[index].url, index) },
+            ) { index ->
+                val citation = citations[index]
                 OutlinedButton(onClick = { context.openUrl(citation.url) }) {
                     Column(
                         modifier = Modifier.widthIn(max = 220.dp),

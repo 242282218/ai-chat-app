@@ -315,4 +315,33 @@ class AiChatMigrationTest {
         }
         migrated.close()
     }
+
+    @Test
+    fun migration10To11_createsMemoryItems() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("memory-items-migration").absolutePath
+        migrationHelper.createDatabase(databaseName, 10).close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            11,
+            true,
+            AiChatDatabase.MIGRATION_10_11,
+        )
+        migrated.execSQL(
+            """
+            INSERT INTO memory_items (
+                id, kind, content, source_conversation_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>("memory-1", "UserFact", "用户偏好 Kotlin。", null, 1L, 1L),
+        )
+        val cursor = migrated.query("SELECT kind, content FROM memory_items WHERE id = 'memory-1'")
+        cursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("UserFact", it.getString(0))
+            assertEquals("用户偏好 Kotlin。", it.getString(1))
+        }
+        migrated.close()
+    }
 }

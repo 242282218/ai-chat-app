@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
@@ -101,7 +100,11 @@ internal fun MessageBubble(
                     val images = message.contentParts.filterIsInstance<MessagePart.Image>()
                     if (images.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(images, key = { it.uri.take(80) }) { image ->
+                            items(
+                                count = images.size,
+                                key = { index -> chatLazyItemKey("message-image", images[index].uri, index) },
+                            ) { index ->
+                                val image = images[index]
                                 ChatImagePreview(
                                     image = image,
                                     modifier = Modifier.size(96.dp),

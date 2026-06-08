@@ -1,5 +1,7 @@
 package com.aichat.workbench.feature.chat
 
+import com.aichat.workbench.agent.skill.InMemorySkillRegistry
+import com.aichat.workbench.agent.skill.SkillRegistry
 import com.aichat.workbench.data.settings.GatewaySettings
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.ImageGeneration
@@ -13,6 +15,8 @@ import com.aichat.workbench.domain.model.ModelRolePreferenceId
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.model.Skill
+import com.aichat.workbench.domain.model.SkillId
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.model.ToolPermissionLevel
@@ -81,6 +85,7 @@ class ToolExecutorTest {
         "code_diff_preview",
         "local_js",
         "file_read",
+        "load_skill",
         "web_search_local",
         "provider_connection_test",
         "image_upload_to_model",
@@ -162,6 +167,58 @@ class ToolExecutorTest {
 
         assertEquals("""{"currentTime":"2026-06-01T00:00:00Z"}""", execution.messageContent)
         assertEquals("time", repository.savedResults.value.single().toolName)
+    }
+
+    @Test
+    fun executeLoadSkillReturnsPromptAndPersistsResult() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            gatewayClientProvider = { error("GatewayClient should be lazy") },
+            toolInvocationRepository = repository,
+            skillRegistry = InMemorySkillRegistry(
+                listOf(
+                    Skill(
+                        id = SkillId("code-task"),
+                        name = "Code Task",
+                        description = "Code workflow",
+                        summary = "Use for code work",
+                        prompt = "Inspect files before editing.",
+                    ),
+                ),
+            ),
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_skill"), "load-skill", """{"skillId":"code-task"}"""),
+        )
+
+        val saved = repository.savedResults.value.single()
+        assertEquals("load_skill", saved.toolName)
+        assertEquals(ToolPermissionLevel.ReadOnly, saved.permissionLevel)
+        assertEquals("""{"skillId":"code-task"}""", saved.rawInputJson)
+        assertTrue(execution.messageContent.contains(""""id":"code-task""""))
+        assertTrue(execution.messageContent.contains(""""name":"Code Task""""))
+        assertTrue(execution.messageContent.contains("Inspect files before editing."))
+    }
+
+    @Test
+    fun executeLoadSkillReportsMissingSkill() = runTest {
+        val repository = RecordingToolInvocationRepository()
+        val executor = toolExecutor(
+            clock = clock,
+            toolInvocationRepository = repository,
+        )
+
+        val execution = executor.execute(
+            conversationId = ConversationId("conversation"),
+            toolCall = ToolCall(ToolCallId("call_missing_skill"), "load_skill", """{"skillId":"missing"}"""),
+        )
+
+        assertEquals("tool_unavailable", execution.result.error?.code)
+        assertEquals("未找到内置 Skill：missing。", execution.result.error?.message)
+        assertEquals("load_skill", repository.savedResults.value.single().toolName)
     }
 
     @Test
@@ -1481,6 +1538,7 @@ private fun toolExecutor(
     scriptRunner: LocalScriptRunner = RecordingScriptRunner(),
     fileReader: AuthorizedFileReader = RecordingFileReader(),
     providerConnectionRunner: ProviderConnectionTestRunner = RecordingProviderConnectionTestRunner(),
+    skillRegistry: SkillRegistry = InMemorySkillRegistry(emptyList()),
     searchConfigProvider: suspend () -> SearchConfig = { enabledSearchConfig() },
     searchClient: LocalSearchClient = RecordingLocalSearchClient(),
     toolSettingsProvider: suspend () -> Map<String, ToolRuntimeSetting> = { emptyMap() },
@@ -1503,6 +1561,7 @@ private fun toolExecutor(
                 fileReader = fileReader,
                 providerRepository = providerRepository,
                 providerConnectionRunner = providerConnectionRunner,
+                skillRegistry = skillRegistry,
                 searchConfigProvider = searchConfigProvider,
                 searchClient = searchClient,
             ),

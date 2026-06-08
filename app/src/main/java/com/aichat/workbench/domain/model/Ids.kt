@@ -16,6 +16,12 @@ value class ToolCallId(val value: String)
 value class PromptPresetId(val value: String)
 
 @JvmInline
+value class SkillId(val value: String)
+
+@JvmInline
+value class MemoryItemId(val value: String)
+
+@JvmInline
 value class ModelPreferenceId(val value: String)
 
 @JvmInline

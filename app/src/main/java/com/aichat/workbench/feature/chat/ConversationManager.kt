@@ -9,6 +9,7 @@ import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
+import com.aichat.workbench.domain.model.Skill
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolCallId
 import com.aichat.workbench.domain.repository.ConversationRepository
@@ -78,6 +79,27 @@ class ConversationManager(
         val updated = conversation.copy(
             systemPrompt = preset.systemPrompt,
             defaultModel = preset.defaultModel ?: conversation.defaultModel,
+            updatedAt = clock.instant(),
+        )
+        conversationRepository.saveConversation(updated)
+        return updated
+    }
+
+    suspend fun applySkill(current: ChatUiState, skill: Skill): Conversation {
+        val nextSystemPrompt = current.systemPromptDraft.withBuiltInSkill(skill)
+        val conversation = selectedConversation(current)
+        if (conversation == null) {
+            return CreateConversationUseCase(conversationRepository, clock)(
+                title = skill.name,
+                defaultProviderId = current.selectedProviderId?.let(::ProviderId),
+                defaultModel = current.modelDraft.trim().ifBlank { null },
+                systemPrompt = nextSystemPrompt,
+                isTemporary = current.temporaryDraft,
+                isSensitive = current.sensitiveDraft,
+            )
+        }
+        val updated = conversation.copy(
+            systemPrompt = nextSystemPrompt,
             updatedAt = clock.instant(),
         )
         conversationRepository.saveConversation(updated)
@@ -199,3 +221,21 @@ class ConversationManager(
             sensitive = conversation.isSensitive,
         )
 }
+
+private fun String.withBuiltInSkill(skill: Skill): String {
+    val cleaned = replace(BUILT_IN_SKILL_BLOCK_PATTERN, "\n").trim()
+    val skillBlock = """
+        [Built-in Skill]
+        ID: ${skill.id.value}
+        Name: ${skill.name}
+
+        ${skill.prompt.trim()}
+        [/Built-in Skill]
+    """.trimIndent()
+    return listOf(
+        cleaned.takeIf(String::isNotBlank),
+        skillBlock,
+    ).filterNotNull().joinToString("\n\n")
+}
+
+private val BUILT_IN_SKILL_BLOCK_PATTERN = Regex("""(?s)\n?\[Built-in Skill]\n.*?\[/Built-in Skill]\n?""")

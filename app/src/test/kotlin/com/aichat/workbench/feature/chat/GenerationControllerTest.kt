@@ -330,18 +330,15 @@ class GenerationControllerTest {
         assertFalse(state.isGenerating)
         assertEquals(2, chatProvider.requests.size)
         assertTrue(chatProvider.requests.first().tools.any { it.name == "time" })
-        assertEquals(
-            listOf(
-                ProviderChatMessage(MessageRole.User, "What time is it?"),
-                ProviderChatMessage(MessageRole.Assistant, "", toolCalls = listOf(toolCall)),
-                ProviderChatMessage(
-                    role = MessageRole.Tool,
-                    content = """{"currentTime":"2026-06-01T00:00:00Z"}""",
-                    toolCallId = toolCall.id,
-                ),
-            ),
-            chatProvider.requests[1].messages,
-        )
+        val followUpMessages = chatProvider.requests[1].messages
+        assertEquals(3, followUpMessages.size)
+        assertEquals(ProviderChatMessage(MessageRole.User, "What time is it?"), followUpMessages[0])
+        assertEquals(ProviderChatMessage(MessageRole.Assistant, "", toolCalls = listOf(toolCall)), followUpMessages[1])
+        assertEquals(MessageRole.Tool, followUpMessages[2].role)
+        assertEquals(toolCall.id, followUpMessages[2].toolCallId)
+        assertTrue(followUpMessages[2].content.contains("工具结果摘要"))
+        assertTrue(followUpMessages[2].content.contains("status: Completed"))
+        assertTrue(followUpMessages[2].content.contains(""""currentTime":"2026-06-01T00:00:00Z""""))
         assertEquals(1, toolRepository.savedResults.value.size)
         assertTrue(conversationRepository.allMessages().any { it.role == MessageRole.Tool && it.toolCallId == toolCall.id })
         assertTrue(conversationRepository.allMessages().any { it.content == "Final answer" && it.status == MessageStatus.Completed })

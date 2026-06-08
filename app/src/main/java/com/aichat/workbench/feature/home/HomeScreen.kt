@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Search
@@ -119,10 +121,13 @@ fun HomeScreen(
                     val draft = viewModel.consumeTaskDraft()
                     onStartChat(draft, false)
                 },
+                onTaskTemplate = { template -> onStartChat(template.draft, false) },
                 onNewChat = { onStartChat("", false) },
                 onTemporaryChat = { onStartChat("", true) },
                 onImages = { onDestinationClick(AppDestination.ImageGen) },
                 onPrompts = { onDestinationClick(AppDestination.PromptPresets) },
+                onTools = { onDestinationClick(AppDestination.ToolsHub) },
+                onSettingsHub = { onDestinationClick(AppDestination.SettingsHub) },
                 onConversationClick = onConversationClick,
                 onCreateConversation = { showCreateSheet = true },
                 modifier = Modifier
@@ -184,10 +189,13 @@ private fun ConversationHomeContent(
     onOpenProviders: () -> Unit,
     onTaskDraftChange: (String) -> Unit,
     onSubmitTask: () -> Unit,
+    onTaskTemplate: (HomeTaskTemplate) -> Unit,
     onNewChat: () -> Unit,
     onTemporaryChat: () -> Unit,
     onImages: () -> Unit,
     onPrompts: () -> Unit,
+    onTools: () -> Unit,
+    onSettingsHub: () -> Unit,
     onConversationClick: (ConversationId) -> Unit,
     onCreateConversation: () -> Unit,
     modifier: Modifier = Modifier,
@@ -213,6 +221,14 @@ private fun ConversationHomeContent(
                 onDraftChange = onTaskDraftChange,
                 onSubmitTask = onSubmitTask,
                 onOpenProviders = onOpenProviders,
+            )
+        }
+        item {
+            HomeTaskEntrypoints(
+                templates = homeTaskTemplates(),
+                onTaskTemplate = onTaskTemplate,
+                onTools = onTools,
+                onSettings = onSettingsHub,
             )
         }
         item {
@@ -255,6 +271,52 @@ private fun ConversationHomeContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HomeTaskEntrypoints(
+    templates: List<HomeTaskTemplate>,
+    onTaskTemplate: (HomeTaskTemplate) -> Unit,
+    onTools: () -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    WorkbenchPanel(
+        title = "任务入口",
+        description = "常见任务直接带入会话，工具参数会先展示并等待确认。",
+        icon = Icons.Filled.Bolt,
+        modifier = modifier,
+    ) {
+        templates.forEach { template ->
+            CreationActionRow(
+                icon = template.kind.icon(),
+                title = template.title,
+                description = template.description,
+                onClick = { onTaskTemplate(template) },
+                trailing = {
+                    StatusPill(text = template.toolLabel, tone = template.kind.tone())
+                },
+            )
+        }
+        CreationActionRow(
+            icon = Icons.Filled.Extension,
+            title = "工具台",
+            description = "查看工具目录、状态和历史",
+            onClick = onTools,
+            trailing = {
+                StatusPill(text = "工具", tone = StatusTone.Neutral)
+            },
+        )
+        CreationActionRow(
+            icon = Icons.Filled.Settings,
+            title = "设置",
+            description = "配置模型、图片和数据",
+            onClick = onSettings,
+            trailing = {
+                StatusPill(text = "配置", tone = StatusTone.Neutral)
+            },
+        )
     }
 }
 
@@ -717,6 +779,7 @@ private fun CreationActionRow(
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    trailing: @Composable RowScope.() -> Unit = {},
 ) {
     QuietListRow(
         title = title,
@@ -724,8 +787,23 @@ private fun CreationActionRow(
         icon = icon,
         onClick = onClick,
         modifier = modifier.padding(horizontal = 8.dp),
+        trailing = trailing,
     )
 }
+
+private fun HomeTaskTemplateKind.icon(): ImageVector =
+    when (this) {
+        HomeTaskTemplateKind.WebSearch -> Icons.Filled.Search
+        HomeTaskTemplateKind.LocalJs -> Icons.Filled.Code
+        HomeTaskTemplateKind.ImageGeneration -> Icons.Filled.Image
+    }
+
+private fun HomeTaskTemplateKind.tone(): StatusTone =
+    when (this) {
+        HomeTaskTemplateKind.WebSearch -> StatusTone.Warning
+        HomeTaskTemplateKind.LocalJs -> StatusTone.Critical
+        HomeTaskTemplateKind.ImageGeneration -> StatusTone.Accent
+    }
 
 private fun conversationDescription(conversation: Conversation): String {
     val model = conversation.defaultModel?.takeIf { it.isNotBlank() } ?: "未指定模型"

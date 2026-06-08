@@ -68,6 +68,62 @@ class ProviderDraftsTest {
     }
 
     @Test
+    fun previewsOpenAiCompatibleEndpointUrls() {
+        assertEquals(
+            ProviderEndpointPreview(
+                requestBaseUrl = "https://zzshu.cc/v1",
+                modelDiscoveryBaseUrl = "https://zzshu.cc/v1/models",
+                imageGenerationUrl = "https://zzshu.cc/v1/images/generations",
+            ),
+            providerEndpointPreview(
+                type = ProviderType.NewApi,
+                baseUrl = "https://zzshu.cc",
+                allowHttp = false,
+            ),
+        )
+    }
+
+    @Test
+    fun previewsOllamaModelDiscoveryWithoutOpenAiSuffix() {
+        assertEquals(
+            ProviderEndpointPreview(
+                requestBaseUrl = "http://10.0.2.2:11434/v1",
+                modelDiscoveryBaseUrl = "http://10.0.2.2:11434/api/tags",
+                imageGenerationUrl = null,
+            ),
+            providerEndpointPreview(
+                type = ProviderType.Ollama,
+                baseUrl = "http://10.0.2.2:11434",
+                allowHttp = true,
+            ),
+        )
+    }
+
+    @Test
+    fun omitsEndpointPreviewForInvalidUrls() {
+        assertEquals(
+            null,
+            providerEndpointPreview(
+                type = ProviderType.NewApi,
+                baseUrl = "zzshu.cc",
+                allowHttp = false,
+            ),
+        )
+    }
+
+    @Test
+    fun exposesProviderCapabilityTags() {
+        assertEquals(
+            listOf("文本", "视觉", "工具", "图片", "结构化", "长上下文"),
+            ProviderType.NewApi.providerCapabilityTags().map { it.label },
+        )
+        assertEquals(
+            listOf("文本", "视觉", "长上下文"),
+            ProviderType.Ollama.providerCapabilityTags().map { it.label },
+        )
+    }
+
+    @Test
     fun classifiesProviderKeys() {
         assertEquals(
             ProviderKeyStatus(label = "已输入 API Key", tone = StatusTone.Success),

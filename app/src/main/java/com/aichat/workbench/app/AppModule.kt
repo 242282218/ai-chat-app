@@ -1,6 +1,8 @@
 package com.aichat.workbench.app
 
 import androidx.room.Room
+import com.aichat.workbench.agent.skill.AndroidAssetSkillRegistry
+import com.aichat.workbench.agent.skill.SkillRegistry
 import com.aichat.workbench.data.backup.AppBackupService
 import com.aichat.workbench.data.backup.BackupService
 import com.aichat.workbench.data.crypto.AndroidSecretStore
@@ -9,6 +11,7 @@ import com.aichat.workbench.data.image.AndroidImageStorage
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.data.repository.RoomConversationRepository
 import com.aichat.workbench.data.repository.RoomImageGenerationRepository
+import com.aichat.workbench.data.repository.RoomMemoryRepository
 import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
 import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
@@ -24,12 +27,14 @@ import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ThemeSettingsRepository
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.domain.tool.ToolExecutionService
+import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
 import com.aichat.workbench.feature.chat.ConversationManager
@@ -92,6 +97,7 @@ val appModule: Module = module {
             AiChatDatabase.MIGRATION_7_8,
             AiChatDatabase.MIGRATION_8_9,
             AiChatDatabase.MIGRATION_9_10,
+            AiChatDatabase.MIGRATION_10_11,
         ).build()
     }
     single<SecretStore> { AndroidSecretStore(androidContext()) }
@@ -128,6 +134,10 @@ val appModule: Module = module {
     single<ToolInvocationRepository> {
         RoomToolInvocationRepository(get<AiChatDatabase>().toolInvocationDao())
     }
+    single<MemoryRepository> {
+        RoomMemoryRepository(get<AiChatDatabase>().memoryDao())
+    }
+    factory { SaveMemoryUseCase(repository = get(), clock = get()) }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
     single<ImageGenerationPreferencesRepository> {
         DataStoreImageGenerationPreferencesRepository(androidContext(), dispatchers = get())
@@ -161,6 +171,7 @@ val appModule: Module = module {
     single<LocalScriptRunner> { AndroidJavaScriptRunner(androidContext()) }
     single<AuthorizedFileReader> { AndroidAuthorizedFileReader(androidContext()) }
     single<ProviderConnectionTestRunner> { DefaultProviderConnectionTestRunner(get()) }
+    single<SkillRegistry> { AndroidAssetSkillRegistry(androidContext()) }
     single {
         val searchSettingsRepository = get<SearchSettingsRepository>()
         LocalToolExecutor(
@@ -170,6 +181,7 @@ val appModule: Module = module {
                 fileReader = get(),
                 providerRepository = get(),
                 providerConnectionRunner = get(),
+                skillRegistry = get(),
                 searchConfigProvider = { searchSettingsRepository.currentSettings().toSearchConfig() },
                 searchClient = get(),
             ),
@@ -215,7 +227,13 @@ val appModule: Module = module {
         )
     }
     single<ProviderConnectionTestClient> { get<ProviderConnectionTester>() }
-    factory { ConversationCompactor(conversationRepository = get(), clock = get()) }
+    factory {
+        ConversationCompactor(
+            conversationRepository = get(),
+            memoryRepository = get(),
+            clock = get(),
+        )
+    }
     factory { ConversationManager(conversationRepository = get(), clock = get()) }
     factory {
         GenerationController(

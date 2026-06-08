@@ -153,7 +153,7 @@ func TestSearch(t *testing.T) {
 	}
 
 	actual := decodeCanonicalJSON(t, resp.Body)
-	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "search-response.json")))
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "search-success.json")))
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("search response does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
@@ -174,12 +174,10 @@ func TestSearchDisabledReturnsUnavailable(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
 	}
 
-	var body GatewayError
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Code != "search_unavailable" {
-		t.Fatalf("code = %q, want search_unavailable", body.Code)
+	actual := decodeCanonicalJSON(t, resp.Body)
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "search-error-unavailable.json")))
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("search unavailable error does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
 }
 
@@ -324,7 +322,7 @@ func TestSandboxRunReturnsStdout(t *testing.T) {
 	}
 
 	actual := decodeCanonicalJSON(t, resp.Body)
-	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "sandbox-run-response.json")))
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "sandbox-success.json")))
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("sandbox response does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
@@ -395,12 +393,10 @@ func TestSandboxRunReturnsTimeoutResult(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body sandbox.Response
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if !body.TimedOut {
-		t.Fatal("timedOut = false, want true")
+	actual := decodeCanonicalJSON(t, resp.Body)
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "sandbox-timeout.json")))
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("sandbox timeout response does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
 	if runner.request.Timeout != time.Second {
 		t.Fatalf("timeout = %s, want 1s", runner.request.Timeout)
@@ -467,12 +463,10 @@ func TestSandboxRunReturnsUnavailableWhenDockerUnavailable(t *testing.T) {
 		t.Fatalf("status code = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
 	}
 
-	var body GatewayError
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Code != "sandbox_unavailable" {
-		t.Fatalf("code = %q, want sandbox_unavailable", body.Code)
+	actual := decodeCanonicalJSON(t, resp.Body)
+	expected := decodeCanonicalJSON(t, bytes.NewReader(readContractFixture(t, "sandbox-error-unavailable.json")))
+	if !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("sandbox unavailable error does not match contract fixture\nactual: %#v\nexpected: %#v", actual, expected)
 	}
 }
 

@@ -9,12 +9,17 @@ import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.PromptPresetId
+import com.aichat.workbench.domain.model.SkillId
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
+import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
+import com.aichat.workbench.agent.skill.SkillRegistry
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.preferredChatModel
 import com.aichat.workbench.tool.model.canonicalToolName
@@ -32,9 +37,12 @@ class ChatViewModel(
     private val providerRepository: ProviderConfigRepository,
     private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
     private val promptPresetRepository: PromptPresetRepository,
+    private val memoryRepository: MemoryRepository,
+    private val saveMemory: SaveMemoryUseCase,
     private val conversationManager: ConversationManager,
     private val generationController: GenerationController,
     private val providerRegistry: ProviderRegistry,
+    private val skillRegistry: SkillRegistry,
     private val applicationScope: com.aichat.workbench.app.ApplicationScope,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatUiState(draft = DraftState.fromSavedState(savedStateHandle)))
@@ -42,11 +50,13 @@ class ChatViewModel(
     private var messagesJob: Job? = null
     private var observedConversationId: ConversationId? = null
     init {
+        updateState { it.copy(skills = skillRegistry.listSkills()) }
         viewModelScope.observeChatStateSources(
             conversationRepository,
             providerRepository,
             modelRolePreferenceRepository,
             promptPresetRepository,
+            memoryRepository,
             conversationManager,
             providerRegistry,
             currentState = { _state.value },
@@ -201,6 +211,51 @@ class ChatViewModel(
         val preset = _state.value.promptPresets.firstOrNull { it.id == id } ?: return
         viewModelScope.launch {
             selectConversation(conversationManager.applyPromptPreset(_state.value, preset))
+        }
+    }
+    fun applySkill(id: SkillId) {
+        val skill = _state.value.skills.firstOrNull { it.id == id } ?: return
+        viewModelScope.launch {
+            selectConversation(conversationManager.applySkill(_state.value, skill))
+        }
+    }
+    fun saveDraftAsMemory() {
+        val current = _state.value
+        val content = current.input.trim()
+        if (content.isBlank()) return
+        val selectedConversation = conversationManager.selectedConversation(current)
+        if (current.sensitiveDraft || selectedConversation?.isSensitive == true) {
+            updateState {
+                it.copy(
+                    error = "敏感会话不保存长期记忆。",
+                    memoryStatus = null,
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                saveMemory(
+                    content = content,
+                    kind = MemoryKind.UserFact,
+                    sourceConversationId = current.selectedConversationId,
+                )
+            }.onSuccess {
+                updateState {
+                    it.copy(
+                        error = null,
+                        memoryStatus = "已保存长期记忆。",
+                    )
+                }
+            }.onFailure { error ->
+                updateState {
+                    it.copy(
+                        error = error.message ?: "长期记忆保存失败。",
+                        memoryStatus = null,
+                    )
+                }
+            }
         }
     }
     fun archiveSelectedConversation() = runForSelected { conversationRepository.archiveConversation(it) }

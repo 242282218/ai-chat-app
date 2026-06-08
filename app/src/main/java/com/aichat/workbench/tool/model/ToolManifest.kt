@@ -68,6 +68,7 @@ fun String.canonicalToolName(): String =
         "imageuploadtomodel", "image_upload", "upload_image", "image_upload_to_model" -> "image_upload_to_model"
         "localjs", "local_javascript", "javascript", "js", "local_js" -> "local_js"
         "fileread", "read_file", "readfile", "file_read" -> "file_read"
+        "loadskill", "skill", "load_skill" -> "load_skill"
         "providerconnectiontest", "provider_test", "test_provider", "provider_connection_test" ->
             "provider_connection_test"
         else -> normalized

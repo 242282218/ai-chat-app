@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.aichat.workbench.data.local.dao.ConversationDao
 import com.aichat.workbench.data.local.dao.ImageGenerationDao
+import com.aichat.workbench.data.local.dao.MemoryDao
 import com.aichat.workbench.data.local.dao.ModelPreferenceDao
 import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
 import com.aichat.workbench.data.local.dao.PromptPresetDao
@@ -13,6 +14,7 @@ import com.aichat.workbench.data.local.dao.ProviderConfigDao
 import com.aichat.workbench.data.local.dao.ToolInvocationDao
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
+import com.aichat.workbench.data.local.entity.MemoryItemEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.local.entity.MessageFts
 import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
@@ -32,8 +34,9 @@ import com.aichat.workbench.data.local.entity.ToolInvocationEntity
         ModelRolePreferenceEntity::class,
         ToolInvocationEntity::class,
         ImageGenerationEntity::class,
+        MemoryItemEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class AiChatDatabase : RoomDatabase() {
@@ -50,6 +53,8 @@ abstract class AiChatDatabase : RoomDatabase() {
     abstract fun imageGenerationDao(): ImageGenerationDao
 
     abstract fun toolInvocationDao(): ToolInvocationDao
+
+    abstract fun memoryDao(): MemoryDao
 
     companion object {
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -254,6 +259,30 @@ abstract class AiChatDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS index_model_role_preferences_provider_id ON model_role_preferences(provider_id)",
                 )
+            }
+        }
+
+        val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS memory_items (
+                        id TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        source_conversation_id TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(source_conversation_id) REFERENCES conversations(id) ON UPDATE NO ACTION ON DELETE SET NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_memory_items_kind ON memory_items(kind)")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_memory_items_source_conversation_id ON memory_items(source_conversation_id)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_memory_items_updated_at ON memory_items(updated_at)")
             }
         }
     }

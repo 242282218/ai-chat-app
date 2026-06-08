@@ -5,9 +5,11 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
+import com.aichat.workbench.domain.model.MemoryItem
 import com.aichat.workbench.domain.model.ModelRolePreference
 import com.aichat.workbench.domain.model.PromptPreset
 import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.Skill
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolPermissionLevel
 
@@ -19,6 +21,8 @@ data class ChatUiState(
     val providers: List<ProviderConfig> = emptyList(),
     val modelRolePreferences: List<ModelRolePreference> = emptyList(),
     val promptPresets: List<PromptPreset> = emptyList(),
+    val skills: List<Skill> = emptyList(),
+    val memories: List<MemoryItem> = emptyList(),
     val selectedProviderId: String? = null,
     val draft: DraftState = DraftState(),
     val settingsExpanded: Boolean = false,
@@ -27,6 +31,7 @@ data class ChatUiState(
     val isGenerating: Boolean = false,
     val pendingToolCall: PendingToolCall? = null,
     val error: String? = null,
+    val memoryStatus: String? = null,
 ) {
     val input: String get() = draft.input
     val titleDraft: String get() = draft.title

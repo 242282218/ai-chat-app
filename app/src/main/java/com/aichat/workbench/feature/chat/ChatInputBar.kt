@@ -1,6 +1,5 @@
 package com.aichat.workbench.feature.chat
 
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -31,16 +30,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessagePart
+import com.aichat.workbench.ui.component.decodeInlineImageBitmap
 import com.aichat.workbench.ui.component.FileAttachButton
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import java.io.File
-import java.util.Base64
 
 @Composable
 internal fun InputBar(
@@ -142,7 +140,7 @@ internal fun ChatImagePreview(
     image: MessagePart.Image,
     modifier: Modifier = Modifier,
 ) {
-    val bitmap = remember(image.uri) { image.uri.toImageBitmapOrNull() }
+    val bitmap = remember(image.uri) { decodeInlineImageBitmap(image.uri) }
     if (bitmap == null) {
         Box(
             modifier = modifier.clip(MaterialTheme.shapes.small),
@@ -177,25 +175,6 @@ internal fun String.toLocalImagePathOrNull(): String? {
 
 internal fun String.fileStem(): String =
     File(this).nameWithoutExtension.ifBlank { "generated-image" }
-
-private fun String.toImageBitmapOrNull() =
-    runCatching {
-        val normalized = trim()
-        when {
-            normalized.startsWith("data:image") -> {
-                val base64 = substringAfter("base64,", missingDelimiterValue = "")
-                if (base64.isBlank()) return@runCatching null
-                val bytes = Base64.getDecoder().decode(base64)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            }
-            normalized.startsWith("file://") -> {
-                val path = Uri.parse(normalized).path ?: return@runCatching null
-                BitmapFactory.decodeFile(path)
-            }
-            File(normalized).isFile -> BitmapFactory.decodeFile(normalized)
-            else -> null
-        }?.asImageBitmap()
-    }.getOrNull()
 
 @Composable
 private fun ImageDraftRow(

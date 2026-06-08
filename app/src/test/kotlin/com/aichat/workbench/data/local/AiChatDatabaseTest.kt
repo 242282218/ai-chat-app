@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.aichat.workbench.data.crypto.SecretStore
+import com.aichat.workbench.data.local.entity.ConversationEntity
+import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.mapper.toEntity
 import com.aichat.workbench.data.repository.RoomConversationRepository
 import com.aichat.workbench.data.repository.RoomModelPreferenceRepository
+import com.aichat.workbench.data.repository.RoomMemoryRepository
 import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
 import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
@@ -17,6 +20,7 @@ import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelPreference
 import com.aichat.workbench.domain.model.ModelPreferenceId
@@ -38,6 +42,7 @@ import com.aichat.workbench.domain.usecase.DeleteConversationUseCase
 import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.RenameConversationUseCase
 import com.aichat.workbench.domain.usecase.SaveMessageUseCase
+import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
 import com.aichat.workbench.domain.usecase.SaveModelPreferenceUseCase
 import com.aichat.workbench.domain.usecase.SavePromptPresetUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
@@ -183,6 +188,121 @@ class AiChatDatabaseTest {
         repository.saveMessage(summary)
 
         assertEquals(summary, repository.getMessages(conversation.id).single())
+    }
+
+    @Test
+    fun memories_roundTripAndSurviveSourceConversationDeletion() = runTest {
+        val conversationRepository = RoomConversationRepository(database.conversationDao(), clock)
+        val memoryRepository = RoomMemoryRepository(database.memoryDao())
+        val conversation = CreateConversationUseCase(conversationRepository, clock)(title = "Memory source")
+        val saved = SaveMemoryUseCase(memoryRepository, clock)(
+            content = "用户偏好 Kotlin 简洁实现。",
+            kind = MemoryKind.UserFact,
+            sourceConversationId = conversation.id,
+        )
+
+        assertEquals(saved, memoryRepository.getMemory(saved.id))
+        assertEquals(listOf(saved), memoryRepository.observeMemories().first())
+
+        DeleteConversationUseCase(conversationRepository)(conversation.id)
+
+        val retained = requireNotNull(memoryRepository.getMemory(saved.id))
+        assertEquals("用户偏好 Kotlin 简洁实现。", retained.content)
+        assertNull(retained.sourceConversationId)
+    }
+
+    @Test
+    fun legacyOrMalformedMessagePayloads_doNotCrashConversationLoad() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        database.conversationDao().upsertConversation(
+            ConversationEntity(
+                id = "conversation-legacy",
+                title = "Legacy",
+                createdAt = 1L,
+                updatedAt = 1L,
+                defaultProviderId = null,
+                defaultModel = null,
+                modelParametersJson = "{}",
+                systemPrompt = null,
+                isTemporary = false,
+                isSensitive = false,
+                archivedAt = null,
+            ),
+        )
+        database.conversationDao().upsertMessage(
+            MessageEntity(
+                id = "message-legacy",
+                conversationId = "conversation-legacy",
+                role = "assistant",
+                content = "legacy content",
+                contentPartsJson = "{bad json",
+                providerId = null,
+                model = null,
+                status = "Canceled",
+                errorSummary = null,
+                createdAt = 1L,
+                updatedAt = 1L,
+                toolCallId = null,
+                parentMessageId = null,
+                toolCallsJson = "{bad json",
+                toolResult = null,
+            ),
+        )
+
+        val saved = repository.getMessages(ConversationId("conversation-legacy")).single()
+
+        assertEquals(MessageRole.Assistant, saved.role)
+        assertEquals(MessageStatus.Cancelled, saved.status)
+        assertEquals("legacy content", saved.content)
+        assertEquals(emptyList<MessagePart>(), saved.contentParts)
+        assertEquals(emptyList<com.aichat.workbench.domain.model.ToolCall>(), saved.toolCalls)
+    }
+
+    @Test
+    fun legacyInlineMarkdownImages_areRecoveredIntoContentParts() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        database.conversationDao().upsertConversation(
+            ConversationEntity(
+                id = "conversation-inline-image",
+                title = "Inline image",
+                createdAt = 1L,
+                updatedAt = 1L,
+                defaultProviderId = null,
+                defaultModel = null,
+                modelParametersJson = "{}",
+                systemPrompt = null,
+                isTemporary = false,
+                isSensitive = false,
+                archivedAt = null,
+            ),
+        )
+        database.conversationDao().upsertMessage(
+            MessageEntity(
+                id = "message-inline-image",
+                conversationId = "conversation-inline-image",
+                role = "assistant",
+                content = "生成结果\n![generated image](data:image/png;base64,AAAA)",
+                contentPartsJson = "[]",
+                providerId = null,
+                model = null,
+                status = "Completed",
+                errorSummary = null,
+                createdAt = 1L,
+                updatedAt = 1L,
+                toolCallId = null,
+                parentMessageId = null,
+                toolCallsJson = "[]",
+                toolResult = null,
+            ),
+        )
+
+        val saved = repository.getMessages(ConversationId("conversation-inline-image")).single()
+
+        assertEquals("生成结果", saved.content)
+        assertEquals(1, saved.contentParts.size)
+        val image = saved.contentParts.single() as MessagePart.Image
+        assertEquals("data:image/png;base64,AAAA", image.uri)
+        assertEquals("image/png", image.mimeType)
     }
 
     @Test

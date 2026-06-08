@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.Conversation
+import com.aichat.workbench.domain.model.MemoryItem
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.ui.component.InlineNotice
@@ -112,6 +113,17 @@ internal fun ChatControlSheet(
             PromptPresetStrip(state = state, viewModel = viewModel, modifier = Modifier)
         }
         item {
+            BuiltInSkillStrip(state = state, viewModel = viewModel, modifier = Modifier)
+        }
+        item {
+            LongTermMemoryPanel(
+                state = state,
+                viewModel = viewModel,
+                selectedConversation = selectedConversation,
+                modifier = Modifier,
+            )
+        }
+        item {
             DangerActions(
                 messageCount = state.selectedConversationMessageCount,
                 canClearContext = state.selectedConversationMessageCount > 0 && !state.isGenerating,
@@ -122,6 +134,57 @@ internal fun ChatControlSheet(
             )
         }
     }
+}
+
+@Composable
+private fun LongTermMemoryPanel(
+    state: ChatUiState,
+    viewModel: ChatViewModel,
+    selectedConversation: Conversation?,
+    modifier: Modifier = Modifier,
+) {
+    val isSensitive = state.sensitiveDraft || selectedConversation?.isSensitive == true
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "长期记忆",
+            description = "${state.memories.size} 条用户手动保存的事实",
+            trailing = {
+                state.memoryStatus?.let {
+                    StatusPill(text = it, tone = StatusTone.Success)
+                }
+            },
+        )
+        QuietListRow(
+            title = "保存当前输入为记忆",
+            description = when {
+                state.input.isBlank() -> "先在输入框写入要保存的事实"
+                isSensitive -> "敏感会话不写入长期记忆"
+                state.isGenerating -> "生成结束后再保存"
+                else -> "仅保存输入框内容，不自动提取聊天历史"
+            },
+            icon = Icons.Filled.Save,
+            onClick = viewModel::saveDraftAsMemory,
+            enabled = state.input.isNotBlank() && !isSensitive && !state.isGenerating,
+        )
+        if (state.memories.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.memories.take(3), key = { it.id.value }) { memory ->
+                    MemoryPreviewPill(memory = memory)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryPreviewPill(memory: MemoryItem) {
+    StatusPill(
+        text = memory.content.trim().ifBlank { "空记忆" }.take(28),
+        tone = StatusTone.Neutral,
+    )
 }
 
 @Composable
@@ -630,6 +693,49 @@ private fun PromptPresetStrip(
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BuiltInSkillStrip(
+    state: ChatUiState,
+    viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
+) {
+    if (state.skills.isEmpty()) return
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuietSectionHeader(
+            title = "内置 Skill",
+            description = "${state.skills.size} 个任务工作流",
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
+        ) {
+            items(state.skills, key = { it.id.value }) { skill ->
+                val selected = state.systemPromptDraft.contains("ID: ${skill.id.value}")
+                AssistChip(
+                    onClick = { viewModel.applySkill(skill.id) },
+                    label = {
+                        Text(
+                            text = skill.name,
+                            modifier = Modifier.widthIn(max = 180.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        if (selected) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                        }
+                    },
+                )
             }
         }
     }

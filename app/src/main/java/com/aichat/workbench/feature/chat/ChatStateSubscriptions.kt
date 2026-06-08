@@ -3,6 +3,7 @@ package com.aichat.workbench.feature.chat
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
@@ -17,6 +18,7 @@ internal fun CoroutineScope.observeChatStateSources(
     providerRepository: ProviderConfigRepository,
     modelRolePreferenceRepository: ModelRolePreferenceRepository,
     promptPresetRepository: PromptPresetRepository,
+    memoryRepository: MemoryRepository,
     conversationManager: ConversationManager,
     providerRegistry: ProviderRegistry,
     currentState: () -> ChatUiState,
@@ -70,6 +72,11 @@ internal fun CoroutineScope.observeChatStateSources(
     launch {
         promptPresetRepository.observePromptPresets().collect { presets ->
             updateState { it.copy(promptPresets = presets) }
+        }
+    }
+    launch {
+        memoryRepository.observeMemories().collect { memories ->
+            updateState { it.copy(memories = memories) }
         }
     }
 }

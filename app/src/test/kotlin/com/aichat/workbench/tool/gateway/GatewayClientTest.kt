@@ -159,7 +159,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody(readContractFixture("search-response.json")),
+                .setBody(readContractFixture("search-success.json")),
         )
         val client = GatewayClient()
 
@@ -178,6 +178,26 @@ class GatewayClientTest {
         assertEquals("Example News", response.results[0].source)
         assertEquals("2026-05-30T12:00:00Z", response.results[0].publishedAt.toString())
         assertEquals(null, response.results[1].publishedAt)
+    }
+
+    @Test
+    fun search_mapsUnavailableFixture() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(503)
+                .setBody(readContractFixture("search-error-unavailable.json")),
+        )
+        val client = GatewayClient()
+
+        try {
+            client.search(server.url("/").toString(), "AI news")
+            fail("Expected GatewayHttpException")
+        } catch (error: GatewayHttpException) {
+            assertEquals(503, error.statusCode)
+            assertEquals("search_unavailable", error.gatewayCode)
+            assertEquals(null, error.requestId)
+            assertEquals("Search adapter 不可用。", error.message)
+        }
     }
 
     @Test
@@ -253,7 +273,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody(readContractFixture("sandbox-run-response.json")),
+                .setBody(readContractFixture("sandbox-success.json")),
         )
         val client = GatewayClient()
 
@@ -281,6 +301,31 @@ class GatewayClientTest {
     }
 
     @Test
+    fun sandboxRun_parsesTimeoutFixture() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(readContractFixture("sandbox-timeout.json")),
+        )
+        val client = GatewayClient()
+
+        val response = client.runSandbox(
+            baseUrl = server.url("/").toString(),
+            language = "python",
+            code = "while True: pass",
+            timeoutSeconds = 1,
+        )
+
+        assertEquals("python", response.language)
+        assertEquals("", response.stdout)
+        assertEquals("", response.stderr)
+        assertEquals(-1, response.exitCode)
+        assertEquals(3000L, response.durationMs)
+        assertTrue(response.timedOut)
+        assertFalse(response.truncated)
+    }
+
+    @Test
     fun sandboxRun_rejectsInvalidTimeoutWithoutRequest() = runTest {
         val client = GatewayClient()
 
@@ -304,16 +349,7 @@ class GatewayClientTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(503)
-                .setBody(
-                    """
-                    {
-                      "code": "sandbox_unavailable",
-                      "message": "Sandbox runner 不可用。",
-                      "requestId": "request-2",
-                      "details": null
-                    }
-                    """.trimIndent(),
-                ),
+                .setBody(readContractFixture("sandbox-error-unavailable.json")),
         )
         val client = GatewayClient()
 
@@ -328,7 +364,7 @@ class GatewayClientTest {
         } catch (error: GatewayHttpException) {
             assertEquals(503, error.statusCode)
             assertEquals("sandbox_unavailable", error.gatewayCode)
-            assertEquals("request-2", error.requestId)
+            assertEquals(null, error.requestId)
             assertEquals("Sandbox runner 不可用。", error.message)
         }
     }

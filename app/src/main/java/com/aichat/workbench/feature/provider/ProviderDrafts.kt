@@ -1,10 +1,14 @@
 package com.aichat.workbench.feature.provider
 
 import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.isPersistableProviderHeader
 import com.aichat.workbench.domain.model.persistableProviderHeaderDisplayNames
 import com.aichat.workbench.provider.ProviderRegistry
+import com.aichat.workbench.provider.api.modelDiscoveryBaseUrl
+import com.aichat.workbench.provider.api.openAiApiBaseUrl
+import com.aichat.workbench.provider.supportsOpenAiCompatibleImageGeneration
 import com.aichat.workbench.ui.component.StatusTone
 import java.net.URI
 
@@ -36,6 +40,17 @@ internal data class ProviderHealthStats(
     val httpCount: Int,
     val customHeaderCount: Int,
     val unsupportedEnabledCount: Int,
+)
+
+internal data class ProviderCapabilityTag(
+    val label: String,
+    val tone: StatusTone,
+)
+
+internal data class ProviderEndpointPreview(
+    val requestBaseUrl: String,
+    val modelDiscoveryBaseUrl: String?,
+    val imageGenerationUrl: String?,
 )
 
 internal val providerHeaderPolicyText: String =
@@ -78,6 +93,52 @@ private fun ProviderConfig.supportsChatProvider(): Boolean =
 
 private fun ProviderType.requiresApiKey(): Boolean =
     ProviderRegistry.builtInDescriptor(this)?.requiresApiKey ?: true
+
+internal fun ProviderType.providerCapabilityTags(): List<ProviderCapabilityTag> {
+    val capabilities = ProviderRegistry.builtInDescriptor(this)?.capabilities ?: return emptyList()
+    return listOfNotNull(
+        ProviderCapabilityTag("文本", StatusTone.Success).takeIf { capabilities.text },
+        ProviderCapabilityTag("视觉", StatusTone.Accent).takeIf { capabilities.vision },
+        ProviderCapabilityTag("工具", StatusTone.Accent).takeIf { capabilities.toolCalling },
+        ProviderCapabilityTag("图片", StatusTone.Accent).takeIf { capabilities.imageGeneration },
+        ProviderCapabilityTag("结构化", StatusTone.Neutral).takeIf { capabilities.structuredOutput },
+        ProviderCapabilityTag("长上下文", StatusTone.Neutral).takeIf { capabilities.longContext },
+    )
+}
+
+internal fun providerEndpointPreview(
+    type: ProviderType,
+    baseUrl: String,
+    allowHttp: Boolean,
+): ProviderEndpointPreview? {
+    if (!baseUrl.isValidProviderBaseUrl(allowHttp)) return null
+    val previewProvider = ProviderConfig(
+        id = ProviderId("preview"),
+        name = "preview",
+        type = type,
+        baseUrl = baseUrl,
+        apiKeyRef = null,
+        headers = emptyMap(),
+        models = emptyList(),
+        defaultModel = null,
+        enabled = true,
+    )
+    val requestBaseUrl = previewProvider.openAiApiBaseUrl()
+    val discoveryPath = ProviderRegistry.builtInDescriptor(type)?.modelDiscovery?.path
+    val discoveryBaseUrl = discoveryPath?.let {
+        "${previewProvider.modelDiscoveryBaseUrl()}/${it.trimStart('/')}"
+    }
+    val imageGenerationUrl = if (type.supportsOpenAiCompatibleImageGeneration()) {
+        "$requestBaseUrl/images/generations"
+    } else {
+        null
+    }
+    return ProviderEndpointPreview(
+        requestBaseUrl = requestBaseUrl,
+        modelDiscoveryBaseUrl = discoveryBaseUrl,
+        imageGenerationUrl = imageGenerationUrl,
+    )
+}
 
 internal fun providerKeyStatus(
     apiKey: String,

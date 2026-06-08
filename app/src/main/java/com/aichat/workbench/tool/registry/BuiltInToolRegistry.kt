@@ -5,6 +5,7 @@ import com.aichat.workbench.tool.local.CodeDiffPreviewToolDescriptor
 import com.aichat.workbench.tool.local.FileReadToolDescriptor
 import com.aichat.workbench.tool.local.LocalJsToolDescriptor
 import com.aichat.workbench.tool.local.LocalWebSearchToolDescriptor
+import com.aichat.workbench.tool.local.LoadSkillToolDescriptor
 import com.aichat.workbench.tool.local.ProviderConnectionTestToolDescriptor
 import com.aichat.workbench.tool.local.TextTransformToolDescriptor
 import com.aichat.workbench.tool.local.TimeToolDescriptor
@@ -21,6 +22,7 @@ object BuiltInToolRegistry {
         LocalWebSearchToolDescriptor,
         LocalJsToolDescriptor,
         FileReadToolDescriptor,
+        LoadSkillToolDescriptor,
         ProviderConnectionTestToolDescriptor,
         ToolDescriptor(
             name = "image_upload_to_model",

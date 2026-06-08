@@ -759,6 +759,13 @@ private fun ProviderForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
         )
+        ProviderEndpointPreviewRows(
+            preview = providerEndpointPreview(
+                type = type,
+                baseUrl = baseUrl,
+                allowHttp = allowHttp,
+            ),
+        )
         OutlinedTextField(
             value = model,
             onValueChange = onModelChange,
@@ -1120,47 +1127,99 @@ private fun ProviderFormSummary(
     val headerStatus = headers.headerStatus()
     val requiresApiKey = ProviderRegistry.builtInDescriptor(type)?.requiresApiKey ?: true
     val keyStatus = providerKeyStatus(apiKey, hasStoredKey, requiresApiKey)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(
-                text = if (name.isBlank()) "需要名称" else "已命名",
-                tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
-            )
-        }
-        item {
-            StatusPill(text = urlStatus.label, tone = urlStatus.tone)
-        }
-        if (model.isNotBlank()) {
-            item {
-                StatusPill(text = "聊天 $model", tone = StatusTone.Success)
-            }
-        }
-        if (imageModel.isNotBlank()) {
-            item {
-                StatusPill(text = "图片 $imageModel", tone = StatusTone.Accent)
-            }
-        }
-        if (toolModel.isNotBlank()) {
-            item {
-                StatusPill(text = "工具 $toolModel", tone = StatusTone.Accent)
-            }
-        }
-        if (codeModel.isNotBlank()) {
-            item {
-                StatusPill(text = "代码 $codeModel", tone = StatusTone.Accent)
-            }
-        }
-        item {
-            StatusPill(
-                text = keyStatus.label,
-                tone = keyStatus.tone,
-            )
-        }
-        if (headers.isNotBlank()) {
+    val capabilityTags = type.providerCapabilityTags()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 StatusPill(
-                    text = headerStatus.label,
-                    tone = headerStatus.tone,
+                    text = if (name.isBlank()) "需要名称" else "已命名",
+                    tone = if (name.isBlank()) StatusTone.Warning else StatusTone.Success,
+                )
+            }
+            item {
+                StatusPill(text = urlStatus.label, tone = urlStatus.tone)
+            }
+            if (model.isNotBlank()) {
+                item {
+                    StatusPill(text = "聊天 $model", tone = StatusTone.Success)
+                }
+            }
+            if (imageModel.isNotBlank()) {
+                item {
+                    StatusPill(text = "图片 $imageModel", tone = StatusTone.Accent)
+                }
+            }
+            if (toolModel.isNotBlank()) {
+                item {
+                    StatusPill(text = "工具 $toolModel", tone = StatusTone.Accent)
+                }
+            }
+            if (codeModel.isNotBlank()) {
+                item {
+                    StatusPill(text = "代码 $codeModel", tone = StatusTone.Accent)
+                }
+            }
+            item {
+                StatusPill(
+                    text = keyStatus.label,
+                    tone = keyStatus.tone,
+                )
+            }
+            if (headers.isNotBlank()) {
+                item {
+                    StatusPill(
+                        text = headerStatus.label,
+                        tone = headerStatus.tone,
+                    )
+                }
+            }
+        }
+
+        if (capabilityTags.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(capabilityTags, key = { it.label }) { tag ->
+                    StatusPill(text = tag.label, tone = tag.tone)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderEndpointPreviewRows(
+    preview: ProviderEndpointPreview?,
+) {
+    if (preview == null) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        MetadataRow(
+            label = "请求地址预览",
+            value = preview.requestBaseUrl,
+        )
+        preview.modelDiscoveryBaseUrl?.let {
+            MetadataRow(
+                label = "模型发现地址",
+                value = it,
+            )
+        }
+        preview.imageGenerationUrl?.let {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                StatusPill(
+                    text = "图片接口",
+                    tone = StatusTone.Accent,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+                Text(
+                    text = it,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

@@ -1,6 +1,8 @@
 package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
+import com.aichat.workbench.agent.skill.InMemorySkillRegistry
+import com.aichat.workbench.agent.skill.SkillRegistry
 import com.aichat.workbench.app.AppDispatchers
 import com.aichat.workbench.app.ApplicationScope
 import com.aichat.workbench.data.settings.GatewaySettings
@@ -13,6 +15,9 @@ import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.domain.model.MemoryItem
+import com.aichat.workbench.domain.model.MemoryItemId
+import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelConfig
 import com.aichat.workbench.domain.model.ModelParameters
@@ -21,17 +26,21 @@ import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.model.Skill
+import com.aichat.workbench.domain.model.SkillId
 import com.aichat.workbench.domain.model.ToolResult
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
+import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.StoredImagePaths
 import com.aichat.workbench.domain.repository.ToolInvocationRepository
 import com.aichat.workbench.domain.tool.ToolExecutionService
+import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
@@ -514,6 +523,62 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun applySkillStoresBuiltInSkillPromptInConversation() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val skill = skill(id = "code-task", name = "Code Task", prompt = "Inspect files before editing.")
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+            skillRegistry = InMemorySkillRegistry(listOf(skill)),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(skill), viewModel.state.value.skills)
+
+        viewModel.applySkill(skill.id)
+        advanceUntilIdle()
+
+        val conversation = viewModel.state.value.conversations.single()
+        assertEquals("Code Task", conversation.title)
+        assertTrue(viewModel.state.value.systemPromptDraft.contains("ID: code-task"))
+        assertTrue(viewModel.state.value.systemPromptDraft.contains("Inspect files before editing."))
+        assertTrue(conversationRepository.allMessages().isEmpty())
+    }
+
+    @Test
+    fun applySkillReplacesPreviousBuiltInSkillBlockOnly() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id, defaultModel = "gpt-test").copy(
+            systemPrompt = "Keep this user rule.",
+        )
+        conversationRepository.seed(conversation, emptyList())
+        val codeSkill = skill(id = "code-task", name = "Code Task", prompt = "Code workflow.")
+        val researchSkill = skill(id = "web-research", name = "Web Research", prompt = "Research workflow.")
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+            skillRegistry = InMemorySkillRegistry(listOf(codeSkill, researchSkill)),
+        )
+        advanceUntilIdle()
+
+        viewModel.applySkill(codeSkill.id)
+        advanceUntilIdle()
+        viewModel.applySkill(researchSkill.id)
+        advanceUntilIdle()
+
+        val systemPrompt = viewModel.state.value.systemPromptDraft
+        assertTrue(systemPrompt.contains("Keep this user rule."))
+        assertTrue(systemPrompt.contains("ID: web-research"))
+        assertTrue(systemPrompt.contains("Research workflow."))
+        assertFalse(systemPrompt.contains("ID: code-task"))
+        assertFalse(systemPrompt.contains("Code workflow."))
+    }
+
+    @Test
     fun starterToolActionsPrepareTextTransformAndDiffPreviewInstructions() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val viewModel = startViewModel(
@@ -789,6 +854,59 @@ class ChatViewModelTest : KoinTest {
         }
 
     @Test
+    fun saveDraftAsMemoryStoresCurrentInput() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val memoryRepository = FakeMemoryRepository()
+        val conversation = conversation(defaultProviderId = openAi.id, defaultModel = "openai-model")
+        conversationRepository.seed(conversation, emptyList())
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+            memoryRepository = memoryRepository,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("  用户偏好 Kotlin 简洁实现  ")
+        viewModel.saveDraftAsMemory()
+        advanceUntilIdle()
+
+        val saved = memoryRepository.allMemories().single()
+        assertEquals(MemoryKind.UserFact, saved.kind)
+        assertEquals("用户偏好 Kotlin 简洁实现", saved.content)
+        assertEquals(conversation.id, saved.sourceConversationId)
+        assertEquals("已保存长期记忆。", viewModel.state.value.memoryStatus)
+        assertEquals(null, viewModel.state.value.error)
+        assertEquals(listOf(saved), viewModel.state.value.memories)
+    }
+
+    @Test
+    fun saveDraftAsMemoryRejectsSensitiveConversation() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val memoryRepository = FakeMemoryRepository()
+        val conversation = conversation(defaultProviderId = openAi.id, defaultModel = "openai-model")
+            .copy(isSensitive = true)
+        conversationRepository.seed(conversation, emptyList())
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+            memoryRepository = memoryRepository,
+        )
+        advanceUntilIdle()
+
+        viewModel.updateInput("不要长期保存这段内容")
+        viewModel.saveDraftAsMemory()
+        advanceUntilIdle()
+
+        assertEquals(emptyList<MemoryItem>(), memoryRepository.allMemories())
+        assertEquals("敏感会话不保存长期记忆。", viewModel.state.value.error)
+        assertEquals(null, viewModel.state.value.memoryStatus)
+    }
+
+    @Test
     fun retryMessageSendsHistoryBeforeFailure() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)
@@ -917,6 +1035,8 @@ class ChatViewModelTest : KoinTest {
         providerRepository: ProviderConfigRepository,
         openAiProvider: ChatProvider,
         compatibleProvider: ChatProvider = RecordingChatProvider(),
+        skillRegistry: SkillRegistry = InMemorySkillRegistry(emptyList()),
+        memoryRepository: FakeMemoryRepository = FakeMemoryRepository(),
     ): ChatViewModel {
         runCatching { stopKoin() }
         startKoin {
@@ -934,6 +1054,9 @@ class ChatViewModelTest : KoinTest {
                     single<ConversationRepository> { conversationRepository }
                     single<ProviderConfigRepository> { providerRepository }
                     single<PromptPresetRepository> { FakePromptPresetRepository() }
+                    single<SkillRegistry> { skillRegistry }
+                    single<MemoryRepository> { memoryRepository }
+                    factory { SaveMemoryUseCase(repository = get(), clock = get()) }
                     single<ToolInvocationRepository> { FakeToolInvocationRepository() }
                     single<ImageGenerationPreferencesRepository> { FakeImageGenerationPreferencesRepository() }
                     single<ImageGenerationRepository> { FakeImageGenerationRepository() }
@@ -979,9 +1102,12 @@ class ChatViewModelTest : KoinTest {
                             conversationRepository = get(),
                             providerRepository = get(),
                             promptPresetRepository = get(),
+                            memoryRepository = get(),
+                            saveMemory = get(),
                             conversationManager = get(),
                             generationController = get(),
                             providerRegistry = get(),
+                            skillRegistry = get(),
                             applicationScope = get(),
                         )
                     }
@@ -1091,6 +1217,19 @@ class ChatViewModelTest : KoinTest {
         )
 
     private var messageCounter = 0
+
+    private fun skill(
+        id: String,
+        name: String,
+        prompt: String,
+    ): Skill =
+        Skill(
+            id = SkillId(id),
+            name = name,
+            description = "$name description",
+            summary = "$name summary",
+            prompt = prompt,
+        )
 }
 
 class MainDispatcherRule(
@@ -1222,6 +1361,29 @@ private class FakePromptPresetRepository : PromptPresetRepository {
     override suspend fun deletePromptPreset(id: PromptPresetId) {
         presets.value = presets.value.filterNot { it.id == id }
     }
+}
+
+private class FakeMemoryRepository : MemoryRepository {
+    private val memories = MutableStateFlow<List<MemoryItem>>(emptyList())
+
+    fun allMemories(): List<MemoryItem> = memories.value
+
+    override fun observeMemories(): Flow<List<MemoryItem>> = memories
+
+    override suspend fun getMemory(id: MemoryItemId): MemoryItem? =
+        memories.value.firstOrNull { it.id == id }
+
+    override suspend fun saveMemory(memory: MemoryItem) {
+        memories.value = (memories.value.filterNot { it.id == memory.id } + memory)
+            .sortedByDescending { it.updatedAt }
+    }
+
+    override suspend fun deleteMemory(id: MemoryItemId) {
+        memories.value = memories.value.filterNot { it.id == id }
+    }
+
+    override suspend fun findRelevantMemories(query: String, limit: Int): List<MemoryItem> =
+        memories.value.take(limit.coerceAtLeast(0))
 }
 
 private class FakeImageGenerationPreferencesRepository : ImageGenerationPreferencesRepository {

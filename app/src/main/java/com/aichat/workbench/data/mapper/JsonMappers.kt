@@ -28,7 +28,8 @@ fun ModelParameters.toJson(): String =
 
 fun modelParametersFromJson(value: String): ModelParameters {
     if (value.isBlank()) return ModelParameters()
-    val json = mapperJson.decodeFromString<ModelParametersJson>(value)
+    val json = runCatching { mapperJson.decodeFromString<ModelParametersJson>(value) }
+        .getOrElse { return ModelParameters() }
     return ModelParameters(
         temperature = json.temperature,
         topP = json.topP,
@@ -52,7 +53,9 @@ fun List<MessagePart>.toJson(): String =
 
 fun messagePartsFromJson(value: String): List<MessagePart> {
     if (value.isBlank()) return emptyList()
-    return mapperJson.decodeFromString<List<MessagePartJson>>(value).mapNotNull { part ->
+    return runCatching { mapperJson.decodeFromString<List<MessagePartJson>>(value) }
+        .getOrDefault(emptyList())
+        .mapNotNull { part ->
         when (part.type) {
             "text" -> MessagePart.Text(part.text.orEmpty())
             "image" -> MessagePart.Image(part.uri.orEmpty(), part.mimeType)
@@ -74,7 +77,9 @@ fun List<ToolCall>.toToolCallsJson(): String =
 
 fun toolCallsFromJson(value: String?): List<ToolCall> {
     if (value.isNullOrBlank()) return emptyList()
-    return mapperJson.decodeFromString<List<ToolCallJson>>(value).map { call ->
+    return runCatching { mapperJson.decodeFromString<List<ToolCallJson>>(value) }
+        .getOrDefault(emptyList())
+        .map { call ->
         ToolCall(
             id = ToolCallId(call.id),
             name = call.name,

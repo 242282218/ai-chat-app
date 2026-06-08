@@ -2,6 +2,7 @@ package com.aichat.workbench.data.mapper
 
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
+import com.aichat.workbench.data.local.entity.MemoryItemEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
 import com.aichat.workbench.data.local.entity.ModelRolePreferenceEntity
@@ -12,8 +13,12 @@ import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.ImageGenerationStatus
+import com.aichat.workbench.domain.model.MemoryItem
+import com.aichat.workbench.domain.model.MemoryItemId
+import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
+import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.model.ModelPreference
@@ -79,22 +84,47 @@ fun Message.toEntity(): MessageEntity =
     )
 
 fun MessageEntity.toDomain(): Message =
-    Message(
-        id = MessageId(id),
-        conversationId = ConversationId(conversationId),
-        role = MessageRole.valueOf(role),
+    normalizedLegacyInlineImages(
         content = content,
         contentParts = messagePartsFromJson(contentPartsJson),
-        providerId = providerId?.let(::ProviderId),
-        model = model,
-        status = MessageStatus.valueOf(status),
-        errorSummary = errorSummary,
+    ).let { normalized ->
+        Message(
+            id = MessageId(id),
+            conversationId = ConversationId(conversationId),
+            role = role.toMessageRole(),
+            content = normalized.content,
+            contentParts = normalized.contentParts,
+            providerId = providerId?.let(::ProviderId),
+            model = model,
+            status = status.toMessageStatus(),
+            errorSummary = errorSummary,
+            createdAt = Instant.ofEpochMilli(createdAt),
+            updatedAt = Instant.ofEpochMilli(updatedAt),
+            toolCallId = toolCallId?.let(::ToolCallId),
+            parentMessageId = parentMessageId?.let(::MessageId),
+            toolCalls = toolCallsFromJson(toolCallsJson),
+            toolResult = toolResult,
+        )
+    }
+
+fun MemoryItem.toEntity(): MemoryItemEntity =
+    MemoryItemEntity(
+        id = id.value,
+        kind = kind.name,
+        content = content,
+        sourceConversationId = sourceConversationId?.value,
+        createdAt = createdAt.toEpochMilli(),
+        updatedAt = updatedAt.toEpochMilli(),
+    )
+
+fun MemoryItemEntity.toDomain(): MemoryItem =
+    MemoryItem(
+        id = MemoryItemId(id),
+        kind = kind.toMemoryKind(),
+        content = content,
+        sourceConversationId = sourceConversationId?.let(::ConversationId),
         createdAt = Instant.ofEpochMilli(createdAt),
         updatedAt = Instant.ofEpochMilli(updatedAt),
-        toolCallId = toolCallId?.let(::ToolCallId),
-        parentMessageId = parentMessageId?.let(::MessageId),
-        toolCalls = toolCallsFromJson(toolCallsJson),
-        toolResult = toolResult,
     )
 
 fun PromptPreset.toEntity(): PromptPresetEntity =
@@ -214,3 +244,100 @@ fun ImageGenerationEntity.toDomain(): ImageGeneration =
         errorSummary = errorSummary,
         createdAt = Instant.ofEpochMilli(createdAt),
     )
+
+private fun String.toMessageRole(): MessageRole {
+    val normalized = trim()
+    return MessageRole.entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+        ?: when (normalized.lowercase()) {
+            "function" -> MessageRole.Tool
+            else -> MessageRole.User
+        }
+}
+
+private fun String.toMessageStatus(): MessageStatus {
+    val normalized = trim()
+    return MessageStatus.entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+        ?: when (normalized.lowercase()) {
+            "canceled" -> MessageStatus.Cancelled
+            else -> MessageStatus.Completed
+        }
+}
+
+private fun String.toMemoryKind(): MemoryKind =
+    MemoryKind.entries.firstOrNull { it.name.equals(trim(), ignoreCase = true) }
+        ?: MemoryKind.UserFact
+
+private fun normalizedLegacyInlineImages(
+    content: String,
+    contentParts: List<MessagePart>,
+): NormalizedLegacyMessageContent {
+    if (contentParts.any { it is MessagePart.Image } || !content.contains("![")) {
+        return NormalizedLegacyMessageContent(content = content, contentParts = contentParts)
+    }
+
+    val legacyImages = LEGACY_INLINE_IMAGE_MARKDOWN
+        .findAll(content)
+        .mapNotNull { match ->
+            val uri = match.groupValues[1].trim()
+            uri.takeIf { it.looksLikeLegacyInlineImageUri() }
+                ?.let { MessagePart.Image(uri = it, mimeType = it.inferLegacyInlineImageMimeType()) }
+        }
+        .toList()
+    if (legacyImages.isEmpty()) {
+        return NormalizedLegacyMessageContent(content = content, contentParts = contentParts)
+    }
+
+    val strippedContent = LEGACY_INLINE_IMAGE_MARKDOWN
+        .replace(content) { match ->
+            val uri = match.groupValues[1].trim()
+            if (uri.looksLikeLegacyInlineImageUri()) {
+                ""
+            } else {
+                match.value
+            }
+        }
+        .replace(LEGACY_INLINE_IMAGE_WHITESPACE, "\n\n")
+        .trim()
+
+    return NormalizedLegacyMessageContent(
+        content = strippedContent,
+        contentParts = contentParts + legacyImages,
+    )
+}
+
+private fun String.looksLikeLegacyInlineImageUri(): Boolean {
+    val normalized = trim()
+    val lowercase = normalized.lowercase()
+    return lowercase.startsWith("data:image") ||
+        lowercase.startsWith("file://") ||
+        lowercase.startsWith("http://") ||
+        lowercase.startsWith("https://") ||
+        normalized.startsWith("/") ||
+        WINDOWS_ABSOLUTE_PATH.matches(normalized)
+}
+
+private fun String.inferLegacyInlineImageMimeType(): String? {
+    val normalized = trim()
+    val lowercase = normalized.lowercase()
+    return when {
+        lowercase.startsWith("data:image/jpeg") -> "image/jpeg"
+        lowercase.startsWith("data:image/jpg") -> "image/jpeg"
+        lowercase.startsWith("data:image/webp") -> "image/webp"
+        lowercase.startsWith("data:image/gif") -> "image/gif"
+        lowercase.startsWith("data:image/") -> "image/png"
+        lowercase.endsWith(".jpg") || lowercase.endsWith(".jpeg") -> "image/jpeg"
+        lowercase.endsWith(".webp") -> "image/webp"
+        lowercase.endsWith(".gif") -> "image/gif"
+        lowercase.endsWith(".png") -> "image/png"
+        else -> null
+    }
+}
+
+private data class NormalizedLegacyMessageContent(
+    val content: String,
+    val contentParts: List<MessagePart>,
+)
+
+private val LEGACY_INLINE_IMAGE_MARKDOWN = Regex("""!\[[^\]]*]\(([^)\r\n]+)\)""")
+private val LEGACY_INLINE_IMAGE_WHITESPACE = Regex("""(\s*\n){3,}""")
+private val WINDOWS_ABSOLUTE_PATH = Regex("""^[A-Za-z]:[\\/].+""")

@@ -1,9 +1,9 @@
 package com.aichat.workbench.provider.image
 
 import com.aichat.workbench.provider.api.ProviderError
-import com.aichat.workbench.provider.api.ProviderErrorEnvelope
 import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
+import com.aichat.workbench.provider.api.parseOpenAiHttpError
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.api.readErrorBodySafely
 import java.io.ByteArrayOutputStream
@@ -14,7 +14,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -96,28 +95,12 @@ class OpenAiImageGenerationProvider(
 
     private fun Response<OpenAiImageResponse>.requireSuccessful() {
         if (isSuccessful) return
-        throw ProviderHttpException(parseHttpError(code(), errorBody().readErrorBodySafely()))
-    }
-
-    private fun parseHttpError(statusCode: Int, body: String): ProviderError {
-        val rawMessage = runCatching {
-            providerJson.decodeFromString<ProviderErrorEnvelope>(body).error?.message
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-        val message = rawMessage ?: "图片生成请求失败：HTTP $statusCode。"
-        // Classify error more precisely based on message content
-        val code = when {
-            statusCode == 401 -> "authentication_failed"
-            statusCode == 429 -> "rate_limited"
-            rawMessage?.contains("model", ignoreCase = true) == true -> "invalid_model"
-            rawMessage?.contains("quota", ignoreCase = true) == true -> "quota_exceeded"
-            statusCode in 500..599 -> "provider_unavailable"
-            else -> "provider_error"
-        }
-        return ProviderError(
-            code = code,
-            message = message,
-            statusCode = statusCode,
-            retryable = statusCode == 429 || statusCode in 500..599,
+        throw ProviderHttpException(
+            parseOpenAiHttpError(
+                statusCode = code(),
+                body = errorBody().readErrorBodySafely(),
+                fallbackMessage = "图片生成请求失败：HTTP ${code()}。",
+            ),
         )
     }
 

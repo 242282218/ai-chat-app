@@ -20,6 +20,8 @@ build/
 gateway/bin/
 gateway/coverage.out
 ci-results/
+参考项目/
+.claude/
 
 *.log
 

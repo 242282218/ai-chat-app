@@ -5,6 +5,8 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.domain.model.ToolOutput
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.agent.skill.InMemorySkillRegistry
+import com.aichat.workbench.agent.skill.SkillRegistry
 import com.aichat.workbench.tool.model.ToolDescriptor
 import com.aichat.workbench.tool.model.canonicalToolName
 import com.aichat.workbench.tool.search.LocalSearchClient
@@ -74,6 +76,7 @@ fun defaultLocalTools(
     fileReader: AuthorizedFileReader = UnsupportedAuthorizedFileReader(),
     providerRepository: ProviderConfigRepository? = null,
     providerConnectionRunner: ProviderConnectionTestRunner = UnsupportedProviderConnectionTestRunner(),
+    skillRegistry: SkillRegistry = InMemorySkillRegistry(emptyList()),
     searchConfigProvider: (suspend () -> SearchConfig)? = null,
     searchClient: LocalSearchClient? = null,
 ): List<LocalTool> =
@@ -92,6 +95,9 @@ fun defaultLocalTools(
         )
         add(
             FileReadTool(fileReader),
+        )
+        add(
+            LoadSkillTool(skillRegistry),
         )
         if (searchConfigProvider != null && searchClient != null) {
             add(

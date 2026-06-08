@@ -189,6 +189,7 @@ class AppBackupService(
 
     private suspend fun deleteAllRows() {
         deleteChatRows()
+        database.memoryDao().deleteAllMemories()
         database.promptPresetDao().deleteAllPromptPresets()
         database.modelPreferenceDao().deleteAllModelPreferences()
         database.modelRolePreferenceDao().deleteAllRolePreferences()
