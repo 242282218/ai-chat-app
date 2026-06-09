@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
@@ -30,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.ui.component.decodeInlineImageBitmap
@@ -98,6 +102,18 @@ internal fun InputBar(
                     placeholder = { Text(text = if (isEditing) "修改消息" else "输入消息") },
                     minLines = 1,
                     maxLines = 5,
+                    enabled = !isGenerating,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = if (input.contains('\n')) ImeAction.Default else ImeAction.Send,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (!isGenerating && canSubmitMessage(input, canSend, imageDrafts)) {
+                                onSend()
+                            }
+                        },
+                    ),
                 )
                 FilledIconButton(
                     onClick = if (isGenerating) onStop else onSend,
