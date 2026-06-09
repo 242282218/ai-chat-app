@@ -96,21 +96,10 @@ fun ImageGenerationScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(
-                            text = "图片创作",
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = imageTopBarSubtitle(state),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        text = "图片生成",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                 },
                 navigationIcon = {
                     if (showBackButton) {
