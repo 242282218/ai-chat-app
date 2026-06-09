@@ -11,13 +11,6 @@ class DraftStateTest {
         val handle = SavedStateHandle()
         val draft = DraftState(
             title = "Plan",
-            systemPrompt = "Be concise",
-            model = "gpt-4o",
-            temperature = "0.7",
-            topP = "0.9",
-            maxTokens = "512",
-            temporary = true,
-            sensitive = true,
             input = "Draft text",
             editingMessageId = MessageId("message-1"),
         )

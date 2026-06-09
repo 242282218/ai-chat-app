@@ -5,11 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.feature.chat.ChatViewModel
-import com.aichat.workbench.feature.home.HomeViewModel
+import com.aichat.workbench.feature.conversations.ConversationsViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
-import com.aichat.workbench.feature.settings.DataSettingsViewModel
-import com.aichat.workbench.feature.settings.SettingsHubViewModel
-import com.aichat.workbench.feature.tools.ToolsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -48,7 +45,7 @@ class AppModuleSmokeTest : KoinTest {
     @After
     fun tearDown() {
         runCatching {
-            GlobalContext.getOrNull()?.koin?.get<AiChatDatabase>()?.close()
+            GlobalContext.getOrNull()?.get<AiChatDatabase>()?.close()
         }
         runCatching { stopKoin() }
         context.deleteDatabase(DATABASE_NAME)
@@ -68,12 +65,9 @@ class AppModuleSmokeTest : KoinTest {
         }
 
         assertNotNull(get<AiChatDatabase>())
-        assertNotNull(get<HomeViewModel>())
+        assertNotNull(get<ConversationsViewModel>())
         assertNotNull(get<ChatViewModel>())
         assertNotNull(get<ImageGenerationViewModel>())
-        assertNotNull(get<ToolsViewModel>())
-        assertNotNull(get<SettingsHubViewModel>())
-        assertNotNull(get<DataSettingsViewModel>())
         dispatcher.scheduler.advanceUntilIdle()
     }
 

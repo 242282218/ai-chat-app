@@ -19,7 +19,6 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["conversation_id", "created_at"]),
         Index(value = ["status"]),
-        Index(value = ["tool_call_id"]),
     ],
 )
 data class MessageEntity(
@@ -41,12 +40,6 @@ data class MessageEntity(
     val createdAt: Long,
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long,
-    @ColumnInfo(name = "tool_call_id")
-    val toolCallId: String?,
     @ColumnInfo(name = "parent_message_id")
     val parentMessageId: String?,
-    @ColumnInfo(name = "tool_calls")
-    val toolCallsJson: String,
-    @ColumnInfo(name = "tool_result")
-    val toolResult: String?,
 )

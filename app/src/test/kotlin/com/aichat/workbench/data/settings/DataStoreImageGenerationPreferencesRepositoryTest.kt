@@ -40,31 +40,28 @@ class DataStoreImageGenerationPreferencesRepositoryTest {
     }
 
     @Test
-    fun savePreferencesTrimsValuesAndRemovesBlankValues() = runTest {
+    fun saveSelectedProviderTrimsValueAndRemovesBlankValue() = runTest {
         val repository = repository(fileName = "saved.preferences_pb", scope = backgroundScope)
 
-        repository.savePreferences(providerId = " provider-1 ", model = " image-model ")
+        repository.saveSelectedProvider(" provider-1 ")
 
         val saved = repository.observePreferences().first {
-            it.providerId == "provider-1" && it.model == "image-model"
+            it.providerId == "provider-1"
         }
         assertEquals("provider-1", saved.providerId)
-        assertEquals("image-model", saved.model)
 
-        repository.savePreferences(providerId = " ", model = null)
+        repository.saveSelectedProvider(" ")
 
         val cleared = repository.observePreferences().first {
-            it.providerId == null && it.model == null
+            it.providerId == null
         }
         assertEquals(null, cleared.providerId)
-        assertEquals(null, cleared.model)
     }
 
     @Test
     fun migratesLegacySharedPreferences() = runTest {
         legacyPreferences.edit()
             .putString("provider_id", "legacy-provider")
-            .putString("model", "legacy-image-model")
             .commit()
         val repository = repository(
             fileName = "migrated.preferences_pb",
@@ -73,11 +70,10 @@ class DataStoreImageGenerationPreferencesRepositoryTest {
         )
 
         val migrated = repository.observePreferences().first {
-            it.providerId == "legacy-provider" && it.model == "legacy-image-model"
+            it.providerId == "legacy-provider"
         }
 
         assertEquals("legacy-provider", migrated.providerId)
-        assertEquals("legacy-image-model", migrated.model)
     }
 
     private fun repository(

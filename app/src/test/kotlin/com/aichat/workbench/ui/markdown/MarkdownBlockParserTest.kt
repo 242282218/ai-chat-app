@@ -86,8 +86,8 @@ class MarkdownBlockParserTest {
             """
             > Keep answers traceable.
 
-            - web search
-            - code sandbox
+            - draft outline
+            - verify answer
 
             3. inspect
             4. verify
@@ -97,7 +97,7 @@ class MarkdownBlockParserTest {
         )
 
         assertEquals(MarkdownBlock.Quote("Keep answers traceable."), blocks[0])
-        assertEquals(MarkdownBlock.BulletList(listOf("web search", "code sandbox")), blocks[1])
+        assertEquals(MarkdownBlock.BulletList(listOf("draft outline", "verify answer")), blocks[1])
         assertEquals(MarkdownBlock.OrderedList(startNumber = 3, items = listOf("inspect", "verify")), blocks[2])
         assertEquals(MarkdownBlock.Divider, blocks[3])
     }

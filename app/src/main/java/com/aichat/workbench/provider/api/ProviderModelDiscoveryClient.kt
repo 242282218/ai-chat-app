@@ -139,11 +139,7 @@ class ProviderModelDiscoveryClient(
             }
         }
         apiKey?.takeIf { it.isNotBlank() }?.let { key ->
-            when (type) {
-                ProviderType.Gemini -> builder.header("x-goog-api-key", key)
-                ProviderType.Anthropic -> builder.header("x-api-key", key)
-                else -> builder.header("Authorization", "Bearer $key")
-            }
+            builder.header("Authorization", "Bearer $key")
         }
         return builder.build()
     }

@@ -6,55 +6,33 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.aichat.workbench.data.local.dao.ConversationDao
 import com.aichat.workbench.data.local.dao.ImageGenerationDao
-import com.aichat.workbench.data.local.dao.MemoryDao
-import com.aichat.workbench.data.local.dao.ModelPreferenceDao
 import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
-import com.aichat.workbench.data.local.dao.PromptPresetDao
 import com.aichat.workbench.data.local.dao.ProviderConfigDao
-import com.aichat.workbench.data.local.dao.ToolInvocationDao
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
-import com.aichat.workbench.data.local.entity.MemoryItemEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
-import com.aichat.workbench.data.local.entity.MessageFts
-import com.aichat.workbench.data.local.entity.ModelPreferenceEntity
 import com.aichat.workbench.data.local.entity.ModelRolePreferenceEntity
-import com.aichat.workbench.data.local.entity.PromptPresetEntity
 import com.aichat.workbench.data.local.entity.ProviderConfigEntity
-import com.aichat.workbench.data.local.entity.ToolInvocationEntity
 
 @Database(
     entities = [
         ConversationEntity::class,
         MessageEntity::class,
-        MessageFts::class,
         ProviderConfigEntity::class,
-        PromptPresetEntity::class,
-        ModelPreferenceEntity::class,
         ModelRolePreferenceEntity::class,
-        ToolInvocationEntity::class,
         ImageGenerationEntity::class,
-        MemoryItemEntity::class,
     ],
-    version = 11,
+    version = 18,
     exportSchema = true,
 )
 abstract class AiChatDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
-
-    abstract fun promptPresetDao(): PromptPresetDao
-
-    abstract fun modelPreferenceDao(): ModelPreferenceDao
 
     abstract fun modelRolePreferenceDao(): ModelRolePreferenceDao
 
     abstract fun providerConfigDao(): ProviderConfigDao
 
     abstract fun imageGenerationDao(): ImageGenerationDao
-
-    abstract fun toolInvocationDao(): ToolInvocationDao
-
-    abstract fun memoryDao(): MemoryDao
 
     companion object {
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -283,6 +261,461 @@ abstract class AiChatDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_memory_items_source_conversation_id ON memory_items(source_conversation_id)",
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_memory_items_updated_at ON memory_items(updated_at)")
+            }
+        }
+
+        val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_ai")
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_ad")
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_au")
+                db.execSQL("DROP TABLE IF EXISTS messages_fts")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS messages_new (
+                        id TEXT NOT NULL,
+                        conversation_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        content_parts_json TEXT NOT NULL,
+                        provider_id TEXT,
+                        model TEXT,
+                        status TEXT NOT NULL,
+                        error_summary TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        parent_message_id TEXT,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO messages_new (
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    )
+                    SELECT
+                        id,
+                        conversation_id,
+                        CASE
+                            WHEN lower(role) IN ('tool', 'function') THEN 'Assistant'
+                            ELSE role
+                        END,
+                        content,
+                        content_parts_json,
+                        provider_id,
+                        model,
+                        status,
+                        error_summary,
+                        created_at,
+                        updated_at,
+                        parent_message_id
+                    FROM messages
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE messages")
+                db.execSQL("ALTER TABLE messages_new RENAME TO messages")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_messages_conversation_id_created_at ON messages(conversation_id, created_at)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_status ON messages(status)")
+                db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING FTS4(content, content=`messages`)")
+                db.execSQL("INSERT INTO messages_fts(rowid, content) SELECT rowid, content FROM messages")
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+                        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, content)
+                        VALUES('delete', old.rowid, old.content);
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+                        INSERT INTO messages_fts(messages_fts, rowid, content)
+                        VALUES('delete', old.rowid, old.content);
+                        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM model_role_preferences WHERE role NOT IN ('Chat', 'Image')")
+                db.execSQL("DROP TABLE IF EXISTS prompt_presets")
+                db.execSQL("DROP TABLE IF EXISTS tool_invocations")
+                db.execSQL("DROP TABLE IF EXISTS memory_items")
+            }
+        }
+
+        val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE conversations_backup AS
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary, archived_at
+                    FROM conversations
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE messages_backup AS
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE image_generations_backup AS
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM messages")
+                db.execSQL("DELETE FROM image_generations")
+                db.execSQL("DROP TABLE conversations")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        default_provider_id TEXT,
+                        default_model TEXT,
+                        model_parameters_json TEXT NOT NULL,
+                        system_prompt TEXT,
+                        is_temporary INTEGER NOT NULL,
+                        archived_at INTEGER,
+                        PRIMARY KEY(id)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO conversations (
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary, archived_at
+                    )
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary, archived_at
+                    FROM conversations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_archived_at ON conversations(archived_at)")
+                db.execSQL(
+                    """
+                    INSERT INTO image_generations (
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    )
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO messages (
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    )
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages_backup
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_13_14: Migration = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE conversations_backup AS
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary
+                    FROM conversations
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE messages_backup AS
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE image_generations_backup AS
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM messages")
+                db.execSQL("DELETE FROM image_generations")
+                db.execSQL("DROP TABLE conversations")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        default_provider_id TEXT,
+                        default_model TEXT,
+                        model_parameters_json TEXT NOT NULL,
+                        system_prompt TEXT,
+                        is_temporary INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO conversations (
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary
+                    )
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt, is_temporary
+                    FROM conversations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
+                db.execSQL(
+                    """
+                    INSERT INTO image_generations (
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    )
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO messages (
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    )
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages_backup
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_14_15: Migration = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_ai")
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_ad")
+                db.execSQL("DROP TRIGGER IF EXISTS messages_fts_au")
+                db.execSQL("DROP TRIGGER IF EXISTS room_fts_content_sync_messages_fts_BEFORE_UPDATE")
+                db.execSQL("DROP TRIGGER IF EXISTS room_fts_content_sync_messages_fts_BEFORE_DELETE")
+                db.execSQL("DROP TRIGGER IF EXISTS room_fts_content_sync_messages_fts_AFTER_UPDATE")
+                db.execSQL("DROP TRIGGER IF EXISTS room_fts_content_sync_messages_fts_AFTER_INSERT")
+                db.execSQL("DROP TABLE IF EXISTS messages_fts")
+            }
+        }
+
+        val MIGRATION_15_16: Migration = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE conversations_backup AS
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt
+                    FROM conversations
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE messages_backup AS
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE image_generations_backup AS
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM messages")
+                db.execSQL("DELETE FROM image_generations")
+                db.execSQL("DROP TABLE conversations")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        default_provider_id TEXT,
+                        default_model TEXT,
+                        model_parameters_json TEXT NOT NULL,
+                        system_prompt TEXT,
+                        PRIMARY KEY(id)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO conversations (
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt
+                    )
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id, default_model,
+                        model_parameters_json, system_prompt
+                    FROM conversations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
+                db.execSQL(
+                    """
+                    INSERT INTO image_generations (
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    )
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO messages (
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    )
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages_backup
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS model_preferences")
+            }
+        }
+
+        val MIGRATION_17_18: Migration = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE conversations_backup AS
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id
+                    FROM conversations
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE messages_backup AS
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TEMP TABLE image_generations_backup AS
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations
+                    """.trimIndent(),
+                )
+                db.execSQL("DELETE FROM messages")
+                db.execSQL("DELETE FROM image_generations")
+                db.execSQL("DROP TABLE conversations")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        default_provider_id TEXT,
+                        PRIMARY KEY(id)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO conversations (
+                        id, title, created_at, updated_at, default_provider_id
+                    )
+                    SELECT
+                        id, title, created_at, updated_at, default_provider_id
+                    FROM conversations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
+                db.execSQL(
+                    """
+                    INSERT INTO image_generations (
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    )
+                    SELECT
+                        id, conversation_id, prompt, provider_id, model, size, quality, count,
+                        original_path, thumbnail_path, status, error_summary, created_at
+                    FROM image_generations_backup
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO messages (
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    )
+                    SELECT
+                        id, conversation_id, role, content, content_parts_json, provider_id, model,
+                        status, error_summary, created_at, updated_at, parent_message_id
+                    FROM messages_backup
+                    """.trimIndent(),
+                )
             }
         }
     }

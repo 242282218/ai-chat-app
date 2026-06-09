@@ -4,9 +4,6 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ModelCapability
 import com.aichat.workbench.domain.model.ModelCapabilitySource
 import com.aichat.workbench.domain.model.ModelConfig
-import com.aichat.workbench.domain.model.ModelParameters
-import com.aichat.workbench.domain.model.ToolCall
-import com.aichat.workbench.domain.model.ToolCallId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -15,26 +12,6 @@ private val mapperJson = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     encodeDefaults = true
-}
-
-fun ModelParameters.toJson(): String =
-    mapperJson.encodeToString(
-        ModelParametersJson(
-            temperature = temperature,
-            topP = topP,
-            maxTokens = maxTokens,
-        ),
-    )
-
-fun modelParametersFromJson(value: String): ModelParameters {
-    if (value.isBlank()) return ModelParameters()
-    val json = runCatching { mapperJson.decodeFromString<ModelParametersJson>(value) }
-        .getOrElse { return ModelParameters() }
-    return ModelParameters(
-        temperature = json.temperature,
-        topP = json.topP,
-        maxTokens = json.maxTokens,
-    )
 }
 
 fun List<MessagePart>.toJson(): String =
@@ -62,38 +39,6 @@ fun messagePartsFromJson(value: String): List<MessagePart> {
             else -> null
         }
     }
-}
-
-fun List<ToolCall>.toToolCallsJson(): String =
-    mapperJson.encodeToString(
-        map { call ->
-            ToolCallJson(
-                id = call.id.value,
-                name = call.name,
-                arguments = call.arguments,
-            )
-        },
-    )
-
-fun toolCallsFromJson(value: String?): List<ToolCall> {
-    if (value.isNullOrBlank()) return emptyList()
-    return runCatching { mapperJson.decodeFromString<List<ToolCallJson>>(value) }
-        .getOrDefault(emptyList())
-        .map { call ->
-        ToolCall(
-            id = ToolCallId(call.id),
-            name = call.name,
-            arguments = call.arguments,
-        )
-    }
-}
-
-fun List<String>.toJsonArrayString(): String =
-    mapperJson.encodeToString(this)
-
-fun stringListFromJson(value: String): List<String> {
-    if (value.isBlank()) return emptyList()
-    return mapperJson.decodeFromString(value)
 }
 
 fun Map<String, String>.toJsonObjectString(): String =
@@ -138,9 +83,6 @@ private fun ModelCapability.toJsonModel(): ModelCapabilityJson =
         text = text,
         vision = vision,
         imageGeneration = imageGeneration,
-        toolCalling = toolCalling,
-        structuredOutput = structuredOutput,
-        longContext = longContext,
         maxContextTokens = maxContextTokens,
         source = source,
     )
@@ -151,19 +93,9 @@ private fun ModelCapabilityJson.toDomain(): ModelCapability =
         text = text,
         vision = vision,
         imageGeneration = imageGeneration,
-        toolCalling = toolCalling,
-        structuredOutput = structuredOutput,
-        longContext = longContext,
         maxContextTokens = maxContextTokens,
         source = source,
     )
-
-@Serializable
-private data class ModelParametersJson(
-    val temperature: Double? = null,
-    val topP: Double? = null,
-    val maxTokens: Int? = null,
-)
 
 @Serializable
 private data class MessagePartJson(
@@ -171,13 +103,6 @@ private data class MessagePartJson(
     val text: String? = null,
     val uri: String? = null,
     val mimeType: String? = null,
-)
-
-@Serializable
-private data class ToolCallJson(
-    val id: String,
-    val name: String,
-    val arguments: String,
 )
 
 @Serializable
@@ -193,9 +118,6 @@ private data class ModelCapabilityJson(
     val text: Boolean,
     val vision: Boolean,
     val imageGeneration: Boolean,
-    val toolCalling: Boolean,
-    val structuredOutput: Boolean,
-    val longContext: Boolean,
     val maxContextTokens: Int? = null,
     val source: ModelCapabilitySource = ModelCapabilitySource.UserOverride,
 )

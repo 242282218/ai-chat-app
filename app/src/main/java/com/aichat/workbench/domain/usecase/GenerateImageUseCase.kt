@@ -33,8 +33,8 @@ class GenerateImageUseCase(
     private val clock: Clock,
 ) {
     suspend operator fun invoke(request: GenerateImageRequest): List<ImageGeneration> {
-        require(request.prompt.isNotBlank()) { "图片 Prompt 不能为空。" }
-        require(request.model.isNotBlank()) { "图片 Model 不能为空。" }
+        require(request.prompt.isNotBlank()) { "图片提示词不能为空。" }
+        require(request.model.isNotBlank()) { "图片模型不能为空。" }
         require(request.count in 1..4) { "图片数量必须在 1 到 4 之间。" }
 
         val pending = request.pendingGeneration()
@@ -61,7 +61,7 @@ class GenerateImageUseCase(
             repository.saveImageGeneration(
                 pending.copy(
                     status = ImageGenerationStatus.Cancelled,
-                    errorSummary = "已停止，Prompt 和参数已保留。",
+                    errorSummary = "已停止，提示词和参数已保留。",
                 ),
             )
             throw error

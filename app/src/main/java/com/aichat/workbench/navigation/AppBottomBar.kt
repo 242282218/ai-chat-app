@@ -12,8 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.aichat.workbench.ui.theme.Accent
-import com.aichat.workbench.ui.theme.TextSecondary
 
 @Composable
 fun AppBottomBar(
@@ -27,7 +25,11 @@ fun AppBottomBar(
         bottomTabItems.forEach { tab ->
             val selected = currentRoute == tab.destination.route
             val tint by animateColorAsState(
-                targetValue = if (selected) Accent else TextSecondary,
+                targetValue = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 label = "tab_tint",
             )
             NavigationBarItem(
@@ -36,7 +38,7 @@ fun AppBottomBar(
                 icon = { Icon(tab.icon, contentDescription = tab.label, tint = tint) },
                 label = { Text(tab.label, color = tint) },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                 ),
             )
         }

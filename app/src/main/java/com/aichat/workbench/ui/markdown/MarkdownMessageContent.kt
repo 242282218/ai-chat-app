@@ -1,6 +1,5 @@
 package com.aichat.workbench.ui.markdown
 
-import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,8 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Difference
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +34,6 @@ import com.aichat.workbench.ui.component.WorkbenchIconButton
 fun MarkdownMessageContent(
     text: String,
     modifier: Modifier = Modifier,
-    onGenerateDiff: ((CodeArtifact) -> Unit)? = null,
     parser: MarkdownBlockParser = DefaultMarkdownBlockParser.instance,
 ) {
     val blocks = remember(text, parser) { parser.parse(text) }
@@ -47,10 +42,7 @@ fun MarkdownMessageContent(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         blocks.forEach { block ->
-            MarkdownBlockContent(
-                block = block,
-                onGenerateDiff = onGenerateDiff,
-            )
+            MarkdownBlockContent(block = block)
         }
     }
 }
@@ -58,12 +50,11 @@ fun MarkdownMessageContent(
 @Composable
 private fun MarkdownBlockContent(
     block: MarkdownBlock,
-    onGenerateDiff: ((CodeArtifact) -> Unit)?,
 ) {
     when (block) {
         is MarkdownBlock.Paragraph -> ParagraphText(block.text)
         is MarkdownBlock.Heading -> HeadingText(block)
-        is MarkdownBlock.CodeBlock -> CodeBlockContent(block, onGenerateDiff)
+        is MarkdownBlock.CodeBlock -> CodeBlockContent(block)
         is MarkdownBlock.LatexBlock -> LatexBlockContent(block)
         is MarkdownBlock.Quote -> QuoteContent(block)
         is MarkdownBlock.BulletList -> BulletListContent(block)
@@ -163,10 +154,7 @@ private fun OrderedListContent(block: MarkdownBlock.OrderedList) {
 }
 
 @Composable
-private fun CodeBlockContent(
-    block: MarkdownBlock.CodeBlock,
-    onGenerateDiff: ((CodeArtifact) -> Unit)?,
-) {
+private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
     val title = when {
         block.mermaid -> "Mermaid"
         block.language != null -> block.language
@@ -180,19 +168,9 @@ private fun CodeBlockContent(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            CodeArtifactHeader(
+            CopyHeader(
                 label = title,
                 value = block.content,
-                onGenerateDiff = onGenerateDiff?.let {
-                    {
-                        it(
-                            CodeArtifact(
-                                language = block.language,
-                                content = block.content,
-                            ),
-                        )
-                    }
-                },
             )
             SelectionContainer {
                 Text(
@@ -298,48 +276,6 @@ private fun CopyHeader(label: String, value: String) {
     }
 }
 
-@Composable
-@Suppress("DEPRECATION")
-private fun CodeArtifactHeader(
-    label: String,
-    value: String,
-    onGenerateDiff: (() -> Unit)?,
-) {
-    @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        WorkbenchIconButton(
-            icon = Icons.Filled.ContentCopy,
-            label = copyContentDescription(label),
-            onClick = { clipboardManager.setText(AnnotatedString(value)) },
-        )
-        WorkbenchIconButton(
-            icon = Icons.Filled.Share,
-            label = shareContentDescription(label),
-            onClick = { context.shareCodeArtifact(label, value) },
-        )
-        WorkbenchIconButton(
-            icon = Icons.Filled.Difference,
-            label = "生成 Diff",
-            onClick = { onGenerateDiff?.invoke() },
-            enabled = onGenerateDiff != null,
-        )
-    }
-}
-
 private fun copyContentDescription(label: String): String =
     when (label.lowercase()) {
         "code",
@@ -348,25 +284,3 @@ private fun copyContentDescription(label: String): String =
         "mermaid" -> "复制 Mermaid 源码"
         else -> "复制 $label 代码"
     }
-
-private fun shareContentDescription(label: String): String =
-    when (label.lowercase()) {
-        "code",
-        "代码" -> "分享代码"
-        "latex" -> "分享 LaTeX"
-        "mermaid" -> "分享 Mermaid 源码"
-        else -> "分享 $label 代码"
-    }
-
-private fun android.content.Context.shareCodeArtifact(label: String, value: String) {
-    val intent = Intent(Intent.ACTION_SEND)
-        .setType("text/plain")
-        .putExtra(Intent.EXTRA_SUBJECT, label)
-        .putExtra(Intent.EXTRA_TEXT, value)
-    startActivity(Intent.createChooser(intent, "分享代码"))
-}
-
-data class CodeArtifact(
-    val language: String?,
-    val content: String,
-)

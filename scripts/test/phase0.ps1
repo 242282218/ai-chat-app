@@ -1,13 +1,5 @@
 $ErrorActionPreference = "Stop"
 
-Write-Host "Running gateway tests..."
-Push-Location "$PSScriptRoot\..\..\gateway"
-try {
-    go test ./...
-} finally {
-    Pop-Location
-}
-
 Write-Host "Checking Android toolchain..."
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     throw "java is not on PATH. Install JDK 17+ before running Android Gradle tasks."

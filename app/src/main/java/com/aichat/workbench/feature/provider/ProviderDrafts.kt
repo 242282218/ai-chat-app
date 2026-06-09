@@ -99,10 +99,7 @@ internal fun ProviderType.providerCapabilityTags(): List<ProviderCapabilityTag> 
     return listOfNotNull(
         ProviderCapabilityTag("文本", StatusTone.Success).takeIf { capabilities.text },
         ProviderCapabilityTag("视觉", StatusTone.Accent).takeIf { capabilities.vision },
-        ProviderCapabilityTag("工具", StatusTone.Accent).takeIf { capabilities.toolCalling },
         ProviderCapabilityTag("图片", StatusTone.Accent).takeIf { capabilities.imageGeneration },
-        ProviderCapabilityTag("结构化", StatusTone.Neutral).takeIf { capabilities.structuredOutput },
-        ProviderCapabilityTag("长上下文", StatusTone.Neutral).takeIf { capabilities.longContext },
     )
 }
 

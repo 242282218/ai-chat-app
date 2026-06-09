@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Chat
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,9 +35,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aichat.workbench.domain.model.ConversationId
-import com.aichat.workbench.feature.home.HomeViewModel
-import com.aichat.workbench.ui.theme.Neutral300
-import com.aichat.workbench.ui.theme.TextSecondary
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +42,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ConversationsScreen(
     onConversationClick: (ConversationId) -> Unit,
     onNewChat: (String) -> Unit,
-    viewModel: HomeViewModel = koinViewModel(),
+    viewModel: ConversationsViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
@@ -56,15 +53,15 @@ fun ConversationsScreen(
                 title = {
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
-                            text = "Codex 工作台",
+                            text = "AI 聊天",
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "对话、工具、图片和本地任务入口",
+                            text = "本地保存对话，支持图片输入",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -86,7 +83,12 @@ fun ConversationsScreen(
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
-                placeholder = { Text("发消息开始对话...", color = TextSecondary) },
+                placeholder = {
+                    Text(
+                        text = "发消息开始对话...",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -100,12 +102,12 @@ fun ConversationsScreen(
                                 draft = ""
                             },
                         ) {
-                            Icon(Icons.Outlined.Send, contentDescription = "发送")
+                            Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "发送")
                         }
                     }
                 },
             )
-            HorizontalDivider(color = Neutral300, thickness = 0.5.dp)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
             if (state.recentConversations.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -115,7 +117,7 @@ fun ConversationsScreen(
                 ) {
                     Text(
                         text = "暂无对话",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -131,9 +133,9 @@ fun ConversationsScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Icon(
-                                Icons.Outlined.Chat,
+                                Icons.AutoMirrored.Outlined.Chat,
                                 contentDescription = null,
-                                tint = TextSecondary,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp),
                             )
                             Text(
@@ -146,7 +148,7 @@ fun ConversationsScreen(
                         }
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 48.dp),
-                            color = Neutral300,
+                            color = MaterialTheme.colorScheme.outlineVariant,
                             thickness = 0.5.dp,
                         )
                     }

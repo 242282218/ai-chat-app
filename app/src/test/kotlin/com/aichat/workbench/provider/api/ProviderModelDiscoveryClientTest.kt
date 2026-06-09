@@ -85,15 +85,13 @@ class ProviderModelDiscoveryClientTest {
         val imageModel = result.models.single { it.id == "gpt-image-1" }
         assertEquals(false, chatModel.capability?.imageGeneration)
         assertEquals(true, chatModel.capability?.text)
-        assertEquals(true, chatModel.capability?.toolCalling)
         assertEquals(true, imageModel.capability?.imageGeneration)
         assertEquals(false, imageModel.capability?.text)
-        assertEquals(false, imageModel.capability?.toolCalling)
         assertEquals(ModelCapabilitySource.ProviderDiscovery, chatModel.capability?.source)
     }
 
     @Test
-    fun discover_marksCodeAndLongContextHintsForCapabilityLabels() = runTest {
+    fun discover_keepsCodeAndLongContextHintsAsChatModels() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
@@ -105,12 +103,11 @@ class ProviderModelDiscoveryClientTest {
 
         assertTrue(result.ok)
         val codeModel = result.models.single { it.id == "qwen2.5-coder-32b" }
-        val longContextModel = result.models.single { it.id == "gpt-4.1-128k" }
+        val contextNamedModel = result.models.single { it.id == "gpt-4.1-128k" }
         assertEquals(true, codeModel.capability?.text)
-        assertEquals(true, codeModel.capability?.structuredOutput)
         assertEquals(false, codeModel.capability?.imageGeneration)
-        assertEquals(true, longContextModel.capability?.longContext)
-        assertEquals(false, longContextModel.capability?.imageGeneration)
+        assertEquals(true, contextNamedModel.capability?.text)
+        assertEquals(false, contextNamedModel.capability?.imageGeneration)
     }
 
     private fun provider(

@@ -11,14 +11,10 @@ import com.aichat.workbench.provider.api.ResponsesOutputItem
 import com.aichat.workbench.provider.api.ResponsesRequest
 import com.aichat.workbench.provider.api.ResponsesResponse
 import com.aichat.workbench.provider.api.ResponsesSseEvent
-import com.aichat.workbench.provider.api.ResponsesTool
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.api.toProviderError
-import com.aichat.workbench.tool.model.ToolDescriptor
-import com.aichat.workbench.tool.model.ToolSource
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.JsonElement
 import okhttp3.Request
 
 internal object OpenAiResponsesProtocol {
@@ -35,7 +31,6 @@ internal object OpenAiResponsesProtocol {
             temperature = request.parameters.temperature,
             topP = request.parameters.topP,
             maxOutputTokens = request.parameters.maxTokens,
-            tools = request.tools.toResponsesTools(),
         )
 
         return request.openAiPostJson("responses", providerJson.encodeToString(body), stream)
@@ -76,29 +71,7 @@ private fun MessageRole.toProviderRole(): String =
         MessageRole.System -> "system"
         MessageRole.User -> "user"
         MessageRole.Assistant -> "assistant"
-        MessageRole.Tool -> "tool"
     }
-
-private fun List<ToolDescriptor>.toResponsesTools(): List<ResponsesTool>? =
-    mapNotNull { tool ->
-        if (tool.source == ToolSource.Official) {
-            when (tool.name) {
-                "web_search" -> ResponsesTool(type = "web_search_preview")
-                else -> null
-            }
-        } else {
-            ResponsesTool(
-                type = "function",
-                name = tool.name,
-                description = tool.description,
-                parameters = tool.inputSchemaJson.toJsonElementOrNull(),
-                strict = false,
-            )
-        }
-    }.takeIf { it.isNotEmpty() }
-
-private fun String.toJsonElementOrNull(): JsonElement? =
-    runCatching { providerJson.parseToJsonElement(this) }.getOrNull()
 
 private fun ResponsesOutputItem.toTextParts(): List<String> =
     when (type) {

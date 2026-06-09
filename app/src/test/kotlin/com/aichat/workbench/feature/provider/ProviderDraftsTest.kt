@@ -114,11 +114,11 @@ class ProviderDraftsTest {
     @Test
     fun exposesProviderCapabilityTags() {
         assertEquals(
-            listOf("文本", "视觉", "工具", "图片", "结构化", "长上下文"),
+            listOf("文本", "视觉", "图片"),
             ProviderType.NewApi.providerCapabilityTags().map { it.label },
         )
         assertEquals(
-            listOf("文本", "视觉", "长上下文"),
+            listOf("文本", "视觉"),
             ProviderType.Ollama.providerCapabilityTags().map { it.label },
         )
     }
@@ -245,8 +245,8 @@ class ProviderDraftsTest {
     @Test
     fun summarizesUnsupportedStoredProviderAsUnavailable() {
         assertEquals(
-            "暂不可用 · Anthropic · claude-test · 未同步模型 · 缺少密钥",
-            provider(type = ProviderType.Anthropic, model = "claude-test").connectionSummary(),
+            "暂不可用 · legacy_vendor · legacy-model · 未同步模型 · 缺少密钥",
+            provider(type = ProviderType("legacy_vendor"), model = "legacy-model").connectionSummary(),
         )
     }
 
@@ -259,8 +259,8 @@ class ProviderDraftsTest {
                 apiKeyRef = "key-1",
             ),
             provider(
-                type = ProviderType.Anthropic,
-                name = "Anthropic",
+                type = ProviderType("legacy_vendor"),
+                name = "Legacy Vendor",
                 headers = mapOf("X-Trace" to "enabled"),
             ),
             provider(
@@ -360,29 +360,26 @@ class ProviderDraftsTest {
     }
 
     @Test
-    fun addsManualToolModelWithToolCallingCapability() {
+    fun availableChatModelsExcludesImageOnlyModels() {
         val models = listOf(
+            model("gpt-image-2", text = false, imageGeneration = true),
             model("gpt-5.4", text = true, imageGeneration = false),
-        ).withManualToolModel("tool-router")
+            ModelConfig("dall-e-3", "DALL-E 3", capability = null),
+            ModelConfig("custom-chat", "Custom Chat", capability = null),
+        )
 
-        val toolModel = models.first { it.id == "tool-router" }
-        assertTrue(toolModel.capability?.text == true)
-        assertTrue(toolModel.capability?.toolCalling == true)
-        assertTrue(toolModel.capability?.structuredOutput == true)
-        assertFalse(toolModel.capability?.imageGeneration == true)
+        assertEquals(listOf("gpt-5.4", "custom-chat"), models.availableChatModels().map { it.id })
     }
 
     @Test
-    fun manualCodeModelOverridesDiscoveredImageCapabilityForSameModel() {
+    fun preferredDiscoveredChatModelSkipsImageOnlyModels() {
         val models = listOf(
-            model("code-helper", text = false, imageGeneration = true),
-        ).withManualCodeModel("code-helper")
+            model("gpt-image-2", text = false, imageGeneration = true),
+            model("gpt-5.4", text = true, imageGeneration = false),
+        )
 
-        val codeModel = models.single()
-        assertTrue(codeModel.capability?.text == true)
-        assertFalse(codeModel.capability?.toolCalling == true)
-        assertTrue(codeModel.capability?.structuredOutput == true)
-        assertFalse(codeModel.capability?.imageGeneration == true)
+        assertEquals("gpt-5.4", models.preferredDiscoveredChatModel())
+        assertEquals("", listOf(model("gpt-image-2", text = false, imageGeneration = true)).preferredDiscoveredChatModel())
     }
 
     private fun provider(
@@ -419,9 +416,6 @@ class ProviderDraftsTest {
                 text = text,
                 vision = text,
                 imageGeneration = imageGeneration,
-                toolCalling = text,
-                structuredOutput = text,
-                longContext = text,
                 maxContextTokens = null,
             ),
         )

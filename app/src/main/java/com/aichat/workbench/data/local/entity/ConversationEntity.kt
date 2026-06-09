@@ -9,7 +9,6 @@ import androidx.room.PrimaryKey
     tableName = "conversations",
     indices = [
         Index(value = ["updated_at"]),
-        Index(value = ["archived_at"]),
     ],
 )
 data class ConversationEntity(
@@ -22,16 +21,4 @@ data class ConversationEntity(
     val updatedAt: Long,
     @ColumnInfo(name = "default_provider_id")
     val defaultProviderId: String?,
-    @ColumnInfo(name = "default_model")
-    val defaultModel: String?,
-    @ColumnInfo(name = "model_parameters_json")
-    val modelParametersJson: String,
-    @ColumnInfo(name = "system_prompt")
-    val systemPrompt: String?,
-    @ColumnInfo(name = "is_temporary")
-    val isTemporary: Boolean,
-    @ColumnInfo(name = "is_sensitive")
-    val isSensitive: Boolean,
-    @ColumnInfo(name = "archived_at")
-    val archivedAt: Long?,
 )

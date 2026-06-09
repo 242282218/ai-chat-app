@@ -5,7 +5,6 @@ on:
     paths:
       - "app/**"
       - "baselineprofile/**"
-      - "contracts/gateway/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
@@ -18,7 +17,6 @@ on:
     paths:
       - "app/**"
       - "baselineprofile/**"
-      - "contracts/gateway/**"
       - "gradle/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"

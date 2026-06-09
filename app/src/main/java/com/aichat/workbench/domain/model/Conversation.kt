@@ -8,16 +8,4 @@ data class Conversation(
     val createdAt: Instant,
     val updatedAt: Instant,
     val defaultProviderId: ProviderId?,
-    val defaultModel: String?,
-    val modelParameters: ModelParameters,
-    val systemPrompt: String?,
-    val isTemporary: Boolean,
-    val isSensitive: Boolean,
-    val archivedAt: Instant?,
-)
-
-data class ModelParameters(
-    val temperature: Double? = null,
-    val topP: Double? = null,
-    val maxTokens: Int? = null,
 )

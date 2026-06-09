@@ -77,8 +77,7 @@ class ProviderRegistryTest {
         assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.NewApi))
         assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Sub2Api))
         assertTrue(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Custom))
-        assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Anthropic))
-        assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType.Gemini))
+        assertFalse(ProviderRegistry.isSupportedBuiltInChatProvider(ProviderType("legacy_vendor")))
     }
 
     @Test

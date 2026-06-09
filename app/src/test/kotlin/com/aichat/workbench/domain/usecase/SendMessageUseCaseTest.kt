@@ -205,7 +205,6 @@ class SendMessageUseCaseTest {
             errorSummary = null,
             createdAt = clock.instant(),
             updatedAt = clock.instant(),
-            toolCallId = null,
             parentMessageId = null,
         )
 
@@ -252,15 +251,13 @@ private class ThrowingChatProvider(
 private class CountingConversationRepository : ConversationRepository {
     val savedMessages = mutableListOf<Message>()
 
-    override fun observeConversations(includeArchived: Boolean): Flow<List<Conversation>> = flowOf(emptyList())
+    override fun observeConversations(): Flow<List<Conversation>> = flowOf(emptyList())
 
     override suspend fun getConversation(id: ConversationId): Conversation? = null
 
     override suspend fun saveConversation(conversation: Conversation) = Unit
 
     override suspend fun renameConversation(id: ConversationId, title: String) = Unit
-
-    override suspend fun archiveConversation(id: ConversationId) = Unit
 
     override suspend fun deleteConversation(id: ConversationId) = Unit
 

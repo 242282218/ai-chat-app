@@ -6,10 +6,8 @@ import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
-import com.aichat.workbench.provider.compatible.ChatToolCallAccumulator
 import com.aichat.workbench.provider.compatible.OpenAiChatCompletionsProtocol
 import com.aichat.workbench.provider.http.parseSse
-import com.aichat.workbench.tool.model.ToolSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -23,7 +21,7 @@ open class OpenAiChatProvider(
     private val useResponsesApi: Boolean = true,
 ) : ChatProvider {
     override suspend fun complete(request: ChatProviderRequest): ProviderTextResponse {
-        if (!useResponsesApi || request.hasImageInput() || request.hasLocalFunctionTools()) {
+        if (!useResponsesApi || request.hasImageInput()) {
             return executeChatCompletion(request, stream = false)
         }
         val response = execute(OpenAiResponsesProtocol.buildRequest(request, stream = false))
@@ -38,7 +36,7 @@ open class OpenAiChatProvider(
 
     override fun stream(request: ChatProviderRequest): Flow<ProviderStreamEvent> =
         flow {
-            if (!useResponsesApi || request.hasImageInput() || request.hasLocalFunctionTools()) {
+            if (!useResponsesApi || request.hasImageInput()) {
                 emitChatCompletionStream(request)
                 return@flow
             }
@@ -79,10 +77,9 @@ open class OpenAiChatProvider(
         val response = execute(OpenAiChatCompletionsProtocol.buildRequest(request, stream = true))
         response.use {
             it.requireSuccessfulProviderResponse()
-            val toolCalls = ChatToolCallAccumulator()
             var terminalEventReceived = false
             for (event in parseSse(it.requireBody().byteStream())) {
-                for (mapped in OpenAiChatCompletionsProtocol.mapSse(event.data, toolCalls)) {
+                for (mapped in OpenAiChatCompletionsProtocol.mapSse(event.data)) {
                     terminalEventReceived = terminalEventReceived || mapped.isTerminal()
                     emit(mapped)
                 }
@@ -95,9 +92,6 @@ open class OpenAiChatProvider(
 
     private fun ChatProviderRequest.hasImageInput(): Boolean =
         messages.any { message -> message.contentParts.any { it is MessagePart.Image } }
-
-    private fun ChatProviderRequest.hasLocalFunctionTools(): Boolean =
-        tools.any { it.source != ToolSource.Official }
 
     private fun execute(request: Request): Response =
         client.newCall(request).execute()

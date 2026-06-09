@@ -23,8 +23,8 @@ class ChatLazyItemKeysTest {
     fun chatLazyItemKey_preservesPreviewPrefixForDiagnostics() {
         val seed = "https://example.com/repeated-result"
 
-        val key = chatLazyItemKey(prefix = "search-citation", seed = seed, index = 3)
+        val key = chatLazyItemKey(prefix = "message-image", seed = seed, index = 3)
 
-        assertEquals("search-citation-${seed.take(32)}-3", key)
+        assertEquals("message-image-${seed.take(32)}-3", key)
     }
 }

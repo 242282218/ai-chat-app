@@ -172,11 +172,11 @@ class ProviderConnectionTesterTest {
     fun test_returnsUnsupportedWhenProviderHasNoChatImplementation() = runTest {
         val tester = ProviderConnectionTester(providerRegistry = registeredRegistry())
 
-        val result = tester.test(provider(type = ProviderType.Anthropic), "test-key")
+        val result = tester.test(provider(type = ProviderType("legacy_vendor")), "test-key")
 
         assertFalse(result.ok)
         assertEquals(null, result.statusCode)
-        assertEquals("当前 Provider 暂未接入聊天发送：Anthropic。", result.message)
+        assertEquals("当前 Provider 暂未接入聊天发送：legacy_vendor。", result.message)
         assertEquals(0, server.requestCount)
     }
 

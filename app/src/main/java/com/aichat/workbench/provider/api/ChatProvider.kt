@@ -4,9 +4,6 @@ import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ModelParameters
 import com.aichat.workbench.domain.model.ProviderConfig
-import com.aichat.workbench.domain.model.ToolCall
-import com.aichat.workbench.domain.model.ToolCallId
-import com.aichat.workbench.tool.model.ToolDescriptor
 import kotlinx.coroutines.flow.Flow
 
 interface ChatProvider {
@@ -22,23 +19,13 @@ data class ChatProviderRequest(
     val systemPrompt: String?,
     val messages: List<ProviderChatMessage>,
     val parameters: ModelParameters = ModelParameters(),
-    val tools: List<ToolDescriptor> = emptyList(),
-    val toolChoice: ToolChoice = ToolChoice.Auto,
 )
 
 data class ProviderChatMessage(
     val role: MessageRole,
     val content: String,
     val contentParts: List<MessagePart> = if (content.isBlank()) emptyList() else listOf(MessagePart.Text(content)),
-    val toolCalls: List<ToolCall> = emptyList(),
-    val toolCallId: ToolCallId? = null,
 )
-
-sealed interface ToolChoice {
-    data object Auto : ToolChoice
-    data object None : ToolChoice
-    data class Named(val name: String) : ToolChoice
-}
 
 data class ProviderTextResponse(
     val content: String,
@@ -48,8 +35,6 @@ sealed interface ProviderStreamEvent {
     data class TextDelta(val text: String) : ProviderStreamEvent
 
     data class ImageDelta(val image: MessagePart.Image) : ProviderStreamEvent
-
-    data class ToolCallDelta(val toolCall: ToolCall) : ProviderStreamEvent
 
     data object Completed : ProviderStreamEvent
 

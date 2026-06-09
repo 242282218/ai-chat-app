@@ -76,7 +76,6 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.commonmark)
     implementation(libs.commonmark.ext.gfm.tables)
-    implementation(libs.javascriptengine)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
     implementation(libs.kotlinx.coroutines.android)
@@ -90,8 +89,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.kotlinx.serialization)
 
     baselineProfile(project(":baselineprofile"))
 

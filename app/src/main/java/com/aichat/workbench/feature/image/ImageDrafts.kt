@@ -103,14 +103,13 @@ internal fun ImageGenerationUiState.imageModelTone(): StatusTone =
 
 internal fun ImageGeneration.toChatReferenceDraft(): String =
     if (originalPath.isNullOrBlank()) {
-        val toolInput = toImageGenerationToolInputJson()
+        val requestJson = toImageGenerationRequestJson()
         """
-            请分析这次图片生成记录，并准备一个可重新发起的 image_generation 工具调用。
+            请分析这次图片生成记录，并准备一个可重新发起的图片生成请求。
             不要假设图片已生成；先说明失败原因、可调整参数和是否需要切换 Provider 或模型。
-            如果需要重试，请优先复用下面的工具参数，并在必要时先修改 Provider、模型、数量、尺寸或质量。
+            如果需要重试，请优先复用下面的请求参数，并在必要时先修改 Provider、模型、数量、尺寸或质量。
 
-            工具：image_generation
-            参数：$toolInput
+            请求参数：$requestJson
 
             Provider：${providerId?.value.orEmpty().ifBlank { "未记录" }}
             图片提示词：${prompt.trim()}
@@ -134,7 +133,7 @@ internal fun ImageGeneration.toChatReferenceDraft(): String =
         """.trimIndent()
     }
 
-private fun ImageGeneration.toImageGenerationToolInputJson(): String =
+private fun ImageGeneration.toImageGenerationRequestJson(): String =
     buildString {
         append("""{"prompt":${prompt.trim().jsonStringLiteral()}""")
         model?.trim()?.takeIf(String::isNotBlank)?.let { append(""","model":${it.jsonStringLiteral()}""") }

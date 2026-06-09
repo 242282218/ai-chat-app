@@ -52,7 +52,6 @@ class DataStoreImageGenerationPreferencesRepository internal constructor(
             .map { values ->
                 ImageGenerationPreferences(
                     providerId = values[ProviderIdKey]?.takeIf { it.isNotBlank() },
-                    model = values[ModelKey]?.takeIf { it.isNotBlank() },
                 )
             }
             .stateIn(
@@ -64,10 +63,9 @@ class DataStoreImageGenerationPreferencesRepository internal constructor(
     override fun observePreferences(): StateFlow<ImageGenerationPreferences> =
         preferences
 
-    override suspend fun savePreferences(providerId: String?, model: String?) {
+    override suspend fun saveSelectedProvider(providerId: String?) {
         dataStore.edit { values ->
             values.putOrRemove(ProviderIdKey, providerId)
-            values.putOrRemove(ModelKey, model)
         }
     }
 
@@ -86,4 +84,3 @@ class DataStoreImageGenerationPreferencesRepository internal constructor(
 
 private const val IMAGE_GENERATION_PREFERENCES_NAME = "image_generation_preferences"
 private val ProviderIdKey = stringPreferencesKey("provider_id")
-private val ModelKey = stringPreferencesKey("model")

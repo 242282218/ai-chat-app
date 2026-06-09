@@ -1,49 +1,28 @@
 package com.aichat.workbench.app
 
 import androidx.room.Room
-import com.aichat.workbench.agent.skill.AndroidAssetSkillRegistry
-import com.aichat.workbench.agent.skill.SkillRegistry
-import com.aichat.workbench.data.backup.AppBackupService
-import com.aichat.workbench.data.backup.BackupService
 import com.aichat.workbench.data.crypto.AndroidSecretStore
 import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.image.AndroidImageStorage
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.data.repository.RoomConversationRepository
 import com.aichat.workbench.data.repository.RoomImageGenerationRepository
-import com.aichat.workbench.data.repository.RoomMemoryRepository
 import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
-import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
-import com.aichat.workbench.data.repository.RoomToolInvocationRepository
 import com.aichat.workbench.data.settings.DataStoreImageGenerationPreferencesRepository
-import com.aichat.workbench.data.settings.DataStoreThemeSettingsRepository
-import com.aichat.workbench.data.settings.GatewaySettingsRepository
-import com.aichat.workbench.data.settings.SearchSettingsRepository
-import com.aichat.workbench.data.settings.ToolSettingsRepository
-import com.aichat.workbench.data.settings.toSearchConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
-import com.aichat.workbench.domain.repository.MemoryRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
-import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
-import com.aichat.workbench.domain.repository.ThemeSettingsRepository
-import com.aichat.workbench.domain.repository.ToolInvocationRepository
-import com.aichat.workbench.domain.tool.ToolExecutionService
-import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
-import com.aichat.workbench.feature.home.HomeViewModel
+import com.aichat.workbench.feature.conversations.ConversationsViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
-import com.aichat.workbench.feature.settings.DataSettingsViewModel
-import com.aichat.workbench.feature.settings.SettingsHubViewModel
-import com.aichat.workbench.feature.tools.ToolsViewModel
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ProviderConnectionTester
@@ -54,18 +33,6 @@ import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.OpenAiImageGenerationProvider
 import com.aichat.workbench.provider.http.WorkbenchHttpClients
 import com.aichat.workbench.provider.openai.OpenAiChatProvider
-import com.aichat.workbench.tool.gateway.GatewayClient
-import com.aichat.workbench.tool.local.AndroidAuthorizedFileReader
-import com.aichat.workbench.tool.local.AndroidJavaScriptRunner
-import com.aichat.workbench.tool.local.AuthorizedFileReader
-import com.aichat.workbench.tool.local.DefaultProviderConnectionTestRunner
-import com.aichat.workbench.tool.local.LocalScriptRunner
-import com.aichat.workbench.tool.local.LocalToolExecutor
-import com.aichat.workbench.tool.local.ProviderConnectionTestRunner
-import com.aichat.workbench.tool.local.defaultLocalTools
-import com.aichat.workbench.tool.runtime.ToolExecutor
-import com.aichat.workbench.tool.search.LocalSearchClient
-import com.aichat.workbench.tool.search.TavilyLocalSearchClient
 import java.time.Clock
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
@@ -98,6 +65,13 @@ val appModule: Module = module {
             AiChatDatabase.MIGRATION_8_9,
             AiChatDatabase.MIGRATION_9_10,
             AiChatDatabase.MIGRATION_10_11,
+            AiChatDatabase.MIGRATION_11_12,
+            AiChatDatabase.MIGRATION_12_13,
+            AiChatDatabase.MIGRATION_13_14,
+            AiChatDatabase.MIGRATION_14_15,
+            AiChatDatabase.MIGRATION_15_16,
+            AiChatDatabase.MIGRATION_16_17,
+            AiChatDatabase.MIGRATION_17_18,
         ).build()
     }
     single<SecretStore> { AndroidSecretStore(androidContext()) }
@@ -110,7 +84,6 @@ val appModule: Module = module {
     single<ProviderConfigRepository> {
         RoomProviderConfigRepository(
             providerDao = get<AiChatDatabase>().providerConfigDao(),
-            modelPreferenceDao = get<AiChatDatabase>().modelPreferenceDao(),
             secretStore = get(),
             clock = get(),
             modelRolePreferenceDao = get<AiChatDatabase>().modelRolePreferenceDao(),
@@ -122,32 +95,16 @@ val appModule: Module = module {
             clock = get(),
         )
     }
-    single<PromptPresetRepository> {
-        RoomPromptPresetRepository(get<AiChatDatabase>().promptPresetDao())
-    }
     single<ImageGenerationRepository> {
         RoomImageGenerationRepository(
             dao = get<AiChatDatabase>().imageGenerationDao(),
             imageStorage = get(),
         )
     }
-    single<ToolInvocationRepository> {
-        RoomToolInvocationRepository(get<AiChatDatabase>().toolInvocationDao())
-    }
-    single<MemoryRepository> {
-        RoomMemoryRepository(get<AiChatDatabase>().memoryDao())
-    }
-    factory { SaveMemoryUseCase(repository = get(), clock = get()) }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
     single<ImageGenerationPreferencesRepository> {
         DataStoreImageGenerationPreferencesRepository(androidContext(), dispatchers = get())
     }
-    single<ThemeSettingsRepository> {
-        DataStoreThemeSettingsRepository(androidContext(), dispatchers = get())
-    }
-    single { GatewaySettingsRepository(androidContext(), secretStore = get()) }
-    single { SearchSettingsRepository(androidContext(), secretStore = get()) }
-    single { ToolSettingsRepository(androidContext()) }
     single { OpenAiChatProvider(client = get(named("streamingHttpClient"))) }
     single<ChatProvider>(named("openai")) { get<OpenAiChatProvider>() }
     single { OpenAiCompatibleChatProvider(client = get(named("streamingHttpClient"))) }
@@ -166,54 +123,6 @@ val appModule: Module = module {
         }
     }
     factory<ImageGenerationProvider> { OpenAiImageGenerationProvider(client = get(named("longRunningHttpClient"))) }
-    single { GatewayClient(client = get(named("jsonHttpClient"))) }
-    single<LocalSearchClient> { TavilyLocalSearchClient(client = get(named("jsonHttpClient")), clock = get()) }
-    single<LocalScriptRunner> { AndroidJavaScriptRunner(androidContext()) }
-    single<AuthorizedFileReader> { AndroidAuthorizedFileReader(androidContext()) }
-    single<ProviderConnectionTestRunner> { DefaultProviderConnectionTestRunner(get()) }
-    single<SkillRegistry> { AndroidAssetSkillRegistry(androidContext()) }
-    single {
-        val searchSettingsRepository = get<SearchSettingsRepository>()
-        LocalToolExecutor(
-            defaultLocalTools(
-                clock = get(),
-                scriptRunner = get(),
-                fileReader = get(),
-                providerRepository = get(),
-                providerConnectionRunner = get(),
-                skillRegistry = get(),
-                searchConfigProvider = { searchSettingsRepository.currentSettings().toSearchConfig() },
-                searchClient = get(),
-            ),
-        )
-    }
-    single<ToolExecutionService> {
-        val settingsRepository = get<GatewaySettingsRepository>()
-        val toolSettingsRepository = get<ToolSettingsRepository>()
-        ToolExecutor(
-            gatewaySettingsProvider = { settingsRepository.currentSettings() },
-            gatewayClientProvider = { get() },
-            toolInvocationRepository = get(),
-            providerRepository = get(),
-            preferencesRepository = get(),
-            modelRolePreferenceRepository = get(),
-            imageGenerationRepository = get(),
-            imageProvider = get(),
-            imageStorage = get(),
-            clock = get(),
-            localToolExecutor = get(),
-            toolSettingsProvider = { toolSettingsRepository.currentSettings() },
-        )
-    }
-    factory<BackupService> {
-        AppBackupService(
-            database = get(),
-            providerRepository = get(),
-            conversationRepository = get(),
-            imageStorage = get(),
-            clock = get(),
-        )
-    }
     single {
         ProviderModelDiscoveryClient(
             client = get(named("jsonHttpClient")),
@@ -230,7 +139,6 @@ val appModule: Module = module {
     factory {
         ConversationCompactor(
             conversationRepository = get(),
-            memoryRepository = get(),
             clock = get(),
         )
     }
@@ -239,19 +147,12 @@ val appModule: Module = module {
         GenerationController(
             conversationRepository = get(),
             providerRepository = get(),
-            conversationManager = get(),
             conversationCompactor = get(),
             providerRegistry = get(),
-            toolExecutor = get(),
             clock = get(),
         )
     }
-    viewModel {
-        HomeViewModel(
-            conversationRepositoryProvider = { get() },
-            providerRepository = get(),
-        )
-    }
+    viewModelOf(::ConversationsViewModel)
     viewModelOf(::ChatViewModel)
     viewModel {
         ImageGenerationViewModel(
@@ -263,27 +164,6 @@ val appModule: Module = module {
             imageStorage = get(),
             connectionTester = get(),
             clock = get(),
-        )
-    }
-    viewModel {
-        ToolsViewModel(
-            settingsRepository = get(),
-            searchSettingsRepository = get(),
-            toolSettingsRepository = get(),
-            gatewayClient = get(),
-            localSearchClient = get(),
-            toolInvocationRepository = get(),
-            clock = get(),
-        )
-    }
-    viewModel {
-        SettingsHubViewModel(
-            themeSettingsRepository = get(),
-        )
-    }
-    viewModel {
-        DataSettingsViewModel(
-            backupService = get(),
         )
     }
 }

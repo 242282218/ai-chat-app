@@ -48,9 +48,6 @@ class ChatModelOptionsTest {
                 text = text,
                 vision = text,
                 imageGeneration = imageGeneration,
-                toolCalling = text,
-                structuredOutput = text,
-                longContext = text,
                 maxContextTokens = null,
             ),
         )

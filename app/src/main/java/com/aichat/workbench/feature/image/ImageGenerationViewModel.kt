@@ -10,7 +10,6 @@ import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
-import com.aichat.workbench.domain.repository.EmptyModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
@@ -36,6 +35,7 @@ import kotlinx.coroutines.launch
 data class ImageGenerationUiState(
     val generations: List<ImageGeneration> = emptyList(),
     val providers: List<ProviderConfig> = emptyList(),
+    val modelRolePreferences: List<ModelRolePreference> = emptyList(),
     val providerApiKeyAvailable: Map<String, Boolean> = emptyMap(),
     val selectedProviderId: String? = null,
     val prompt: String = "",
@@ -64,7 +64,7 @@ class ImageGenerationViewModel(
     private val imageRepository: ImageGenerationRepository,
     private val providerRepository: ProviderConfigRepository,
     private val preferencesRepository: ImageGenerationPreferencesRepository,
-    private val modelRolePreferenceRepository: ModelRolePreferenceRepository = EmptyModelRolePreferenceRepository,
+    private val modelRolePreferenceRepository: ModelRolePreferenceRepository,
     private val imageProvider: ImageGenerationProvider,
     private val imageStorage: ImageStorage,
     private val connectionTester: ProviderConnectionTestClient,
@@ -101,42 +101,48 @@ class ImageGenerationViewModel(
 
     fun selectProvider(id: String) {
         val provider = _state.value.providers.firstOrNull { it.id.value == id }
-        val model = provider?.defaultImageModel().orEmpty().ifBlank { _state.value.model }
+        val model = provider
+            ?.rolePreferenceModel(_state.value.modelRolePreferences, ModelRole.Image)
+            ?: provider?.defaultImageModel().orEmpty().ifBlank { _state.value.model }
         _state.update {
             it.copy(
                 selectedProviderId = id,
                 model = model,
-            )
+            ).withDraftFeedbackCleared(clearConnectionTest = true)
         }
         viewModelScope.launch {
-            preferencesRepository.savePreferences(providerId = id, model = model)
+            preferencesRepository.saveSelectedProvider(id)
+            provider?.let {
+                modelRolePreferenceRepository.setRoleModel(it.id, ModelRole.Image, model)
+            }
         }
     }
 
     fun updatePrompt(value: String) {
-        _state.update { it.copy(prompt = value) }
+        _state.update { it.copy(prompt = value).withDraftFeedbackCleared() }
     }
 
     fun updateModel(value: String) {
-        _state.update { it.copy(model = value) }
+        _state.update { it.copy(model = value).withDraftFeedbackCleared(clearConnectionTest = true) }
         viewModelScope.launch {
-            preferencesRepository.savePreferences(
-                providerId = _state.value.selectedProviderId,
-                model = value,
-            )
+            val provider = _state.value.selectedProvider
+            preferencesRepository.saveSelectedProvider(provider?.id?.value)
+            provider?.let {
+                modelRolePreferenceRepository.setRoleModel(it.id, ModelRole.Image, value)
+            }
         }
     }
 
     fun updateSize(value: String) {
-        _state.update { it.copy(size = value) }
+        _state.update { it.copy(size = value).withDraftFeedbackCleared() }
     }
 
     fun updateQuality(value: String) {
-        _state.update { it.copy(quality = value) }
+        _state.update { it.copy(quality = value).withDraftFeedbackCleared() }
     }
 
     fun updateCount(value: String) {
-        _state.update { it.copy(count = value) }
+        _state.update { it.copy(count = value).withDraftFeedbackCleared() }
     }
 
     fun reusePrompt(prompt: String) {
@@ -160,8 +166,7 @@ class ImageGenerationViewModel(
                 size = generation.size.orEmpty().ifBlank { it.size },
                 quality = generation.quality.orEmpty().ifBlank { it.quality },
                 count = generation.count.coerceIn(1, 4).toString(),
-                error = null,
-            )
+            ).withDraftFeedbackCleared(clearConnectionTest = true)
         }
         generate()
     }
@@ -305,6 +310,7 @@ class ImageGenerationViewModel(
         val selectedProviderChanged = selectedProviderId != fallback?.id?.value
         return copy(
             providers = imageProviders,
+            modelRolePreferences = rolePreferences,
             selectedProviderId = fallback?.id?.value,
             model = selectedImageModel(fallback, selectedProviderChanged, preferences, rolePreferences),
         )
@@ -329,15 +335,29 @@ class ImageGenerationViewModel(
         selectedProviderChanged: Boolean,
         preferences: ImageGenerationPreferences,
         rolePreferences: List<ModelRolePreference>,
-    ): String =
-        when {
+    ): String {
+        val roleModel = provider?.rolePreferenceModel(rolePreferences, ModelRole.Image)
+        return when {
             provider == null -> model
-            provider.rolePreferenceModel(rolePreferences, ModelRole.Image) != null ->
-                requireNotNull(provider.rolePreferenceModel(rolePreferences, ModelRole.Image))
-            preferences.providerId == provider.id.value && !preferences.model.isNullOrBlank() -> preferences.model
+            roleModel != null -> roleModel
+            preferences.providerId == provider.id.value && !selectedProviderChanged ->
+                model.ifBlank { provider.defaultImageModel() }
             selectedProviderChanged -> provider.defaultImageModel()
             else -> model.ifBlank { provider.defaultImageModel() }
         }
+    }
+}
+
+private fun ImageGenerationUiState.withDraftFeedbackCleared(
+    clearConnectionTest: Boolean = false,
+): ImageGenerationUiState {
+    val state = copy(error = null)
+    if (!clearConnectionTest) return state
+    return state.copy(
+        connectionTestMessage = null,
+        connectionTestDiagnostic = null,
+        connectionTestOk = null,
+    )
 }
 
 internal fun ProviderConfig.imageConnectionDiagnostic(

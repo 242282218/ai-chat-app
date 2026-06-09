@@ -20,8 +20,6 @@ data class ProviderType(val value: String) : java.io.Serializable {
         val Sub2Api = ProviderType("sub2api")
         val Custom = ProviderType("custom")
         val OpenRouter = ProviderType("openrouter")
-        val Anthropic = ProviderType("anthropic")
-        val Gemini = ProviderType("gemini")
         val Ollama = ProviderType("ollama")
 
         fun fromStorage(value: String): ProviderType =
@@ -32,8 +30,6 @@ data class ProviderType(val value: String) : java.io.Serializable {
                 "Sub2Api", Sub2Api.value -> Sub2Api
                 "Custom", Custom.value -> Custom
                 OpenRouter.value -> OpenRouter
-                Anthropic.value -> Anthropic
-                Gemini.value -> Gemini
                 Ollama.value -> Ollama
                 else -> ProviderType(value)
             }
@@ -47,7 +43,6 @@ data class ProviderDescriptor(
     val supportsCustomBaseUrl: Boolean,
     val defaultBaseUrl: String?,
     val modelDiscovery: ProviderModelDiscovery?,
-    val protocol: ProviderProtocol,
     val capabilities: ProviderCapabilities,
 ) {
     val requiresApiKey: Boolean
@@ -70,21 +65,10 @@ enum class ProviderModelDiscoveryFormat {
     OllamaTags,
 }
 
-enum class ProviderProtocol {
-    OpenAiResponses,
-    OpenAiChatCompletions,
-    AnthropicMessages,
-    GeminiGenerateContent,
-    OllamaOpenAiCompatible,
-}
-
 data class ProviderCapabilities(
     val text: Boolean,
     val vision: Boolean,
     val imageGeneration: Boolean,
-    val toolCalling: Boolean,
-    val structuredOutput: Boolean,
-    val longContext: Boolean,
 )
 
 data class ModelConfig(
@@ -98,9 +82,6 @@ data class ModelCapability(
     val text: Boolean,
     val vision: Boolean,
     val imageGeneration: Boolean,
-    val toolCalling: Boolean,
-    val structuredOutput: Boolean,
-    val longContext: Boolean,
     val maxContextTokens: Int?,
     val source: ModelCapabilitySource = ModelCapabilitySource.UserOverride,
 )

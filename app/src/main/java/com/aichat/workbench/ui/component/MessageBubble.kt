@@ -1,5 +1,6 @@
 package com.aichat.workbench.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,16 +22,23 @@ import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
-import com.aichat.workbench.ui.theme.AccentContainer
-import com.aichat.workbench.ui.theme.Neutral150
 
 @Composable
 fun MessageBubble(
     message: Message,
     modifier: Modifier = Modifier,
-    onGenerateDiff: ((com.aichat.workbench.ui.markdown.CodeArtifact) -> Unit)? = null,
 ) {
     val isUser = message.role == MessageRole.User
+    val containerColor = if (isUser) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    val contentColor = if (isUser) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -41,17 +50,22 @@ fun MessageBubble(
             AssistantAvatar()
             Spacer(Modifier.width(8.dp))
         }
-        Box(
+        Surface(
             modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(MaterialTheme.shapes.medium)
-                .background(if (isUser) AccentContainer else Neutral150)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .widthIn(max = 300.dp),
+            color = containerColor,
+            contentColor = contentColor,
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = if (isUser) 1.dp else 0.dp,
+            border = if (isUser) {
+                null
+            } else {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
+            },
         ) {
-            MarkdownMessageContent(
-                text = message.content.ifBlank { "..." },
-                onGenerateDiff = onGenerateDiff,
-            )
+            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                MarkdownMessageContent(text = message.content.ifBlank { "..." })
+            }
         }
     }
 }

@@ -21,22 +21,6 @@ internal data class ResponsesRequest(
     val temperature: Double? = null,
     @SerialName("top_p") val topP: Double? = null,
     @SerialName("max_output_tokens") val maxOutputTokens: Int? = null,
-    val tools: List<ResponsesTool>? = null,
-)
-
-@Serializable
-internal data class ResponsesTool(
-    val type: String,
-    val name: String? = null,
-    val description: String? = null,
-    val parameters: JsonElement? = null,
-    val strict: Boolean? = null,
-    val container: ResponsesToolContainer? = null,
-)
-
-@Serializable
-internal data class ResponsesToolContainer(
-    val type: String,
 )
 
 @Serializable
@@ -77,23 +61,12 @@ internal data class ChatCompletionsRequest(
     val temperature: Double? = null,
     @SerialName("top_p") val topP: Double? = null,
     @SerialName("max_tokens") val maxTokens: Int? = null,
-    val tools: List<ChatCompletionTool>? = null,
-    @SerialName("tool_choice") val toolChoice: JsonElement? = null,
-    @SerialName("parallel_tool_calls") val parallelToolCalls: Boolean? = null,
-    @SerialName("web_search_options") val webSearchOptions: ChatCompletionWebSearchOptions? = null,
-)
-
-@Serializable
-internal data class ChatCompletionWebSearchOptions(
-    @SerialName("search_context_size") val searchContextSize: String = "medium",
 )
 
 @Serializable
 internal data class ChatCompletionMessage(
     val role: String? = null,
     val content: JsonElement? = null,
-    @SerialName("tool_calls") val toolCalls: List<ChatCompletionToolCall>? = null,
-    @SerialName("tool_call_id") val toolCallId: String? = null,
 )
 
 @Serializable
@@ -106,34 +79,6 @@ internal data class ChatCompletionChoice(
     val message: ChatCompletionMessage? = null,
     val delta: ChatCompletionMessage? = null,
     @SerialName("finish_reason") val finishReason: String? = null,
-)
-
-@Serializable
-internal data class ChatCompletionTool(
-    val type: String = "function",
-    val function: ChatCompletionFunction,
-)
-
-@Serializable
-internal data class ChatCompletionFunction(
-    val name: String,
-    val description: String,
-    val parameters: JsonElement? = null,
-    val strict: Boolean = false,
-)
-
-@Serializable
-internal data class ChatCompletionToolCall(
-    val index: Int? = null,
-    val id: String? = null,
-    val type: String? = "function",
-    val function: ChatCompletionToolCallFunction? = null,
-)
-
-@Serializable
-internal data class ChatCompletionToolCallFunction(
-    val name: String? = null,
-    val arguments: String? = null,
 )
 
 @Serializable

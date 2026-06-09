@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Stop
@@ -34,8 +33,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.ui.component.decodeInlineImageBitmap
-import com.aichat.workbench.ui.component.FileAttachButton
-import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import java.io.File
@@ -46,13 +43,10 @@ internal fun InputBar(
     imageDrafts: List<MessagePart.Image>,
     isGenerating: Boolean,
     isEditing: Boolean,
-    starterPromptLabel: String?,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
     onInputChange: (String) -> Unit,
     onPickImage: () -> Unit,
-    onPickFile: (Uri) -> Unit,
-    onClearFileTask: () -> Unit,
     onRemoveImage: (Int) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
@@ -74,7 +68,6 @@ internal fun InputBar(
             InputStatusRow(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
-                starterPromptLabel = starterPromptLabel,
                 hasImageDrafts = imageDrafts.isNotEmpty(),
                 canSend = canSend,
                 onOpenProviders = onOpenProviders,
@@ -85,20 +78,6 @@ internal fun InputBar(
                     images = imageDrafts,
                     onRemoveImage = onRemoveImage,
                 )
-            }
-            if (input.hasFileReadInstruction()) {
-                InlineNotice(
-                    text = "已添加文件读取任务，可清除后重新选择文件。",
-                    icon = Icons.Filled.Archive,
-                    tone = StatusTone.Neutral,
-                ) {
-                    WorkbenchIconButton(
-                        icon = Icons.Filled.Close,
-                        label = "清除文件任务",
-                        onClick = onClearFileTask,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -111,7 +90,6 @@ internal fun InputBar(
                     onClick = onPickImage,
                     enabled = !isGenerating,
                 )
-                FileAttachButton(onFilePicked = onPickFile)
                 OutlinedTextField(
                     value = input,
                     onValueChange = onInputChange,
@@ -204,7 +182,6 @@ private fun ImageDraftRow(
 private fun InputStatusRow(
     isGenerating: Boolean,
     isEditing: Boolean,
-    starterPromptLabel: String?,
     hasImageDrafts: Boolean,
     canSend: Boolean,
     onOpenProviders: () -> Unit,
@@ -213,7 +190,6 @@ private fun InputStatusRow(
     val status = inputStatus(
         isGenerating = isGenerating,
         isEditing = isEditing,
-        starterPromptLabel = starterPromptLabel,
         hasImageDrafts = hasImageDrafts,
         canSend = canSend,
     ) ?: return
@@ -247,7 +223,6 @@ internal data class InputStatus(
 internal fun inputStatus(
     isGenerating: Boolean,
     isEditing: Boolean,
-    starterPromptLabel: String?,
     hasImageDrafts: Boolean,
     canSend: Boolean,
 ): InputStatus? =
@@ -259,10 +234,6 @@ internal fun inputStatus(
         isEditing -> InputStatus(
             label = "编辑中",
             tone = StatusTone.Warning,
-        )
-        starterPromptLabel != null -> InputStatus(
-            label = "已套用：$starterPromptLabel",
-            tone = StatusTone.Neutral,
         )
         hasImageDrafts && canSend -> InputStatus(
             label = "图片将作为多模态内容发送给模型",

@@ -14,7 +14,6 @@ class ChatInputStatusTest {
         val status = inputStatus(
             isGenerating = false,
             isEditing = false,
-            starterPromptLabel = null,
             hasImageDrafts = true,
             canSend = true,
         )
@@ -35,7 +34,6 @@ class ChatInputStatusTest {
             inputStatus(
                 isGenerating = true,
                 isEditing = false,
-                starterPromptLabel = null,
                 hasImageDrafts = true,
                 canSend = true,
             )?.label,
@@ -45,17 +43,6 @@ class ChatInputStatusTest {
             inputStatus(
                 isGenerating = false,
                 isEditing = true,
-                starterPromptLabel = null,
-                hasImageDrafts = true,
-                canSend = true,
-            )?.label,
-        )
-        assertEquals(
-            "已套用：读取文件",
-            inputStatus(
-                isGenerating = false,
-                isEditing = false,
-                starterPromptLabel = "读取文件",
                 hasImageDrafts = true,
                 canSend = true,
             )?.label,
@@ -67,7 +54,6 @@ class ChatInputStatusTest {
         val status = inputStatus(
             isGenerating = false,
             isEditing = false,
-            starterPromptLabel = null,
             hasImageDrafts = true,
             canSend = false,
         )
@@ -87,7 +73,6 @@ class ChatInputStatusTest {
             inputStatus(
                 isGenerating = false,
                 isEditing = false,
-                starterPromptLabel = null,
                 hasImageDrafts = false,
                 canSend = true,
             ),

@@ -1,7 +1,6 @@
 package com.aichat.workbench.data.repository
 
 import com.aichat.workbench.data.crypto.SecretStore
-import com.aichat.workbench.data.local.dao.ModelPreferenceDao
 import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
 import com.aichat.workbench.data.local.dao.ProviderConfigDao
 import com.aichat.workbench.data.mapper.toDomain
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.map
 
 class RoomProviderConfigRepository(
     private val providerDao: ProviderConfigDao,
-    private val modelPreferenceDao: ModelPreferenceDao,
     private val secretStore: SecretStore,
     private val clock: Clock,
     private val modelRolePreferenceDao: ModelRolePreferenceDao? = null,
@@ -61,11 +59,6 @@ class RoomProviderConfigRepository(
         if (deleteReplacedApiKey && existing?.apiKeyRef != null && existing.apiKeyRef != secretRef) {
             secretStore.deleteSecret(existing.apiKeyRef)
         }
-
-        val defaultModel = sanitizedProvider.defaultModel
-        if (!defaultModel.isNullOrBlank()) {
-            modelPreferenceDao.setDefault(sanitizedProvider.id.value, defaultModel, now.toEpochMilli())
-        }
     }
 
     override suspend fun getApiKey(providerId: ProviderId): String? {
@@ -80,7 +73,6 @@ class RoomProviderConfigRepository(
     override suspend fun deleteProvider(id: ProviderId) {
         val existing = providerDao.getProvider(id.value)
         providerDao.deleteProvider(id.value)
-        modelPreferenceDao.deleteForProvider(id.value)
         modelRolePreferenceDao?.deleteForProvider(id.value)
         existing?.apiKeyRef?.let { secretStore.deleteSecret(it) }
     }

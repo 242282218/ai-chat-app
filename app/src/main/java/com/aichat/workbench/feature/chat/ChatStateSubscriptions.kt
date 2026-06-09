@@ -3,11 +3,8 @@ package com.aichat.workbench.feature.chat
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.domain.repository.ConversationRepository
-import com.aichat.workbench.domain.repository.MemoryRepository
-import com.aichat.workbench.domain.repository.PromptPresetRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
-import com.aichat.workbench.provider.preferredChatModel
 import com.aichat.workbench.provider.supportsTextGeneration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
@@ -17,8 +14,6 @@ internal fun CoroutineScope.observeChatStateSources(
     conversationRepository: ConversationRepository,
     providerRepository: ProviderConfigRepository,
     modelRolePreferenceRepository: ModelRolePreferenceRepository,
-    promptPresetRepository: PromptPresetRepository,
-    memoryRepository: MemoryRepository,
     conversationManager: ConversationManager,
     providerRegistry: ProviderRegistry,
     currentState: () -> ChatUiState,
@@ -53,30 +48,12 @@ internal fun CoroutineScope.observeChatStateSources(
                 val selected = current.selectedProviderId
                     ?.let { id -> chatProviders.firstOrNull { it.id.value == id && it.enabled } }
                 val fallback = selected ?: chatProviders.firstOrNull { it.enabled }
-                val selectedProviderChanged = current.selectedProviderId != fallback?.id?.value
                 current.copy(
                     providers = chatProviders,
                     modelRolePreferences = rolePreferences,
                     selectedProviderId = fallback?.id?.value,
-                    draft = current.draft.copy(
-                        model = when {
-                            fallback == null -> current.modelDraft
-                            selectedProviderChanged -> fallback.preferredChatModel(rolePreferences)
-                            else -> current.modelDraft.ifBlank { fallback.preferredChatModel(rolePreferences) }
-                        },
-                    ),
                 )
             }
-        }
-    }
-    launch {
-        promptPresetRepository.observePromptPresets().collect { presets ->
-            updateState { it.copy(promptPresets = presets) }
-        }
-    }
-    launch {
-        memoryRepository.observeMemories().collect { memories ->
-            updateState { it.copy(memories = memories) }
         }
     }
 }

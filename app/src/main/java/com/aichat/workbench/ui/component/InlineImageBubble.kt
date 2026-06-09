@@ -29,8 +29,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.Icon
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
-import com.aichat.workbench.ui.theme.Neutral300
-import com.aichat.workbench.ui.theme.TextSecondary
 
 @Composable
 fun InlineImageBubble(
@@ -48,9 +46,9 @@ fun InlineImageBubble(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Image: $prompt",
+            text = "图片：$prompt",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
         )
         val imageSource = remember(imageUrl) { resolveInlineImageSource(imageUrl) }
@@ -98,14 +96,14 @@ private fun ImageUnavailable() {
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(MaterialTheme.shapes.small)
-            .background(Neutral300.copy(alpha = 0.28f)),
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = Icons.Filled.Image,
             contentDescription = null,
             modifier = Modifier.size(28.dp),
-            tint = TextSecondary,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -126,6 +124,6 @@ private fun ImageSkeleton() {
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(MaterialTheme.shapes.small)
-            .background(Neutral300.copy(alpha = alpha)),
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha)),
     )
 }

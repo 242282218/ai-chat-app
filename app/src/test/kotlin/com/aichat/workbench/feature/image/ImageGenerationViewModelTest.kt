@@ -151,6 +151,28 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun promptChangeClearsStaleGenerationError() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        advanceUntilIdle()
+        assertEquals("API Key 缺失。", viewModel.state.value.error)
+
+        viewModel.updatePrompt("Draw a corrected test scene")
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.error)
+        assertEquals("Draw a corrected test scene", viewModel.state.value.prompt)
+    }
+
+    @Test
     fun readinessUsesUsableApiKeyInsteadOfOnlyApiKeyRef() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
         val viewModel = viewModel(
@@ -315,11 +337,11 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
-    fun loadsSavedImageProviderAndModel() = runTest(mainDispatcherRule.testDispatcher) {
+    fun loadsSavedImageProviderAndUsesDefaultImageModel() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val newApiProvider = provider("new-api", ProviderType.NewApi)
         val preferencesRepository = FakeImageGenerationPreferencesRepository(
-            ImageGenerationPreferences(providerId = newApiProvider.id.value, model = "dall-e-3"),
+            ImageGenerationPreferences(providerId = newApiProvider.id.value),
         )
         val viewModel = viewModel(
             repository = FakeImageGenerationRepository(emptyList()),
@@ -330,7 +352,7 @@ class ImageGenerationViewModelTest {
         advanceUntilIdle()
 
         assertEquals(newApiProvider.id.value, viewModel.state.value.selectedProviderId)
-        assertEquals("dall-e-3", viewModel.state.value.model)
+        assertEquals("gpt-image-1", viewModel.state.value.model)
     }
 
     @Test
@@ -344,7 +366,7 @@ class ImageGenerationViewModelTest {
             ),
         )
         val preferencesRepository = FakeImageGenerationPreferencesRepository(
-            ImageGenerationPreferences(providerId = openAiProvider.id.value, model = "gpt-image-1"),
+            ImageGenerationPreferences(providerId = openAiProvider.id.value),
         )
         val roleRepository = FakeModelRolePreferenceRepository(
             listOf(
@@ -414,15 +436,17 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
-    fun selectProviderPersistsImageProviderAndDefaultImageModel() = runTest(mainDispatcherRule.testDispatcher) {
+    fun selectProviderPersistsImageProviderAndRoleModel() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val newApiProvider = provider("new-api", ProviderType.NewApi)
         val preferencesRepository = FakeImageGenerationPreferencesRepository()
+        val roleRepository = FakeModelRolePreferenceRepository()
         val viewModel = viewModel(
             repository = FakeImageGenerationRepository(emptyList()),
             storage = FakeImageStorage(),
             providerRepository = FakeProviderConfigRepository(listOf(openAiProvider, newApiProvider)),
             preferencesRepository = preferencesRepository,
+            modelRolePreferenceRepository = roleRepository,
         )
         advanceUntilIdle()
 
@@ -430,18 +454,20 @@ class ImageGenerationViewModelTest {
         advanceUntilIdle()
 
         assertEquals(newApiProvider.id.value, preferencesRepository.preferences.value.providerId)
-        assertEquals("gpt-image-1", preferencesRepository.preferences.value.model)
+        assertEquals("gpt-image-1", roleRepository.roleModel(newApiProvider.id, ModelRole.Image))
     }
 
     @Test
-    fun updateModelPersistsImageProviderAndModel() = runTest(mainDispatcherRule.testDispatcher) {
+    fun updateModelPersistsImageProviderAndRoleModel() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val preferencesRepository = FakeImageGenerationPreferencesRepository()
+        val roleRepository = FakeModelRolePreferenceRepository()
         val viewModel = viewModel(
             repository = FakeImageGenerationRepository(emptyList()),
             storage = FakeImageStorage(),
             providerRepository = FakeProviderConfigRepository(listOf(openAiProvider)),
             preferencesRepository = preferencesRepository,
+            modelRolePreferenceRepository = roleRepository,
         )
         advanceUntilIdle()
 
@@ -449,14 +475,14 @@ class ImageGenerationViewModelTest {
         advanceUntilIdle()
 
         assertEquals(openAiProvider.id.value, preferencesRepository.preferences.value.providerId)
-        assertEquals("gpt-image-custom", preferencesRepository.preferences.value.model)
+        assertEquals("gpt-image-custom", roleRepository.roleModel(openAiProvider.id, ModelRole.Image))
     }
 
     @Test
     fun fallsBackWhenSavedImageProviderIsUnavailable() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI)
         val preferencesRepository = FakeImageGenerationPreferencesRepository(
-            ImageGenerationPreferences(providerId = "deleted-provider", model = "deleted-model"),
+            ImageGenerationPreferences(providerId = "deleted-provider"),
         )
         val viewModel = viewModel(
             repository = FakeImageGenerationRepository(emptyList()),
@@ -501,6 +527,35 @@ class ImageGenerationViewModelTest {
         assertTrue(diagnostic.contains("结果：连接成功"))
         assertTrue(diagnostic.contains("HTTP：200"))
         assertFalse(diagnostic.contains("test-key"))
+    }
+
+    @Test
+    fun modelChangeClearsStaleConnectionTestResult() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            connectionTester = RecordingProviderConnectionTestClient(
+                result = ProviderConnectionResult(ok = true, statusCode = 200, message = "连接成功"),
+            ),
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+        assertEquals("连接成功", viewModel.state.value.connectionTestMessage)
+
+        viewModel.updateModel("gpt-image-updated")
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.connectionTestMessage)
+        assertNull(viewModel.state.value.connectionTestDiagnostic)
+        assertNull(viewModel.state.value.connectionTestOk)
+        assertEquals("gpt-image-updated", viewModel.state.value.model)
     }
 
     @Test
@@ -641,9 +696,6 @@ class ImageGenerationViewModelTest {
                 text = text,
                 vision = text,
                 imageGeneration = imageGeneration,
-                toolCalling = text,
-                structuredOutput = text,
-                longContext = text,
                 maxContextTokens = null,
             ),
         )
@@ -752,10 +804,9 @@ private class FakeImageGenerationPreferencesRepository(
 
     override fun observePreferences(): MutableStateFlow<ImageGenerationPreferences> = preferences
 
-    override suspend fun savePreferences(providerId: String?, model: String?) {
+    override suspend fun saveSelectedProvider(providerId: String?) {
         preferences.value = ImageGenerationPreferences(
             providerId = providerId?.takeIf { it.isNotBlank() },
-            model = model?.takeIf { it.isNotBlank() },
         )
     }
 }
@@ -765,12 +816,9 @@ private class FakeModelRolePreferenceRepository(
 ) : ModelRolePreferenceRepository {
     private val preferences = MutableStateFlow(initialPreferences)
 
-    override fun observeRolePreferences(providerId: ProviderId): Flow<List<ModelRolePreference>> =
-        preferences
-
     override fun observeAllRolePreferences(): Flow<List<ModelRolePreference>> = preferences
 
-    override suspend fun getRoleModel(providerId: ProviderId, role: ModelRole): String? =
+    fun roleModel(providerId: ProviderId, role: ModelRole): String? =
         preferences.value.firstOrNull { it.providerId == providerId && it.role == role }?.model
 
     override suspend fun setRoleModel(providerId: ProviderId, role: ModelRole, model: String?) {
@@ -786,10 +834,6 @@ private class FakeModelRolePreferenceRepository(
                     )
                 },
             )
-    }
-
-    override suspend fun deleteForProvider(providerId: ProviderId) {
-        preferences.value = preferences.value.filterNot { it.providerId == providerId }
     }
 }
 

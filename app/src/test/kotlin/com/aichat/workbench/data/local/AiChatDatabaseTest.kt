@@ -8,46 +8,23 @@ import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.mapper.toEntity
 import com.aichat.workbench.data.repository.RoomConversationRepository
-import com.aichat.workbench.data.repository.RoomModelPreferenceRepository
-import com.aichat.workbench.data.repository.RoomMemoryRepository
 import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
-import com.aichat.workbench.data.repository.RoomPromptPresetRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
-import com.aichat.workbench.data.repository.RoomToolInvocationRepository
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.domain.model.MemoryKind
 import com.aichat.workbench.domain.model.ModelConfig
-import com.aichat.workbench.domain.model.ModelPreference
-import com.aichat.workbench.domain.model.ModelPreferenceId
 import com.aichat.workbench.domain.model.ModelRole
 import com.aichat.workbench.domain.model.ModelRolePreference
-import com.aichat.workbench.domain.model.PromptPreset
-import com.aichat.workbench.domain.model.PromptPresetId
 import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
-import com.aichat.workbench.domain.model.ToolCallId
-import com.aichat.workbench.domain.model.ToolOutput
-import com.aichat.workbench.domain.model.ToolPermissionLevel
-import com.aichat.workbench.domain.model.ToolResult
-import com.aichat.workbench.domain.model.ToolStatus
-import com.aichat.workbench.domain.usecase.ArchiveConversationUseCase
 import com.aichat.workbench.domain.usecase.CreateConversationUseCase
-import com.aichat.workbench.domain.usecase.DeleteConversationUseCase
-import com.aichat.workbench.domain.usecase.DeleteProviderConfigUseCase
-import com.aichat.workbench.domain.usecase.RenameConversationUseCase
-import com.aichat.workbench.domain.usecase.SaveMessageUseCase
-import com.aichat.workbench.domain.usecase.SaveMemoryUseCase
-import com.aichat.workbench.domain.usecase.SaveModelPreferenceUseCase
-import com.aichat.workbench.domain.usecase.SavePromptPresetUseCase
 import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
 import com.aichat.workbench.domain.usecase.SendMessageUseCase
-import com.aichat.workbench.domain.usecase.SetDefaultModelUseCase
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderError
@@ -95,42 +72,33 @@ class AiChatDatabaseTest {
     }
 
     @Test
-    fun conversations_canBeCreatedRenamedArchivedAndDeleted() = runTest {
+    fun conversations_canBeCreatedRenamedAndDeleted() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         val createConversation = CreateConversationUseCase(repository, clock)
-        val renameConversation = RenameConversationUseCase(repository)
-        val archiveConversation = ArchiveConversationUseCase(repository)
-        val deleteConversation = DeleteConversationUseCase(repository)
 
-        val conversation = createConversation(title = "Planning", isTemporary = true, isSensitive = true)
+        val conversation = createConversation(title = "Planning")
 
         assertEquals("Planning", repository.getConversation(conversation.id)?.title)
-        assertEquals(true, repository.getConversation(conversation.id)?.isSensitive)
         assertEquals(1, repository.observeConversations().first().size)
 
-        renameConversation(conversation.id, "Renamed")
+        repository.renameConversation(conversation.id, "Renamed")
         assertEquals("Renamed", repository.getConversation(conversation.id)?.title)
 
-        archiveConversation(conversation.id)
-        assertEquals(0, repository.observeConversations().first().size)
-        assertEquals(1, repository.observeConversations(includeArchived = true).first().size)
-
-        deleteConversation(conversation.id)
+        repository.deleteConversation(conversation.id)
         assertNull(repository.getConversation(conversation.id))
     }
 
     @Test
     fun messages_areStoredByConversationAndCascadeWhenConversationDeleted() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
-        val saveMessage = SaveMessageUseCase(repository)
         val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
         val message = message(conversation.id)
 
-        saveMessage(message)
+        repository.saveMessage(message)
 
         assertEquals(listOf(message), repository.getMessages(conversation.id))
 
-        DeleteConversationUseCase(repository)(conversation.id)
+        repository.deleteConversation(conversation.id)
         assertEquals(emptyList<Message>(), repository.getMessages(conversation.id))
     }
 
@@ -191,27 +159,6 @@ class AiChatDatabaseTest {
     }
 
     @Test
-    fun memories_roundTripAndSurviveSourceConversationDeletion() = runTest {
-        val conversationRepository = RoomConversationRepository(database.conversationDao(), clock)
-        val memoryRepository = RoomMemoryRepository(database.memoryDao())
-        val conversation = CreateConversationUseCase(conversationRepository, clock)(title = "Memory source")
-        val saved = SaveMemoryUseCase(memoryRepository, clock)(
-            content = "用户偏好 Kotlin 简洁实现。",
-            kind = MemoryKind.UserFact,
-            sourceConversationId = conversation.id,
-        )
-
-        assertEquals(saved, memoryRepository.getMemory(saved.id))
-        assertEquals(listOf(saved), memoryRepository.observeMemories().first())
-
-        DeleteConversationUseCase(conversationRepository)(conversation.id)
-
-        val retained = requireNotNull(memoryRepository.getMemory(saved.id))
-        assertEquals("用户偏好 Kotlin 简洁实现。", retained.content)
-        assertNull(retained.sourceConversationId)
-    }
-
-    @Test
     fun legacyOrMalformedMessagePayloads_doNotCrashConversationLoad() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         database.conversationDao().upsertConversation(
@@ -221,12 +168,6 @@ class AiChatDatabaseTest {
                 createdAt = 1L,
                 updatedAt = 1L,
                 defaultProviderId = null,
-                defaultModel = null,
-                modelParametersJson = "{}",
-                systemPrompt = null,
-                isTemporary = false,
-                isSensitive = false,
-                archivedAt = null,
             ),
         )
         database.conversationDao().upsertMessage(
@@ -242,10 +183,7 @@ class AiChatDatabaseTest {
                 errorSummary = null,
                 createdAt = 1L,
                 updatedAt = 1L,
-                toolCallId = null,
                 parentMessageId = null,
-                toolCallsJson = "{bad json",
-                toolResult = null,
             ),
         )
 
@@ -255,7 +193,6 @@ class AiChatDatabaseTest {
         assertEquals(MessageStatus.Cancelled, saved.status)
         assertEquals("legacy content", saved.content)
         assertEquals(emptyList<MessagePart>(), saved.contentParts)
-        assertEquals(emptyList<com.aichat.workbench.domain.model.ToolCall>(), saved.toolCalls)
     }
 
     @Test
@@ -268,12 +205,6 @@ class AiChatDatabaseTest {
                 createdAt = 1L,
                 updatedAt = 1L,
                 defaultProviderId = null,
-                defaultModel = null,
-                modelParametersJson = "{}",
-                systemPrompt = null,
-                isTemporary = false,
-                isSensitive = false,
-                archivedAt = null,
             ),
         )
         database.conversationDao().upsertMessage(
@@ -289,10 +220,7 @@ class AiChatDatabaseTest {
                 errorSummary = null,
                 createdAt = 1L,
                 updatedAt = 1L,
-                toolCallId = null,
                 parentMessageId = null,
-                toolCallsJson = "[]",
-                toolResult = null,
             ),
         )
 
@@ -306,60 +234,6 @@ class AiChatDatabaseTest {
     }
 
     @Test
-    fun searchMessages_returnsMatchingMessagesWithConversation() = runTest {
-        val repository = RoomConversationRepository(database.conversationDao(), clock)
-        val first = CreateConversationUseCase(repository, clock)(title = "Research")
-        val second = CreateConversationUseCase(repository, clock)(title = "Notes")
-        repository.saveMessage(message(first.id).copy(id = MessageId("message-1"), content = "AI search needle"))
-        repository.saveMessage(message(second.id).copy(id = MessageId("message-2"), content = "unrelated text"))
-
-        val results = repository.searchMessages("needle").first()
-
-        assertEquals(1, results.size)
-        assertEquals(first.id, results.single().conversation.id)
-        assertEquals("AI search needle", results.single().message.content)
-    }
-
-    @Test
-    fun promptPresets_areStoredAndObserved() = runTest {
-        val repository = RoomPromptPresetRepository(database.promptPresetDao())
-        val savePromptPreset = SavePromptPresetUseCase(repository)
-        val preset = PromptPreset(
-            id = PromptPresetId("prompt-1"),
-            name = "Writer",
-            description = "Polish writing",
-            systemPrompt = "Improve clarity.",
-            defaultModel = "gpt-4.1-mini",
-            defaultToolNames = listOf("web_search"),
-            createdAt = clock.instant(),
-            updatedAt = clock.instant(),
-        )
-
-        savePromptPreset(preset)
-
-        assertEquals(preset, repository.getPromptPreset(preset.id))
-        assertEquals(listOf(preset), repository.observePromptPresets().first())
-    }
-
-    @Test
-    fun modelPreferences_storeFavoritesAndKeepOneDefaultPerProvider() = runTest {
-        val repository = RoomModelPreferenceRepository(database.modelPreferenceDao(), clock)
-        val saveModelPreference = SaveModelPreferenceUseCase(repository)
-        val setDefaultModel = SetDefaultModelUseCase(repository)
-        val providerId = ProviderId("provider-1")
-
-        saveModelPreference(modelPreference(providerId, "model-a", favorite = true))
-        saveModelPreference(modelPreference(providerId, "model-b", favorite = true))
-        setDefaultModel(providerId, "model-a")
-        setDefaultModel(providerId, "model-b")
-
-        val preferences = repository.observeModelPreferences(providerId).first()
-        assertEquals(2, preferences.size)
-        assertEquals(listOf("model-b"), preferences.filter { it.isDefault }.map { it.model })
-        assertEquals(setOf("model-a", "model-b"), preferences.filter { it.isFavorite }.map { it.model }.toSet())
-    }
-
-    @Test
     fun modelRolePreferences_storeOneModelPerProviderRole() = runTest {
         val repository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
         val providerId = ProviderId("provider-1")
@@ -369,39 +243,36 @@ class AiChatDatabaseTest {
         repository.setRoleModel(providerId, ModelRole.Image, "image-model")
         repository.setRoleModel(providerId, ModelRole.Chat, "updated-chat-model")
 
-        val preferences = repository.observeRolePreferences(providerId).first()
+        val preferences = repository.observeAllRolePreferences().first().filter { it.providerId == providerId }
         assertEquals(2, preferences.size)
-        assertEquals("updated-chat-model", repository.getRoleModel(providerId, ModelRole.Chat))
-        assertEquals("image-model", repository.getRoleModel(providerId, ModelRole.Image))
+        assertEquals("updated-chat-model", preferences.single { it.role == ModelRole.Chat }.model)
+        assertEquals("image-model", preferences.single { it.role == ModelRole.Image }.model)
 
         repository.setRoleModel(providerId, ModelRole.Image, "")
 
-        assertEquals(null, repository.getRoleModel(providerId, ModelRole.Image))
+        val updated = repository.observeAllRolePreferences().first().filter { it.providerId == providerId }
+        assertNull(updated.firstOrNull { it.role == ModelRole.Image }?.model)
     }
 
     @Test
-    fun providerConfigs_storeApiKeyRefOnlyAndDeleteSecretsWithPreferences() = runTest {
+    fun providerConfigs_storeApiKeyRefOnlyAndDeleteSecretsWithRolePreferences() = runTest {
         val secretStore = FakeSecretStore()
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),
-            database.modelPreferenceDao(),
             secretStore,
             clock,
             modelRolePreferenceDao = database.modelRolePreferenceDao(),
         )
-        val modelRepository = RoomModelPreferenceRepository(database.modelPreferenceDao(), clock)
         val modelRoleRepository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
         val providerId = ProviderId("provider-1")
         val saveProvider = SaveProviderConfigUseCase(providerRepository)
-        val deleteProvider = DeleteProviderConfigUseCase(providerRepository)
 
         saveProvider(
             provider = providerConfig(providerId),
             plaintextApiKey = "test-secret",
             allowInsecureHttp = false,
         )
-        SaveModelPreferenceUseCase(modelRepository)(modelPreference(providerId, "gpt-4.1-mini", favorite = true))
-        modelRoleRepository.setRoleModel(providerId, ModelRole.Tool, "gpt-tool")
+        modelRoleRepository.setRoleModel(providerId, ModelRole.Image, "gpt-image")
 
         val entity = database.providerConfigDao().getProvider(providerId.value)
         val savedProvider = providerRepository.getProvider(providerId)
@@ -412,26 +283,27 @@ class AiChatDatabaseTest {
         assertEquals("test-secret", providerRepository.getApiKey(providerId))
         assertFalse(entity.headersJson.contains("test-secret"))
         assertFalse(entity.headersJson.contains("Authorization", ignoreCase = true))
-        assertFalse(entity.headersJson.contains("anthropic-api-key", ignoreCase = true))
-        assertFalse(entity.headersJson.contains("x-goog-api-key", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("x-secret-key", ignoreCase = true))
+        assertFalse(entity.headersJson.contains("x-provider-key", ignoreCase = true))
         assertFalse(entity.headersJson.contains("cookie", ignoreCase = true))
         assertFalse(entity.headersJson.contains("x-auth-token", ignoreCase = true))
         assertTrue(entity.headersJson.contains("X-Trace"))
         assertEquals(listOf("gpt-4.1-mini"), savedProvider.models.map { it.id })
 
-        deleteProvider(providerId)
+        providerRepository.deleteProvider(providerId)
 
         assertNull(database.providerConfigDao().getProvider(providerId.value))
         assertNull(providerRepository.getApiKey(providerId))
-        assertEquals(emptyList<ModelPreference>(), modelRepository.observeModelPreferences(providerId).first())
-        assertEquals(emptyList<ModelRolePreference>(), modelRoleRepository.observeRolePreferences(providerId).first())
+        assertEquals(
+            emptyList<ModelRolePreference>(),
+            modelRoleRepository.observeAllRolePreferences().first().filter { it.providerId == providerId },
+        )
     }
 
     @Test
     fun providerConfigs_normalizeWhitespaceBeforePersisting() = runTest {
         val providerRepository = RoomProviderConfigRepository(
             database.providerConfigDao(),
-            database.modelPreferenceDao(),
             FakeSecretStore(),
             clock,
         )
@@ -456,31 +328,6 @@ class AiChatDatabaseTest {
         assertEquals(listOf("GPT-4.1 mini"), savedProvider.models.map { it.displayName })
         assertEquals("gpt-4.1-mini", savedProvider.defaultModel)
         assertEquals("test-secret", providerRepository.getApiKey(providerId))
-    }
-
-    @Test
-    fun toolResults_areStoredWithoutConversation() = runTest {
-        val repository = RoomToolInvocationRepository(database.toolInvocationDao())
-        val result = ToolResult(
-            id = ToolCallId("tool-call-1"),
-            toolName = "web_search",
-            permissionLevel = ToolPermissionLevel.Network,
-            inputSummary = "query: AI news",
-            output = ToolOutput.Json(
-                """{"query":"AI news","fetchedAt":"2026-05-31T00:00:00Z","results":[]}""",
-            ),
-            status = ToolStatus.Completed,
-            startedAt = clock.instant(),
-            finishedAt = clock.instant().plusSeconds(1),
-            error = null,
-            rawInputJson = """{"query":"AI news"}""",
-            rawOutputJson = """{"query":"AI news","fetchedAt":"2026-05-31T00:00:00Z","results":[]}""",
-            durationMs = 1_000,
-        )
-
-        repository.saveToolResult(conversationId = null, toolResult = result)
-
-        assertEquals(listOf(result), repository.observeToolInvocations().first())
     }
 
     @Test
@@ -553,23 +400,7 @@ class AiChatDatabaseTest {
             errorSummary = null,
             createdAt = clock.instant(),
             updatedAt = clock.instant(),
-            toolCallId = null,
             parentMessageId = null,
-        )
-
-    private fun modelPreference(
-        providerId: ProviderId,
-        model: String,
-        favorite: Boolean,
-    ): ModelPreference =
-        ModelPreference(
-            id = ModelPreferenceId("${providerId.value}:$model"),
-            providerId = providerId,
-            model = model,
-            isFavorite = favorite,
-            isDefault = false,
-            capability = null,
-            updatedAt = clock.instant(),
         )
 
     private fun providerConfig(providerId: ProviderId): ProviderConfig =
@@ -581,8 +412,8 @@ class AiChatDatabaseTest {
             apiKeyRef = null,
             headers = mapOf(
                 "Authorization" to "Bearer test-secret",
-                "anthropic-api-key" to "anthropic-secret",
-                "x-goog-api-key" to "goog-secret",
+                "x-secret-key" to "secret-value",
+                "x-provider-key" to "provider-secret",
                 "cookie" to "cookie-secret",
                 "x-auth-token" to "auth-token-secret",
                 "X-Trace" to "phase2",

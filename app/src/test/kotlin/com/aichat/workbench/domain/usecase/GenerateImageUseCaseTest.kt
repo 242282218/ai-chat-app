@@ -102,7 +102,7 @@ class GenerateImageUseCaseTest {
             useCase(validRequest(prompt = " "))
         }
 
-        assertEquals("图片 Prompt 不能为空。", error.message)
+        assertEquals("图片提示词不能为空。", error.message)
         assertEquals(emptyList<ImageGeneration>(), repository.saved.value)
         assertEquals(0, imageProvider.requests.size)
     }
@@ -117,7 +117,7 @@ class GenerateImageUseCaseTest {
             useCase(validRequest(model = " "))
         }
 
-        assertEquals("图片 Model 不能为空。", error.message)
+        assertEquals("图片模型不能为空。", error.message)
         assertEquals(emptyList<ImageGeneration>(), repository.saved.value)
         assertEquals(0, imageProvider.requests.size)
     }
@@ -247,7 +247,7 @@ class GenerateImageUseCaseTest {
         }
 
         assertEquals(ImageGenerationStatus.Cancelled, repository.saved.value.single().status)
-        assertEquals("已停止，Prompt 和参数已保留。", repository.saved.value.single().errorSummary)
+        assertEquals("已停止，提示词和参数已保留。", repository.saved.value.single().errorSummary)
     }
 
     private fun validRequest(

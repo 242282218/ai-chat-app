@@ -7,18 +7,16 @@ import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.repository.ConversationRepository
-import com.aichat.workbench.domain.repository.MessageSearchResult
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 class RoomConversationRepository(
     private val dao: ConversationDao,
     private val clock: Clock,
 ) : ConversationRepository {
-    override fun observeConversations(includeArchived: Boolean): Flow<List<Conversation>> =
-        dao.observeConversations(includeArchived).map { entities ->
+    override fun observeConversations(): Flow<List<Conversation>> =
+        dao.observeConversations().map { entities ->
             entities.map { it.toDomain() }
         }
 
@@ -31,10 +29,6 @@ class RoomConversationRepository(
 
     override suspend fun renameConversation(id: ConversationId, title: String) {
         dao.renameConversation(id.value, title.trim(), clock.millis())
-    }
-
-    override suspend fun archiveConversation(id: ConversationId) {
-        dao.archiveConversation(id.value, clock.millis())
     }
 
     override suspend fun deleteConversation(id: ConversationId) {
@@ -66,32 +60,4 @@ class RoomConversationRepository(
         dao.touchConversation(conversationId.value, clock.millis())
     }
 
-    override fun searchMessages(query: String, limit: Int): Flow<List<MessageSearchResult>> {
-        val normalized = query.toFtsQuery() ?: return flowOf(emptyList())
-        return dao.searchMessages(normalized, limit).map { entities ->
-            entities.map { entity ->
-                MessageSearchResult(
-                    conversation = entity.conversation.toDomain(),
-                    message = entity.message.toDomain(),
-                )
-            }
-        }
-    }
-
-    private fun String.toFtsQuery(): String? {
-        val tokens = trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return null
-        return tokens.joinToString(separator = " ") { token ->
-            // Escape FTS special characters to prevent query syntax errors
-            val escaped = token
-                .replace("\"", "\"\"")  // Escape double quotes
-                .replace("*", "")       // Remove asterisk (prefix matching operator)
-                .replace("-", "")       // Remove minus (exclusion operator)
-                .replace("^", "")       // Remove caret (anchor operator)
-                .replace("(", "")       // Remove open paren (grouping operator)
-                .replace(")", "")       // Remove close paren (grouping operator)
-                .replace(":", "")       // Remove colon (column filter)
-            "\"$escaped\""
-        }
-    }
 }

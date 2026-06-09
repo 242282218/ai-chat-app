@@ -13,6 +13,4 @@ data class ModelRolePreference(
 enum class ModelRole {
     Chat,
     Image,
-    Tool,
-    Code,
 }

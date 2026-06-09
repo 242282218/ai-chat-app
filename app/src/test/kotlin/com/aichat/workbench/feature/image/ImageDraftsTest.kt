@@ -77,9 +77,6 @@ class ImageDraftsTest {
                         text = true,
                         vision = false,
                         imageGeneration = false,
-                        toolCalling = false,
-                        structuredOutput = false,
-                        longContext = false,
                         maxContextTokens = null,
                     ),
                 ),
@@ -168,12 +165,11 @@ class ImageDraftsTest {
         ).toChatReferenceDraft()
 
         assertFalse(draft.contains("请基于这张图片继续处理"))
-        assertTrue(draft.contains("准备一个可重新发起的 image_generation 工具调用"))
+        assertTrue(draft.contains("准备一个可重新发起的图片生成请求"))
         assertTrue(draft.contains("不要假设图片已生成"))
-        assertTrue(draft.contains("工具：image_generation"))
         assertTrue(
             draft.contains(
-                """参数：{"prompt":"Draw a cabin","model":"gpt-image-1","size":"1024x1024","quality":"auto","count":1}""",
+                """请求参数：{"prompt":"Draw a cabin","model":"gpt-image-1","size":"1024x1024","quality":"auto","count":1}""",
             ),
         )
         assertTrue(draft.contains("Provider：provider-1"))
@@ -182,7 +178,7 @@ class ImageDraftsTest {
     }
 
     @Test
-    fun failedImageGenerationChatDraftEscapesPromptInToolInputJson() {
+    fun failedImageGenerationChatDraftEscapesPromptInRequestJson() {
         val draft = ImageGeneration(
             id = ImageGenerationId("image-3"),
             conversationId = null,
@@ -199,7 +195,7 @@ class ImageDraftsTest {
             createdAt = Instant.parse("2026-06-01T00:00:00Z"),
         ).toChatReferenceDraft()
 
-        assertTrue(draft.contains("""参数：{"prompt":"Draw \"quoted\"\ncat","count":4}"""))
+        assertTrue(draft.contains("""请求参数：{"prompt":"Draw \"quoted\"\ncat","count":4}"""))
         assertTrue(draft.contains("模型：未记录"))
         assertTrue(draft.contains("错误：未记录"))
     }
@@ -270,9 +266,6 @@ class ImageDraftsTest {
                 text = text,
                 vision = text,
                 imageGeneration = imageGeneration,
-                toolCalling = text,
-                structuredOutput = text,
-                longContext = text,
                 maxContextTokens = null,
             ),
         )

@@ -37,11 +37,9 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.domain.model.ToolCall
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
-import com.aichat.workbench.ui.markdown.CodeArtifact
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 
 @Composable
@@ -50,14 +48,10 @@ internal fun MessageBubble(
     message: Message,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
-    onGenerateDiff: (CodeArtifact) -> Unit,
 ) {
     val clipboardManager = LocalClipboardManager.current
     var expanded by rememberSaveable(message.id.value) {
-        mutableStateOf(
-            message.role != MessageRole.Tool ||
-                message.contentParts.any { it is MessagePart.Image },
-        )
+        mutableStateOf(true)
     }
 
     Box(
@@ -118,17 +112,8 @@ internal fun MessageBubble(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     } else if (message.content.isNotBlank()) {
-                        MarkdownMessageContent(
-                            text = message.content,
-                            onGenerateDiff = onGenerateDiff,
-                        )
+                        MarkdownMessageContent(text = message.content)
                     }
-                } else {
-                    Text(
-                        text = "工具详情已折叠",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
                 message.errorSummary?.let {
                     Text(
@@ -148,35 +133,6 @@ internal fun MessageBubble(
     }
 }
 
-internal fun CodeArtifact.diffPrompt(): String =
-    buildString {
-        appendLine("请基于下面这段代码准备修改方案，并用 code_diff_preview 生成 Diff 预览。")
-        appendLine("要求：先说明计划修改点，再按参数模板填充 modified；只展示 diff，不写入文件。")
-        language?.takeIf { it.isNotBlank() }?.let { appendLine("语言：$it") }
-        appendLine("工具：code_diff_preview")
-        appendLine("参数模板：")
-        appendLine("```json")
-        appendLine(
-            """{"fileName":"${language.toSnippetFileName()}","original":${content.jsonStringLiteral()},"modified":${content.jsonStringLiteral()}}""",
-        )
-        appendLine("```")
-        appendLine()
-        appendLine("```" + language.orEmpty())
-        appendLine(content)
-        appendLine("```")
-    }.trim()
-
-internal fun ToolCall.retryPrompt(): String =
-    buildString {
-        appendLine("请基于下面的工具调用参数重新规划并执行工具。")
-        appendLine("工具：$name")
-        appendLine("要求：如果参数有问题，先指出需要修改的字段；需要执行时重新发起工具调用。")
-        appendLine()
-        appendLine("```json")
-        appendLine(arguments.ifBlank { "{}" })
-        appendLine("```")
-    }.trim()
-
 @Composable
 private fun MessageHeader(
     message: Message,
@@ -186,19 +142,12 @@ private fun MessageHeader(
     Row(verticalAlignment = Alignment.CenterVertically) {
         MessageHeaderPills(message = message)
         Spacer(modifier = Modifier.weight(1f))
-        if (message.role == MessageRole.Tool) {
-            WorkbenchIconButton(
-                icon = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                label = if (expanded) "收起工具详情" else "展开工具详情",
-                onClick = onToggleExpanded,
-            )
-        }
     }
 }
 
 @Composable
 private fun MessageHeaderPills(message: Message) {
-    if (message.role == MessageRole.Tool || message.role == MessageRole.System) {
+    if (message.role == MessageRole.System) {
         StatusPill(
             text = message.role.displayLabel(),
             tone = message.roleTone(),
@@ -258,7 +207,6 @@ private fun messageContainerColor(message: Message) =
     when (message.role) {
         MessageRole.User -> MaterialTheme.colorScheme.primaryContainer
         MessageRole.Assistant -> Color.Transparent
-        MessageRole.Tool -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.42f)
         MessageRole.System -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
     }
 
@@ -267,14 +215,12 @@ private fun messageContentColor(message: Message) =
     when (message.role) {
         MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer
         MessageRole.Assistant -> MaterialTheme.colorScheme.onSurface
-        MessageRole.Tool -> MaterialTheme.colorScheme.onTertiaryContainer
         MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
 @Composable
 private fun messageContainerBorder(message: Message): BorderStroke? =
     when (message.role) {
-        MessageRole.Tool -> BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f))
         MessageRole.System -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f))
         MessageRole.User,
         MessageRole.Assistant,
@@ -286,7 +232,6 @@ private fun messageContainerElevation(message: Message) =
         MessageRole.User,
         MessageRole.Assistant,
         -> 0.dp
-        MessageRole.Tool,
         MessageRole.System,
         -> 1.dp
     }
@@ -295,7 +240,6 @@ private fun Message.containerWidthFraction(): Float =
     when (role) {
         MessageRole.User -> 0.88f
         MessageRole.Assistant -> 1f
-        MessageRole.Tool,
         MessageRole.System,
         -> 0.96f
     }
@@ -304,7 +248,6 @@ private fun Message.contentPadding(): PaddingValues =
     when (role) {
         MessageRole.Assistant -> PaddingValues(horizontal = 2.dp, vertical = 4.dp)
         MessageRole.User,
-        MessageRole.Tool,
         MessageRole.System,
         -> PaddingValues(14.dp)
     }
@@ -313,7 +256,6 @@ private fun Message.roleTone(): StatusTone =
     when (role) {
         MessageRole.User -> StatusTone.Accent
         MessageRole.Assistant -> StatusTone.Success
-        MessageRole.Tool -> StatusTone.Warning
         MessageRole.System -> StatusTone.Neutral
     }
 
@@ -327,20 +269,4 @@ private fun Message.statusTone(): StatusTone =
         MessageStatus.Draft,
         MessageStatus.Compressed,
         -> StatusTone.Accent
-    }
-
-private fun String?.toSnippetFileName(): String =
-    when (this?.trim()?.lowercase()) {
-        "kotlin", "kt" -> "snippet.kt"
-        "java" -> "snippet.java"
-        "typescript", "ts" -> "snippet.ts"
-        "javascript", "js" -> "snippet.js"
-        "python", "py" -> "snippet.py"
-        "go" -> "snippet.go"
-        "rust", "rs" -> "snippet.rs"
-        "swift" -> "snippet.swift"
-        "sql" -> "snippet.sql"
-        "json" -> "snippet.json"
-        "markdown", "md" -> "snippet.md"
-        else -> "snippet"
     }

@@ -53,16 +53,11 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.domain.model.ToolCall
-import com.aichat.workbench.ui.component.FileAttachMimeTypes
-import com.aichat.workbench.ui.component.InlineImageBubble
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MessageBubble as LinearMessageBubble
 import com.aichat.workbench.ui.component.StatusTone
-import com.aichat.workbench.ui.component.ToolCallPanel
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
-import com.aichat.workbench.ui.markdown.CodeArtifact
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,30 +69,19 @@ import org.koin.androidx.compose.koinViewModel
 fun ChatScreen(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
-    onOpenTools: () -> Unit = {},
     initialConversationId: ConversationId? = null,
     initialDraft: String = "",
-    initialTemporary: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var confirmArchiveConversation by rememberSaveable { mutableStateOf(false) }
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
     var confirmSendImages by rememberSaveable { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
-    var starterPromptLabel by rememberSaveable { mutableStateOf<String?>(null) }
     val controlSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        context.persistReadPermission(uri)
-        viewModel.attachFile(uri.toString())
-    }
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
@@ -125,8 +109,8 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(initialDraft, initialTemporary) {
-        viewModel.applyInitialDraft(initialDraft, initialTemporary)
+    LaunchedEffect(initialDraft) {
+        viewModel.applyInitialDraft(initialDraft)
     }
 
     Scaffold(
@@ -134,10 +118,7 @@ fun ChatScreen(
         topBar = {
             ChatTopBar(
                 state = state,
-                onBack = {
-                    viewModel.deleteTemporaryConversationOnExit()
-                    onBack()
-                },
+                onBack = onBack,
                 onOpenControls = { showControls = true },
             )
         },
@@ -149,56 +130,12 @@ fun ChatScreen(
         ) {
             MessageList(
                 messages = state.messages,
-                pendingToolCall = state.pendingToolCall,
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
-                onUseStarterPrompt = { prompt ->
-                    starterPromptLabel = prompt.label
-                    when (prompt.action) {
-                        ChatStarterAction.PlainText -> viewModel.updateInput(prompt.text)
-                        ChatStarterAction.WebSearch -> viewModel.prepareSearchTask(prompt.text)
-                        ChatStarterAction.ImageGeneration -> viewModel.regenerateImagePrompt(prompt.text)
-                        ChatStarterAction.LocalJs -> viewModel.prepareLocalJsTask(prompt.text)
-                        ChatStarterAction.FileRead -> filePickerLauncher.launch(FileAttachMimeTypes)
-                        ChatStarterAction.TextTransform -> viewModel.prepareTextTransformTask(prompt.text)
-                        ChatStarterAction.CodeDiffPreview -> viewModel.prepareCodeDiffPreviewTask(prompt.text)
-                    }
-                },
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
-                onConfirmToolCall = viewModel::confirmToolCall,
-                onDenyToolCall = viewModel::denyToolCall,
-                onToolArgumentsChange = viewModel::updatePendingToolArguments,
-                onCancelRunningTool = viewModel::stopGeneration,
-                onRetryToolWithArguments = { toolCall ->
-                    viewModel.updateInput(toolCall.retryPrompt())
-                },
-                onReuseImagePrompt = viewModel::reuseImagePrompt,
-                onRegenerateImagePrompt = viewModel::regenerateImagePrompt,
-                onContinueWithToolResult = viewModel::continueWithToolResult,
-                onRecoverLocalJsResult = viewModel::prepareLocalJsRecoveryTask,
-                onRecoverToolResult = viewModel::prepareToolRecoveryTask,
-                onChooseFile = { filePickerLauncher.launch(FileAttachMimeTypes) },
-                onGenerateDiff = { artifact ->
-                    viewModel.updateInput(artifact.diffPrompt())
-                },
-                onOpenTools = onOpenTools,
                 modifier = Modifier.weight(1f),
             )
-            state.pendingToolCall?.let { pending ->
-                ToolCallPanel(
-                    toolCall = pending.toolCall,
-                    result = null,
-                    isError = false,
-                    isPending = true,
-                    displayName = pending.displayName,
-                    permissionLevel = pending.permissionLevel,
-                    onApprove = viewModel::confirmToolCall,
-                    onDeny = viewModel::denyToolCall,
-                    onArgumentsChange = viewModel::updatePendingToolArguments,
-                    onCancelRunning = viewModel::stopGeneration,
-                )
-            }
             state.error?.let {
                 ChatErrorPanel(
                     message = it,
@@ -216,19 +153,10 @@ fun ChatScreen(
                 imageDrafts = state.imageDrafts,
                 isGenerating = state.isGenerating,
                 isEditing = state.editingMessageId != null,
-                starterPromptLabel = starterPromptLabel,
                 canSend = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
-                onInputChange = {
-                    starterPromptLabel = null
-                    viewModel.updateInput(it)
-                },
+                onInputChange = viewModel::updateInput,
                 onPickImage = { imagePickerLauncher.launch("image/*") },
-                onPickFile = { uri ->
-                    context.persistReadPermission(uri)
-                    viewModel.attachFile(uri.toString())
-                },
-                onClearFileTask = viewModel::clearAttachedFileTask,
                 onRemoveImage = viewModel::removeImageDraft,
                 onSend = {
                     if (shouldConfirmImageSend(state.imageDrafts)) {
@@ -256,10 +184,6 @@ fun ChatScreen(
                     showControls = false
                     confirmClearContext = true
                 },
-                onRequestArchiveConversation = {
-                    showControls = false
-                    confirmArchiveConversation = true
-                },
                 onRequestDeleteConversation = {
                     showControls = false
                     confirmDeleteConversation = true
@@ -267,20 +191,6 @@ fun ChatScreen(
                 modifier = Modifier.navigationBarsPadding(),
             )
         }
-    }
-
-    if (confirmArchiveConversation && selectedConversation != null) {
-        WorkbenchConfirmDialog(
-            title = "归档对话？",
-            message = "从当前会话列表隐藏「${selectedConversation.title}」。目前 App 内暂无恢复入口。",
-            confirmLabel = "归档",
-            onConfirm = {
-                confirmArchiveConversation = false
-                viewModel.archiveSelectedConversation()
-            },
-            onDismiss = { confirmArchiveConversation = false },
-            tone = StatusTone.Warning,
-        )
     }
 
     if (confirmDeleteConversation && selectedConversation != null) {
@@ -342,7 +252,7 @@ private fun ChatTopBar(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = chatSubtitle(state, selectedConversation),
+                    text = chatSubtitle(state),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -405,25 +315,10 @@ private fun ChatErrorPanel(
 @Composable
 private fun MessageList(
     messages: List<Message>,
-    pendingToolCall: PendingToolCall?,
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
-    onUseStarterPrompt: (ChatStarterPrompt) -> Unit,
     onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
     onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
-    onConfirmToolCall: () -> Unit,
-    onDenyToolCall: () -> Unit,
-    onToolArgumentsChange: (String) -> Unit,
-    onCancelRunningTool: () -> Unit,
-    onRetryToolWithArguments: (ToolCall) -> Unit,
-    onReuseImagePrompt: (String) -> Unit,
-    onRegenerateImagePrompt: (String) -> Unit,
-    onContinueWithToolResult: (String, String?) -> Unit,
-    onRecoverLocalJsResult: (String?) -> Unit,
-    onRecoverToolResult: (String, String?, String) -> Unit,
-    onChooseFile: () -> Unit,
-    onGenerateDiff: (CodeArtifact) -> Unit,
-    onOpenTools: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -436,7 +331,6 @@ private fun MessageList(
                 EmptyConversationPanel(
                     hasEnabledProvider = hasEnabledProvider,
                     onOpenProviders = onOpenProviders,
-                    onUseStarterPrompt = onUseStarterPrompt,
                 )
             }
         } else {
@@ -446,24 +340,8 @@ private fun MessageList(
                 } else {
                     MessageItem(
                         message = message,
-                        messages = messages,
-                        pendingToolCall = pendingToolCall,
                         onEdit = { onEdit(message.id) },
                         onRetry = { onRetry(message.id) },
-                        onConfirmToolCall = onConfirmToolCall,
-                        onDenyToolCall = onDenyToolCall,
-                        onToolArgumentsChange = onToolArgumentsChange,
-                        onCancelRunningTool = onCancelRunningTool,
-                        onRetryToolWithArguments = onRetryToolWithArguments,
-                        onReuseImagePrompt = onReuseImagePrompt,
-                        onRegenerateImagePrompt = onRegenerateImagePrompt,
-                        onContinueWithToolResult = onContinueWithToolResult,
-                        onRecoverLocalJsResult = onRecoverLocalJsResult,
-                        onRecoverToolResult = onRecoverToolResult,
-                        onChooseFile = onChooseFile,
-                        onOpenProviders = onOpenProviders,
-                        onOpenTools = onOpenTools,
-                        onGenerateDiff = onGenerateDiff,
                     )
                 }
             }
@@ -474,105 +352,18 @@ private fun MessageList(
 @Composable
 private fun MessageItem(
     message: Message,
-    messages: List<Message>,
-    pendingToolCall: PendingToolCall?,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
-    onConfirmToolCall: () -> Unit,
-    onDenyToolCall: () -> Unit,
-    onToolArgumentsChange: (String) -> Unit,
-    onCancelRunningTool: () -> Unit,
-    onRetryToolWithArguments: (ToolCall) -> Unit,
-    onReuseImagePrompt: (String) -> Unit,
-    onRegenerateImagePrompt: (String) -> Unit,
-    onContinueWithToolResult: (String, String?) -> Unit,
-    onRecoverLocalJsResult: (String?) -> Unit,
-    onRecoverToolResult: (String, String?, String) -> Unit,
-    onChooseFile: () -> Unit,
-    onOpenProviders: () -> Unit,
-    onOpenTools: () -> Unit,
-    onGenerateDiff: (CodeArtifact) -> Unit,
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     when {
-        message.role == MessageRole.Assistant && message.toolCalls.isNotEmpty() -> {
-            AssistantToolPlanMessage(
-                message = message,
-                pendingToolCall = pendingToolCall,
-                onConfirmToolCall = onConfirmToolCall,
-                onDenyToolCall = onDenyToolCall,
-                onToolArgumentsChange = onToolArgumentsChange,
-                onCancelRunningTool = onCancelRunningTool,
-                onGenerateDiff = onGenerateDiff,
-            )
-        }
-        message.role == MessageRole.Tool -> {
-            val pending = pendingToolCall?.takeIf { it.toolCall.id == message.toolCallId }
-            val toolCall = messages.findToolCall(message.toolCallId) ?: pending?.toolCall
-            if (toolCall != null) {
-                val toolResultText = message.toolResult ?: message.content.takeIf { it.isNotBlank() }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ToolCallPanel(
-                        toolCall = toolCall,
-                        result = toolResultText,
-                        isError = message.status == MessageStatus.Failed,
-                        isPending = pending != null,
-                        displayName = pending?.displayName,
-                        permissionLevel = pending?.permissionLevel,
-                        outcome = message.toolPanelOutcome(pending != null, toolResultText),
-                        onApprove = onConfirmToolCall,
-                        onDeny = onDenyToolCall,
-                        onArgumentsChange = onToolArgumentsChange,
-                        onCancelRunning = onCancelRunningTool,
-                        onRetryWithArguments = { onRetryToolWithArguments(toolCall) },
-                    )
-                    ToolStructuredResultCard(
-                        toolName = toolCall.name,
-                        toolResult = toolResultText,
-                        onContinue = onContinueWithToolResult,
-                        onRecoverLocalJs = onRecoverLocalJsResult,
-                        onRecoverTool = onRecoverToolResult,
-                        onChooseFile = onChooseFile,
-                        onOpenProviders = onOpenProviders,
-                        onOpenTools = onOpenTools,
-                    )
-                    ToolImageResultRow(message = message)
-                    ToolImageResultActions(
-                        message = message,
-                        onReusePrompt = onReuseImagePrompt,
-                        onRegenerate = onRegenerateImagePrompt,
-                    )
-                    ToolSearchCitationRow(
-                        toolName = toolCall.name,
-                        toolResult = toolResultText,
-                    )
-                }
-            } else {
-                MessageBubble(
-                    message = message,
-                    onEdit = onEdit,
-                    onRetry = onRetry,
-                    onGenerateDiff = onGenerateDiff,
-                )
-            }
-        }
-        message.role == MessageRole.Assistant &&
-            message.contentParts.any { it is MessagePart.Image } -> {
-            val image = message.contentParts.filterIsInstance<MessagePart.Image>().first()
-            InlineImageBubble(
-                imageUrl = image.uri,
-                prompt = message.content.ifBlank { "生成图片" },
-                isLoading = message.status == MessageStatus.Streaming,
-            )
-        }
         (message.role == MessageRole.User || message.role == MessageRole.Assistant) &&
             message.contentParts.isEmpty() &&
             message.errorSummary == null &&
             message.status == MessageStatus.Completed -> {
             LinearMessageBubble(
                 message = message,
-                onGenerateDiff = onGenerateDiff,
             )
             MessageActionRow(
                 message = message,
@@ -587,46 +378,7 @@ private fun MessageItem(
             message = message,
             onEdit = onEdit,
             onRetry = onRetry,
-            onGenerateDiff = onGenerateDiff,
         )
-    }
-}
-
-@Composable
-private fun AssistantToolPlanMessage(
-    message: Message,
-    pendingToolCall: PendingToolCall?,
-    onConfirmToolCall: () -> Unit,
-    onDenyToolCall: () -> Unit,
-    onToolArgumentsChange: (String) -> Unit,
-    onCancelRunningTool: () -> Unit,
-    onGenerateDiff: (CodeArtifact) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (message.content.isNotBlank() || message.contentParts.isNotEmpty() || message.errorSummary != null) {
-            MessageBubble(
-                message = message.copy(toolCalls = emptyList()),
-                onEdit = {},
-                onRetry = {},
-                onGenerateDiff = onGenerateDiff,
-            )
-        }
-        message.toolCalls.forEach { plannedCall ->
-            val pending = pendingToolCall?.takeIf { it.toolCall.id == plannedCall.id }
-            ToolCallPanel(
-                toolCall = pending?.toolCall ?: plannedCall,
-                result = null,
-                isError = false,
-                isPending = pending != null,
-                displayName = pending?.displayName,
-                permissionLevel = pending?.permissionLevel,
-                onApprove = onConfirmToolCall,
-                onDeny = onDenyToolCall,
-                onArgumentsChange = onToolArgumentsChange,
-                onCancelRunning = onCancelRunningTool,
-                isPlanOnly = pending == null,
-            )
-        }
     }
 }
 

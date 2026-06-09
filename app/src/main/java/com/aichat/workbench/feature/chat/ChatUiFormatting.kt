@@ -5,17 +5,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.provider.preferredModel
+import com.aichat.workbench.provider.preferredChatModel
 import com.aichat.workbench.ui.component.StatusTone
 
 internal fun Message.shouldShowHeader(): Boolean =
-    role == MessageRole.Tool ||
-        role == MessageRole.System ||
+    role == MessageRole.System ||
         status != MessageStatus.Completed
 
 @Composable
@@ -28,34 +26,21 @@ internal fun StatusTone.contentColor() =
         StatusTone.Critical -> MaterialTheme.colorScheme.error
     }
 
-internal fun chatSubtitle(
-    state: ChatUiState,
-    selectedConversation: Conversation?,
-): String {
+internal fun chatSubtitle(state: ChatUiState): String {
     val selectedProvider = selectedChatProvider(state)
-    val model = state.modelDraft.ifBlank { selectedProvider?.preferredModel().orEmpty() }
+    val model = selectedProvider?.preferredChatModel(state.modelRolePreferences).orEmpty()
     val providerText = selectedProvider?.let {
         if (model.isBlank()) it.name else "${it.name} / $model"
     } ?: "需要模型连接"
     val stateText = when {
         state.isGenerating -> "生成中"
-        selectedConversation?.isTemporary == true || state.temporaryDraft -> "临时会话"
-        selectedConversation?.isSensitive == true || state.sensitiveDraft -> "敏感会话"
         else -> null
     }
     return listOfNotNull(stateText, providerText).joinToString(" · ")
 }
 
-internal fun ChatUiState.shouldShowConversationMetadata(conversation: Conversation): Boolean =
-    selectedConversationMessageCount > 0 || conversation.isTemporary || conversation.isSensitive
-
-internal fun Conversation.chipStatusText(): String? =
-    when {
-        isSensitive && isTemporary -> "敏感 · 临时"
-        isSensitive -> "敏感"
-        isTemporary -> "临时"
-        else -> null
-    }
+internal fun ChatUiState.shouldShowConversationMetadata(): Boolean =
+    selectedConversationMessageCount > 0
 
 internal fun selectedChatProvider(state: ChatUiState) =
     state.selectedProviderId
@@ -67,7 +52,6 @@ internal fun MessageRole.displayLabel(): String =
         MessageRole.System -> "系统"
         MessageRole.User -> "用户"
         MessageRole.Assistant -> "助手"
-        MessageRole.Tool -> "工具"
     }
 
 internal fun MessageStatus.displayLabel(): String =
@@ -99,8 +83,3 @@ internal fun Context.persistReadPermission(uri: Uri) {
         )
     }
 }
-
-internal fun ModelParameterDraftStatus.tone(): StatusTone =
-    if (isValid) StatusTone.Neutral else StatusTone.Critical
-
-internal const val MAX_INLINE_SEARCH_CITATIONS = 5

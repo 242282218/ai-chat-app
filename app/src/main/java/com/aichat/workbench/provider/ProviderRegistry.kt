@@ -5,7 +5,6 @@ import com.aichat.workbench.domain.model.ProviderCapabilities
 import com.aichat.workbench.domain.model.ProviderDescriptor
 import com.aichat.workbench.domain.model.ProviderModelDiscovery
 import com.aichat.workbench.domain.model.ProviderModelDiscoveryFormat
-import com.aichat.workbench.domain.model.ProviderProtocol
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.api.ChatProvider
 
@@ -48,22 +47,16 @@ class ProviderRegistry {
             supportsCustomBaseUrl = true,
             defaultBaseUrl = null,
             modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-            protocol = ProviderProtocol.OpenAiChatCompletions,
             capabilities = ProviderCapabilities(
                 text = true,
                 vision = false,
                 imageGeneration = false,
-                toolCalling = false,
-                structuredOutput = false,
-                longContext = false,
             ),
         )
 
     companion object {
         fun builtInDescriptor(type: ProviderType): ProviderDescriptor? =
             builtInDescriptorList.firstOrNull { it.type == type }
-
-        fun builtInDescriptors(): List<ProviderDescriptor> = builtInDescriptorList
 
         fun supportedBuiltInChatDescriptors(): List<ProviderDescriptor> =
             builtInDescriptorList.filter { it.type in supportedBuiltInChatProviderTypes }
@@ -85,9 +78,6 @@ class ProviderRegistry {
             text = true,
             vision = true,
             imageGeneration = true,
-            toolCalling = true,
-            structuredOutput = true,
-            longContext = true,
         )
 
         private val builtInDescriptorList = listOf(
@@ -98,7 +88,6 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = false,
                 defaultBaseUrl = "https://api.openai.com/v1",
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiResponses,
                 capabilities = openAiCapabilities,
             ),
             ProviderDescriptor(
@@ -108,14 +97,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = null,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiChatCompletions,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = false,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
                 ),
             ),
             ProviderDescriptor(
@@ -125,14 +110,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = null,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiChatCompletions,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = true,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
                 ),
             ),
             ProviderDescriptor(
@@ -142,14 +123,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = null,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiChatCompletions,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = true,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
                 ),
             ),
             ProviderDescriptor(
@@ -159,14 +136,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = null,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiChatCompletions,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = true,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
                 ),
             ),
             ProviderDescriptor(
@@ -176,48 +149,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = "https://openrouter.ai/api/v1",
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
-                protocol = ProviderProtocol.OpenAiChatCompletions,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = false,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
-                ),
-            ),
-            ProviderDescriptor(
-                type = ProviderType.Anthropic,
-                displayName = "Anthropic",
-                authMode = ProviderAuthMode.ApiKey,
-                supportsCustomBaseUrl = true,
-                defaultBaseUrl = "https://api.anthropic.com/v1",
-                modelDiscovery = null,
-                protocol = ProviderProtocol.AnthropicMessages,
-                capabilities = ProviderCapabilities(
-                    text = true,
-                    vision = true,
-                    imageGeneration = false,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
-                ),
-            ),
-            ProviderDescriptor(
-                type = ProviderType.Gemini,
-                displayName = "Gemini",
-                authMode = ProviderAuthMode.ApiKey,
-                supportsCustomBaseUrl = true,
-                defaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta",
-                modelDiscovery = null,
-                protocol = ProviderProtocol.GeminiGenerateContent,
-                capabilities = ProviderCapabilities(
-                    text = true,
-                    vision = true,
-                    imageGeneration = false,
-                    toolCalling = true,
-                    structuredOutput = true,
-                    longContext = true,
                 ),
             ),
             ProviderDescriptor(
@@ -227,14 +162,10 @@ class ProviderRegistry {
                 supportsCustomBaseUrl = true,
                 defaultBaseUrl = "http://10.0.2.2:11434",
                 modelDiscovery = ProviderModelDiscovery("/api/tags", ProviderModelDiscoveryFormat.OllamaTags),
-                protocol = ProviderProtocol.OllamaOpenAiCompatible,
                 capabilities = ProviderCapabilities(
                     text = true,
                     vision = true,
                     imageGeneration = false,
-                    toolCalling = false,
-                    structuredOutput = false,
-                    longContext = true,
                 ),
             ),
         )
