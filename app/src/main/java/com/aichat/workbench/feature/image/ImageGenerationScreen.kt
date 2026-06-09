@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationStatus
+import com.aichat.workbench.ui.component.EmptyState
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietSectionHeader
@@ -138,7 +139,11 @@ fun ImageGenerationScreen(
             }
             if (state.generations.isEmpty()) {
                 item {
-                    EmptyImageLibraryState()
+                    EmptyState(
+                        icon = Icons.Filled.Image,
+                        title = "暂无图片",
+                        message = "在上方输入提示词生成图片",
+                    )
                 }
             } else {
                 items(state.generations, key = { it.id.value }) { generation ->
@@ -165,36 +170,6 @@ fun ImageGenerationScreen(
                 viewModel.clearHistory()
             },
             onDismiss = { confirmClearHistory = false },
-        )
-    }
-}
-
-@Composable
-private fun EmptyImageLibraryState(
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Image,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(28.dp),
-        )
-        Text(
-            text = "还没有图片",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            text = "生成后的结果会在这里按时间保存。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
