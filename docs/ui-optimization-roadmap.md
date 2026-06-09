@@ -70,4 +70,22 @@
 - [ ] 优化 Provider 设置的复杂表单
 - [ ] 添加加载动画和状态转换
 
+### 2026-06-10 审查 #3
+- ✅ 添加列表项动画：消息列表和会话列表
+- ✅ 使用 .animateItem() 实现 Material Design 动效
+- ✅ 测试通过：单元测试全部通过
+- ✅ 提交：commit 70a1d70
+
+#### 技术细节
+- 消息列表：LazyColumn items 添加 animateItem()
+- 会话列表：LazyColumn items 添加 animateItem()
+- 符合 Material Design 运动原则
+
+#### 下一步优化方向
+- [ ] 简化 Provider 设置表单（当前 1305 行）
+- [ ] 优化键盘处理和输入体验
+- [ ] 增强离线状态反馈
+- [ ] 添加骨架屏加载状态
+
+
 
