@@ -108,12 +108,16 @@ fun ConversationsScreen(
                 )
             } else {
                 LazyColumn {
-                    items(state.recentConversations, key = { it.id.value }) { conversation ->
+                    items(
+                        state.recentConversations,
+                        key = { it.id.value },
+                    ) { conversation ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onConversationClick(conversation.id) }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .animateItem(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {

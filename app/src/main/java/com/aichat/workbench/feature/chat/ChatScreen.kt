@@ -334,16 +334,16 @@ private fun MessageList(
                 )
             }
         } else {
-            items(messages, key = { it.id.value }) { message ->
-                if (message.status == MessageStatus.Compressed) {
-                    CompressedMessagesCard(message = message)
-                } else {
-                    MessageItem(
-                        message = message,
-                        onEdit = { onEdit(message.id) },
-                        onRetry = { onRetry(message.id) },
-                    )
-                }
+            items(
+                messages,
+                key = { it.id.value },
+            ) { message ->
+                MessageItem(
+                    message = message,
+                    onEdit = { onEdit(message.id) },
+                    onRetry = { onRetry(message.id) },
+                    modifier = Modifier.animateItem(),
+                )
             }
         }
     }
@@ -354,9 +354,15 @@ private fun MessageItem(
     message: Message,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
+
+    if (message.status == MessageStatus.Compressed) {
+        CompressedMessagesCard(message = message)
+        return
+    }
     when {
         (message.role == MessageRole.User || message.role == MessageRole.Assistant) &&
             message.contentParts.isEmpty() &&
