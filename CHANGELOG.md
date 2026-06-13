@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.27.0
+
+- Bumped Android application version to `0.27.0` / version code `29`.
+- Redesigned theme to Forest Green/Sage color scheme with full Typography definition.
+- Added message search with highlight and navigation in chat screen.
+- Added swipe-to-delete for conversations and delete confirmation for messages.
+- Added typing indicator animation with reduce-motion accessibility support.
+- Added assistant/user avatars and copy state feedback (copied/failed).
+- Refactored conversations list with preview (last message + relative time), empty state guidance, and provider availability prompt.
+- Split image generation screen into dedicated Form and Library components.
+- Improved navigation transitions with refined animation parameters.
+- Added ConversationWithPreview DAO query for efficient conversation list loading.
+- Added SyntaxHighlighter for code blocks in markdown rendering.
+- Removed deprecated WorkbenchComponents, StateComponents, InlineImageBubble.
+
 ## v0.23.0
 
 - Bumped Android application version to `0.23.0` / version code `24`.
