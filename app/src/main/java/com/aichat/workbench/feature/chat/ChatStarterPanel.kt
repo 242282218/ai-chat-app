@@ -1,73 +1,86 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.aichat.workbench.ui.component.StatusPill
-import com.aichat.workbench.ui.component.StatusTone
-import com.aichat.workbench.ui.component.WorkbenchPanel
 
 @Composable
 internal fun EmptyConversationPanel(
     hasEnabledProvider: Boolean,
     onOpenProviders: () -> Unit,
 ) {
-    WorkbenchPanel(
-        title = if (hasEnabledProvider) "开始新的会话" else "先连接模型",
-        description = if (hasEnabledProvider) {
-            "直接输入消息，也可以添加图片一起发送。"
-        } else {
-            "添加模型连接后，请求会从本机直接发送到你的接口地址。"
-        },
-        icon = Icons.AutoMirrored.Filled.Chat,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 48.dp),
-        trailing = {
-            StatusPill(
-                text = if (hasEnabledProvider) "可发送" else "待配置",
-                tone = if (hasEnabledProvider) StatusTone.Success else StatusTone.Warning,
-            )
-        },
+            .padding(top = 80.dp, start = 32.dp, end = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(modifier = Modifier.size(20.dp))
+        Text(
+            text = if (hasEnabledProvider) "开始新的对话" else "连接模型",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = if (hasEnabledProvider) {
+                "发送消息开始聊天\n也可以添加图片一起发送"
+            } else {
+                "添加模型连接后\n请求会从本机直接发送到你的接口"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
         if (!hasEnabledProvider) {
-            Button(
-                onClick = onOpenProviders,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(imageVector = Icons.Filled.Tune, contentDescription = null)
+            Spacer(modifier = Modifier.size(24.dp))
+            Button(onClick = onOpenProviders) {
+                Icon(
+                    imageVector = Icons.Filled.Tune,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "配置模型连接")
             }
-        } else {
-            QuickCapabilityRow()
-        }
-    }
-}
-
-@Composable
-private fun QuickCapabilityRow() {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            StatusPill(text = "文字聊天", tone = StatusTone.Success)
-        }
-        item {
-            StatusPill(text = "图片输入", tone = StatusTone.Warning)
-        }
-        item {
-            StatusPill(text = "图片生成", tone = StatusTone.Accent)
         }
     }
 }

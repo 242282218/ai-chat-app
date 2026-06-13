@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -50,7 +50,7 @@ class ConversationCompactorTest {
             message("recent", "recent content", createdAtOffset = 3),
         )
 
-        val context = compactor.compactIfNeeded(
+        val context = compactor.build(
             conversation = conversation,
             provider = provider(maxContextTokens = 1_000),
             apiKey = "key",
@@ -78,7 +78,7 @@ class ConversationCompactorTest {
             )
         }
 
-        val context = compactor.compactIfNeeded(
+        val context = compactor.build(
             conversation = conversation,
             provider = provider(maxContextTokens = 90),
             apiKey = "key",
@@ -191,6 +191,10 @@ private class CompactingConversationRepository : ConversationRepository {
         savedMessages += message
         messages.value = messages.value.filterNot { it.id == message.id } + message
     }
+
+    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) = Unit
+
+    override fun observeConversationsWithPreview(): kotlinx.coroutines.flow.Flow<List<com.aichat.workbench.domain.model.ConversationPreview>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
     override suspend fun deleteMessages(conversationId: ConversationId) {
         messages.value = emptyList()

@@ -2,7 +2,7 @@
     <style name="Theme.AiChat" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#101418</item>
-        <item name="android:statusBarColor">#101418</item>
+        <item name="android:navigationBarColor">#FF0E110F</item>
+        <item name="android:statusBarColor">#FF0E110F</item>
     </style>
 </resources>

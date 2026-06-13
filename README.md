@@ -39,7 +39,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 图片生成配置：
 
-- 在设置页添加一个支持图片生成的 Provider，例如 New API 或自定义兼容接口。
+- 在底部“模型”页添加一个支持图片生成的 Provider，例如 New API 或自定义兼容接口。
 - `API_BASE_URL` 对应 Provider 的 Base URL；根地址会自动规范化为 `/v1`。
 - `IMAGE_API_KEY` 对应该图片 Provider 的 API Key，保存到 Android Keystore 支持的本地安全存储。
 - 图片生成固定调用 OpenAI-compatible `POST /v1/images/generations`，聊天 Provider 和图片 Provider 可以分开配置。

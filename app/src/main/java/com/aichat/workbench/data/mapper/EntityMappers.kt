@@ -1,11 +1,13 @@
-package com.aichat.workbench.data.mapper
+﻿package com.aichat.workbench.data.mapper
 
 import com.aichat.workbench.data.local.entity.ConversationEntity
+import com.aichat.workbench.data.local.entity.ConversationWithPreview
 import com.aichat.workbench.data.local.entity.ImageGenerationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.local.entity.ModelRolePreferenceEntity
 import com.aichat.workbench.data.local.entity.ProviderConfigEntity
 import com.aichat.workbench.domain.model.Conversation
+import com.aichat.workbench.domain.model.ConversationPreview
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
@@ -243,3 +245,13 @@ private data class NormalizedLegacyMessageContent(
 private val LEGACY_INLINE_IMAGE_MARKDOWN = Regex("""!\[[^\]]*]\(([^)\r\n]+)\)""")
 private val LEGACY_INLINE_IMAGE_WHITESPACE = Regex("""(\s*\n){3,}""")
 private val WINDOWS_ABSOLUTE_PATH = Regex("""^[A-Za-z]:[\\/].+""")
+
+fun ConversationWithPreview.toPreview(): ConversationPreview = ConversationPreview(
+    id = ConversationId(id),
+    title = title,
+    createdAt = java.time.Instant.ofEpochMilli(createdAt),
+    updatedAt = java.time.Instant.ofEpochMilli(updatedAt),
+    defaultProviderId = defaultProviderId?.let(::ProviderId),
+    lastMessageContent = lastMessageContent,
+    lastMessageRole = lastMessageRole,
+)

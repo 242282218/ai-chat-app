@@ -278,6 +278,7 @@ class ProviderDraftsTest {
         assertEquals(1, stats.httpCount)
         assertEquals(1, stats.customHeaderCount)
         assertEquals(1, stats.unsupportedEnabledCount)
+        assertEquals(1, stats.imageCapableCount)
     }
 
     @Test

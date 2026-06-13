@@ -279,6 +279,53 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun regenerateFromHistoryFallsBackWhenStoredProviderIsDisabled() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val enabledProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "openai-key-ref")
+        val disabledHistoryProvider = provider(
+            id = "history-provider",
+            type = ProviderType.OpenAI,
+            apiKeyRef = "history-key-ref",
+            enabled = false,
+        )
+        val imageProvider = RecordingImageProvider(
+            response = ImageGenerationProviderResponse(
+                images = listOf(base64Image(byteArrayOf(3))),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(enabledProvider, disabledHistoryProvider),
+                apiKeys = mapOf(
+                    enabledProvider.id to "openai-key",
+                    disabledHistoryProvider.id to "history-key",
+                ),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+        viewModel.selectProvider(enabledProvider.id.value)
+        advanceUntilIdle()
+
+        viewModel.regenerate(
+            imageGeneration().copy(
+                prompt = "Draw a disabled provider scene",
+                providerId = disabledHistoryProvider.id,
+                model = "history-image-model",
+            ),
+        )
+        advanceUntilIdle()
+
+        val request = imageProvider.requests.single()
+        assertEquals(enabledProvider.id, request.provider.id)
+        assertEquals("openai-key", request.apiKey)
+        assertEquals("gpt-image-1", request.model)
+        assertEquals(enabledProvider.id.value, viewModel.state.value.selectedProviderId)
+    }
+
+    @Test
     fun generateProviderRateLimitShowsRecoverySummaryInPageError() = runTest(mainDispatcherRule.testDispatcher) {
         val repository = FakeImageGenerationRepository(emptyList())
         val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
@@ -670,6 +717,7 @@ class ImageGenerationViewModelTest {
         apiKeyRef: String? = null,
         defaultModel: String = "$id-model",
         models: List<ModelConfig> = emptyList(),
+        enabled: Boolean = true,
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId(id),
@@ -680,7 +728,7 @@ class ImageGenerationViewModelTest {
             headers = emptyMap(),
             models = models,
             defaultModel = defaultModel,
-            enabled = true,
+            enabled = enabled,
         )
 
     private fun model(

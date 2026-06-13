@@ -1,10 +1,11 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
 import com.aichat.workbench.app.AppDispatchers
 import com.aichat.workbench.app.ApplicationScope
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.ConversationPreview
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.model.Message
@@ -46,6 +47,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestDispatcher
@@ -334,6 +336,41 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun retryMessageSendsHistoryBeforeCancelledMessage() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        val user = message(conversation.id, MessageRole.User, "Question", MessageStatus.Completed)
+        val cancelled = message(
+            conversationId = conversation.id,
+            role = MessageRole.Assistant,
+            content = "partial",
+            status = MessageStatus.Cancelled,
+            providerId = openAi.id,
+            model = "cancelled-model",
+            errorSummary = "已停止，已保留当前回复内容。",
+        )
+        conversationRepository.seed(conversation, listOf(user, cancelled))
+        val chatProvider = RecordingChatProvider(
+            flowOf(ProviderStreamEvent.TextDelta("Retried"), ProviderStreamEvent.Completed),
+        )
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = chatProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.retryMessage(cancelled.id)
+        advanceUntilIdle()
+
+        val request = chatProvider.requests.single()
+        assertEquals(listOf(ProviderChatMessage(MessageRole.User, "Question")), request.messages)
+        assertEquals("cancelled-model", request.model)
+        assertTrue(conversationRepository.allMessages().any { it.parentMessageId == cancelled.id && it.content == "Retried" })
+    }
+
+    @Test
     fun generationStateStaysActiveUntilStreamCompletes() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)
@@ -422,6 +459,122 @@ class ChatViewModelTest : KoinTest {
         assertEquals("已停止，已保留当前回复内容。", assistant.errorSummary)
     }
 
+
+    @Test
+    fun toggleSearchActivatesAndDeactivates() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        conversationRepository.seed(conversation, emptyList())
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isSearchActive)
+
+        viewModel.toggleSearch()
+        assertTrue(viewModel.state.value.isSearchActive)
+
+        viewModel.toggleSearch()
+        assertFalse(viewModel.state.value.isSearchActive)
+    }
+
+    @Test
+    fun updateSearchQueryResetsMatchIndex() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        conversationRepository.seed(conversation, listOf(
+            message(conversation.id, MessageRole.User, "hello world", MessageStatus.Completed),
+            message(conversation.id, MessageRole.Assistant, "hello there", MessageStatus.Completed),
+        ))
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateSearchQuery("hello")
+        assertEquals(0, viewModel.state.value.currentMatchIndex)
+
+        viewModel.navigateMatch(1)
+        assertEquals(1, viewModel.state.value.currentMatchIndex)
+
+        viewModel.updateSearchQuery("world")
+        assertEquals(0, viewModel.state.value.currentMatchIndex)
+    }
+
+    @Test
+    fun navigateMatchWithNoResultsIsNoop() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        conversationRepository.seed(conversation, listOf(
+            message(conversation.id, MessageRole.User, "hello", MessageStatus.Completed),
+        ))
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.updateSearchQuery("zzzzz")
+        assertEquals(0, viewModel.state.value.currentMatchIndex)
+        assertEquals(0, viewModel.state.value.searchMatchCount)
+
+        viewModel.navigateMatch(1)
+        assertEquals(0, viewModel.state.value.currentMatchIndex)
+    }
+    @Test
+    fun deleteMessageRemovesFromRepository() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        val userMsg = message(conversation.id, MessageRole.User, "hello", MessageStatus.Completed)
+        val assistantMsg = message(conversation.id, MessageRole.Assistant, "hi there", MessageStatus.Completed)
+        conversationRepository.seed(conversation, listOf(userMsg, assistantMsg))
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.deleteMessage(assistantMsg.id)
+        advanceUntilIdle()
+
+        val remaining = conversationRepository.allMessages()
+        assertEquals(1, remaining.size)
+        assertEquals(userMsg.id, remaining[0].id)
+    }
+
+    @Test
+    fun deleteMessageSkipsStreamingMessage() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val conversation = conversation(defaultProviderId = openAi.id)
+        val userMsg = message(conversation.id, MessageRole.User, "hello", MessageStatus.Completed)
+        val streamingMsg = message(conversation.id, MessageRole.Assistant, "", MessageStatus.Streaming)
+        conversationRepository.seed(conversation, listOf(userMsg, streamingMsg))
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = RecordingChatProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.deleteMessage(streamingMsg.id)
+        advanceUntilIdle()
+
+        val remaining = conversationRepository.allMessages()
+        assertEquals(2, remaining.size)
+    }
+
     private fun startViewModel(
         conversationRepository: ConversationRepository,
         providerRepository: ProviderConfigRepository,
@@ -462,7 +615,7 @@ class ChatViewModelTest : KoinTest {
                         GenerationController(
                             conversationRepository = get(),
                             providerRepository = get(),
-                            conversationCompactor = ConversationCompactor(get(), get()),
+                            contextProvider = ConversationCompactor(get(), get()),
                             providerRegistry = get(),
                             clock = get(),
                         )
@@ -702,6 +855,28 @@ private class FakeConversationRepository(
     override suspend fun deleteMessages(conversationId: ConversationId) {
         messages.getOrPut(conversationId) { MutableStateFlow(emptyList()) }.value = emptyList()
     }
+
+    override suspend fun deleteMessage(messageId: MessageId) {
+        for ((_, flow) in messages) {
+            val current = flow.value
+            flow.value = current.filterNot { it.id == messageId }
+        }
+    }
+
+    override fun observeConversationsWithPreview(): Flow<List<ConversationPreview>> =
+        conversations.map { list ->
+            list.map { c ->
+                ConversationPreview(
+                    id = c.id,
+                    title = c.title,
+                    createdAt = c.createdAt,
+                    updatedAt = c.updatedAt,
+                    defaultProviderId = c.defaultProviderId,
+                    lastMessageContent = null,
+                    lastMessageRole = null,
+                )
+            }
+        }
 }
 
 private class FakeImageGenerationPreferencesRepository : ImageGenerationPreferencesRepository {

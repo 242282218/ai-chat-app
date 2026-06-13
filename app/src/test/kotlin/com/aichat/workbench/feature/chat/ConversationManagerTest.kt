@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -139,6 +139,10 @@ private class ConversationManagerRepository(
         val flow = messages.getOrPut(message.conversationId) { MutableStateFlow(emptyList()) }
         flow.value = flow.value.filterNot { it.id == message.id } + message
     }
+
+    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) = Unit
+
+    override fun observeConversationsWithPreview(): kotlinx.coroutines.flow.Flow<List<com.aichat.workbench.domain.model.ConversationPreview>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
     override suspend fun deleteMessages(conversationId: ConversationId) {
         messages.getOrPut(conversationId) { MutableStateFlow(emptyList()) }.value = emptyList()

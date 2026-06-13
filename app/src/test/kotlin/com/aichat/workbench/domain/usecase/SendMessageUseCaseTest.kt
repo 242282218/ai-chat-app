@@ -1,4 +1,4 @@
-package com.aichat.workbench.domain.usecase
+﻿package com.aichat.workbench.domain.usecase
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -268,6 +268,10 @@ private class CountingConversationRepository : ConversationRepository {
     override suspend fun saveMessage(message: Message) {
         savedMessages += message
     }
+
+    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) = Unit
+
+    override fun observeConversationsWithPreview(): kotlinx.coroutines.flow.Flow<List<com.aichat.workbench.domain.model.ConversationPreview>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
     override suspend fun deleteMessages(conversationId: ConversationId) = Unit
 }

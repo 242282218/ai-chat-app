@@ -1,6 +1,7 @@
-package com.aichat.workbench.navigation
+﻿package com.aichat.workbench.navigation
 
 import android.net.Uri
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -51,10 +52,27 @@ fun AppNavHost() {
             navController = navController,
             startDestination = AppDestination.Conversations.route,
             modifier = Modifier.padding(innerPadding),
-            enterTransition = { slideInHorizontally { it / 5 } + fadeIn() },
-            exitTransition = { fadeOut() },
-            popEnterTransition = { slideInHorizontally { -it / 5 } + fadeIn() },
-            popExitTransition = { slideOutHorizontally { it / 5 } + fadeOut() },
+            enterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { it / 4 },
+                    animationSpec = tween(280),
+                ) + fadeIn(animationSpec = tween(200))
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(180))
+            },
+            popEnterTransition = {
+                slideInHorizontally(
+                    initialOffsetX = { -it / 4 },
+                    animationSpec = tween(280),
+                ) + fadeIn(animationSpec = tween(200))
+            },
+            popExitTransition = {
+                slideOutHorizontally(
+                    targetOffsetX = { it / 4 },
+                    animationSpec = tween(280),
+                ) + fadeOut(animationSpec = tween(180))
+            },
         ) {
             composable(AppDestination.Conversations.route) {
                 ConversationsScreen(
@@ -62,6 +80,7 @@ fun AppNavHost() {
                         navController.navigateToNewChat(draft, draftHandoffRepository)
                     },
                     onConversationClick = navController::navigateToConversation,
+                    onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
                 )
             }
             composable(AppDestination.ImageGen.route) {
@@ -71,13 +90,11 @@ fun AppNavHost() {
                     onSendToChat = { draft ->
                         navController.navigateToNewChat(draft, draftHandoffRepository)
                     },
-                    showBackButton = false,
                 )
             }
             composable(AppDestination.Settings.route) {
                 ProviderSettingsScreen(
                     onBack = { navController.popBackStack() },
-                    showBackButton = false,
                 )
             }
 

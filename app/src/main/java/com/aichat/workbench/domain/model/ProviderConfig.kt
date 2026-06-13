@@ -52,7 +52,6 @@ data class ProviderDescriptor(
 enum class ProviderAuthMode {
     ApiKey,
     None,
-    CustomHeader,
 }
 
 data class ProviderModelDiscovery(

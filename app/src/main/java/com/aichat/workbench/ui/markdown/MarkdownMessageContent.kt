@@ -1,17 +1,19 @@
 package com.aichat.workbench.ui.markdown
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -19,15 +21,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import com.aichat.workbench.feature.chat.CopyState
+import com.aichat.workbench.feature.chat.rememberCopyState
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 
 @Composable
@@ -35,6 +47,7 @@ fun MarkdownMessageContent(
     text: String,
     modifier: Modifier = Modifier,
     parser: MarkdownBlockParser = DefaultMarkdownBlockParser.instance,
+    highlightQuery: String = "",
 ) {
     val blocks = remember(text, parser) { parser.parse(text) }
     Column(
@@ -42,7 +55,7 @@ fun MarkdownMessageContent(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         blocks.forEach { block ->
-            MarkdownBlockContent(block = block)
+            MarkdownBlockContent(block = block, highlightQuery = highlightQuery)
         }
     }
 }
@@ -50,78 +63,122 @@ fun MarkdownMessageContent(
 @Composable
 private fun MarkdownBlockContent(
     block: MarkdownBlock,
+    highlightQuery: String,
 ) {
     when (block) {
-        is MarkdownBlock.Paragraph -> ParagraphText(block.text)
-        is MarkdownBlock.Heading -> HeadingText(block)
-        is MarkdownBlock.CodeBlock -> CodeBlockContent(block)
-        is MarkdownBlock.LatexBlock -> LatexBlockContent(block)
-        is MarkdownBlock.Quote -> QuoteContent(block)
-        is MarkdownBlock.BulletList -> BulletListContent(block)
-        is MarkdownBlock.OrderedList -> OrderedListContent(block)
-        is MarkdownBlock.Table -> TableContent(block)
+        is MarkdownBlock.Paragraph -> ParagraphText(block.text, highlightQuery)
+        is MarkdownBlock.Heading -> HeadingText(block, highlightQuery)
+        is MarkdownBlock.CodeBlock -> CodeBlockContent(block, highlightQuery)
+        is MarkdownBlock.LatexBlock -> LatexBlockContent(block, highlightQuery)
+        is MarkdownBlock.Quote -> QuoteContent(block, highlightQuery)
+        is MarkdownBlock.BulletList -> BulletListContent(block, highlightQuery)
+        is MarkdownBlock.OrderedList -> OrderedListContent(block, highlightQuery)
+        is MarkdownBlock.Table -> TableContent(block, highlightQuery)
         MarkdownBlock.Divider -> HorizontalDivider()
     }
 }
 
+// ---- Highlight utility ----
+
 @Composable
-private fun ParagraphText(text: String) {
+private fun rememberHighlightedText(text: String, query: String): AnnotatedString {
+    val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    return remember(text, query, highlightBg) {
+        if (query.isBlank()) AnnotatedString(text)
+        else buildHighlightedAnnotatedString(text, query, highlightBg.hashCode())
+    }
+}
+
+private fun buildHighlightedAnnotatedString(
+    text: String,
+    query: String,
+    highlightColor: Int,
+): AnnotatedString = buildAnnotatedString {
+    val lowerText = text.lowercase()
+    val lowerQuery = query.lowercase()
+    var pos = 0
+    while (pos < text.length) {
+        val matchIndex = lowerText.indexOf(lowerQuery, pos)
+        if (matchIndex < 0) {
+            append(text.substring(pos))
+            break
+        }
+        if (matchIndex > pos) {
+            append(text.substring(pos, matchIndex))
+        }
+        withStyle(SpanStyle(background = androidx.compose.ui.graphics.Color(highlightColor))) {
+            append(text.substring(matchIndex, matchIndex + query.length))
+        }
+        pos = matchIndex + query.length
+    }
+}
+
+// ---- Block composables ----
+
+@Composable
+private fun ParagraphText(text: String, highlightQuery: String) {
+    val annotated = rememberHighlightedText(text, highlightQuery)
     SelectionContainer {
         Text(
-            text = text,
+            text = annotated,
             style = MaterialTheme.typography.bodyLarge,
-        )
-    }
-}
-
-@Composable
-private fun HeadingText(block: MarkdownBlock.Heading) {
-    val style = when (block.level) {
-        1 -> MaterialTheme.typography.titleLarge
-        2 -> MaterialTheme.typography.titleMedium
-        else -> MaterialTheme.typography.titleSmall
-    }
-    SelectionContainer {
-        Text(
-            text = block.text,
-            style = style,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun QuoteContent(block: MarkdownBlock.Quote) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 0.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = block.text,
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
 
 @Composable
-private fun BulletListContent(block: MarkdownBlock.BulletList) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun HeadingText(block: MarkdownBlock.Heading, highlightQuery: String) {
+    val style = when (block.level) {
+        1 -> MaterialTheme.typography.titleLarge
+        2 -> MaterialTheme.typography.titleMedium
+        else -> MaterialTheme.typography.titleSmall
+    }
+    val annotated = rememberHighlightedText(block.text, highlightQuery)
+    SelectionContainer {
+        Text(
+            text = annotated,
+            style = style,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun QuoteContent(block: MarkdownBlock.Quote, highlightQuery: String) {
+    val annotated = rememberHighlightedText(block.text, highlightQuery)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = annotated,
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+        )
+    }
+}
+
+@Composable
+private fun BulletListContent(block: MarkdownBlock.BulletList, highlightQuery: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         block.items.forEach { item ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "•",
+                    text = "\u2022",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                 )
+                val annotated = rememberHighlightedText(item, highlightQuery)
                 SelectionContainer(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item,
+                        text = annotated,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -131,20 +188,21 @@ private fun BulletListContent(block: MarkdownBlock.BulletList) {
 }
 
 @Composable
-private fun OrderedListContent(block: MarkdownBlock.OrderedList) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun OrderedListContent(block: MarkdownBlock.OrderedList, highlightQuery: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         block.items.forEachIndexed { index, item ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "${block.startNumber + index}.",
-                    modifier = Modifier.width(28.dp),
+                    modifier = Modifier.width(24.dp),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                 )
+                val annotated = rememberHighlightedText(item, highlightQuery)
                 SelectionContainer(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item,
+                        text = annotated,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -154,15 +212,16 @@ private fun OrderedListContent(block: MarkdownBlock.OrderedList) {
 }
 
 @Composable
-private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
+private fun CodeBlockContent(block: MarkdownBlock.CodeBlock, highlightQuery: String) {
     val title = when {
         block.mermaid -> "Mermaid"
         block.language != null -> block.language
         else -> "代码"
     }
+    val highlightedCode = rememberHighlightedCode(block.content, block.language)
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
@@ -174,14 +233,15 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
             )
             SelectionContainer {
                 Text(
-                    text = block.content.ifBlank { " " },
+                    text = highlightedCode.ifEmpty { AnnotatedString(" ") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(top = 8.dp),
+                        .padding(top = 6.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight,
                 )
             }
         }
@@ -189,10 +249,11 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock) {
 }
 
 @Composable
-private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
+private fun LatexBlockContent(block: MarkdownBlock.LatexBlock, highlightQuery: String) {
+    val annotated = rememberHighlightedText(block.content, highlightQuery)
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
@@ -200,8 +261,8 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
         Column(modifier = Modifier.padding(12.dp)) {
             CopyHeader(label = "LaTeX", value = block.content)
             Text(
-                text = block.content,
-                modifier = Modifier.padding(top = 8.dp),
+                text = annotated,
+                modifier = Modifier.padding(top = 6.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -211,10 +272,10 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock) {
 }
 
 @Composable
-private fun TableContent(block: MarkdownBlock.Table) {
+private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.44f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 0.dp,
         shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
@@ -226,22 +287,27 @@ private fun TableContent(block: MarkdownBlock.Table) {
                 .padding(8.dp),
         ) {
             if (block.headers.isNotEmpty()) {
-                TableRow(block.headers, header = true)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                TableRow(block.headers, header = true, highlightQuery = highlightQuery)
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    thickness = 0.5.dp,
+                )
             }
             block.rows.forEach { row ->
-                TableRow(row, header = false)
+                TableRow(row, header = false, highlightQuery = highlightQuery)
             }
         }
     }
 }
 
 @Composable
-private fun TableRow(cells: List<String>, header: Boolean) {
+private fun TableRow(cells: List<String>, header: Boolean, highlightQuery: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         cells.forEach { cell ->
+            val annotated = rememberHighlightedText(cell, highlightQuery)
             Text(
-                text = cell,
+                text = annotated,
                 modifier = Modifier.width(120.dp),
                 style = if (header) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
                 fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
@@ -250,11 +316,13 @@ private fun TableRow(cells: List<String>, header: Boolean) {
     }
 }
 
+// ---- Copy header ----
+
 @Composable
 @Suppress("DEPRECATION")
 private fun CopyHeader(label: String, value: String) {
-    @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
+    val copyState = rememberCopyState(value)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -262,16 +330,24 @@ private fun CopyHeader(label: String, value: String) {
         Text(
             text = label,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         WorkbenchIconButton(
-            icon = Icons.Filled.ContentCopy,
-            label = copyContentDescription(label),
-            onClick = { clipboardManager.setText(AnnotatedString(value)) },
+            icon = when (copyState.value) { CopyState.Copied -> Icons.Filled.Check; CopyState.Failed -> Icons.Filled.Close; CopyState.Ready -> Icons.Filled.ContentCopy },
+            label = when (copyState.value) { CopyState.Copied -> "已复制"; CopyState.Failed -> "复制失败"; CopyState.Ready -> copyContentDescription(label) },
+            onClick = {
+                try {
+                    clipboardManager.setText(AnnotatedString(value))
+                    copyState.value = CopyState.Copied
+                } catch (_: Exception) {
+                    copyState.value = CopyState.Failed
+                }
+            },
+            tint = when (copyState.value) { CopyState.Copied -> MaterialTheme.colorScheme.primary; CopyState.Failed -> MaterialTheme.colorScheme.error; CopyState.Ready -> MaterialTheme.colorScheme.onSurfaceVariant },
         )
     }
 }

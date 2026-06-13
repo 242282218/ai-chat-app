@@ -3,7 +3,7 @@ package com.aichat.workbench.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class AppDestination(
@@ -30,5 +30,5 @@ data class BottomTabItem(
 val bottomTabItems = listOf(
     BottomTabItem(AppDestination.Conversations, "对话", Icons.AutoMirrored.Outlined.Chat),
     BottomTabItem(AppDestination.ImageGen, "图片", Icons.Outlined.Image),
-    BottomTabItem(AppDestination.Settings, "设置", Icons.Outlined.Settings),
+    BottomTabItem(AppDestination.Settings, "模型", Icons.Outlined.Tune),
 )

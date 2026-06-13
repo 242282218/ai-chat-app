@@ -1,8 +1,7 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.Message
-import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
@@ -26,14 +25,14 @@ import kotlinx.coroutines.withContext
 class GenerationController(
     private val conversationRepository: ConversationRepository,
     providerRepository: ProviderConfigRepository,
-    conversationCompactor: ConversationCompactor,
+    contextProvider: ConversationContextProvider,
     providerRegistry: ProviderRegistry,
     private val clock: Clock,
 ) {
     private val chatTurnOrchestrator = ChatTurnOrchestrator(
         conversationRepository = conversationRepository,
         providerRepository = providerRepository,
-        contextProvider = conversationCompactor,
+        contextProvider = contextProvider,
         providerRegistry = providerRegistry,
         clock = clock,
     )
@@ -160,7 +159,7 @@ class GenerationController(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            onStateChanged { it.copy(error = error.message ?: "发送失败。") }
+            onStateChanged { it.copy(error = error.message ?: "发送失败，请检查网络连接后重试。") }
         } finally {
             activeAssistantMessage = null
             onStateChanged { it.copy(isGenerating = false) }

@@ -1,9 +1,8 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -238,13 +236,13 @@ private fun ProviderStrip(
 ) {
     LazyRow(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 0.dp),
+            .fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
         items(state.providers, key = { it.id.value }) { provider ->
-            AssistChip(
+            FilterChip(
+                selected = state.selectedProviderId == provider.id.value,
                 onClick = { viewModel.selectProvider(provider.id.value) },
                 label = {
                     Text(

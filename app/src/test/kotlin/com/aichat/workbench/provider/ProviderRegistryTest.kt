@@ -23,7 +23,6 @@ class ProviderRegistryTest {
         }
 
         assertSame(provider, registry.get("custom"))
-        assertEquals(setOf("custom"), registry.registeredTypes())
         assertTrue(registry.isRegistered(ProviderType("custom")))
     }
 
@@ -36,7 +35,7 @@ class ProviderRegistryTest {
 
         assertSame(provider, registry.get(ProviderType.OpenAI.value))
         assertSame(provider, registry.get("OpenAI"))
-        assertEquals(setOf(ProviderType.OpenAI.value), registry.registeredTypes())
+        assertTrue(registry.isRegistered(ProviderType.OpenAI))
     }
 
     @Test

@@ -21,24 +21,28 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessagePart
-import com.aichat.workbench.ui.component.decodeInlineImageBitmap
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import com.aichat.workbench.ui.component.workbenchTextFieldColors
+import com.aichat.workbench.ui.component.statusColors
+import com.aichat.workbench.ui.component.decodeInlineImageBitmap
 import java.io.File
 
 @Composable
@@ -59,33 +63,46 @@ internal fun InputBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = MaterialTheme.shapes.medium,
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+        tonalElevation = 0.dp,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            InputStatusRow(
+            // Status indicator
+            val status = inputStatus(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
                 hasImageDrafts = imageDrafts.isNotEmpty(),
                 canSend = canSend,
-                onOpenProviders = onOpenProviders,
-                onCancelEdit = onCancelEdit,
             )
+            if (status != null) {
+                InputStatusBar(
+                    status = status,
+                    isEditing = isEditing,
+                    canSend = canSend,
+                    isGenerating = isGenerating,
+                    onOpenProviders = onOpenProviders,
+                    onCancelEdit = onCancelEdit,
+                )
+            }
+
+            // Image drafts preview
             if (imageDrafts.isNotEmpty()) {
                 ImageDraftRow(
                     images = imageDrafts,
                     onRemoveImage = onRemoveImage,
                 )
             }
+
+            // Main input row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 WorkbenchIconButton(
@@ -93,16 +110,25 @@ internal fun InputBar(
                     label = "添加图片",
                     onClick = onPickImage,
                     enabled = !isGenerating,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = input,
                     onValueChange = onInputChange,
                     modifier = Modifier.weight(1f),
-                    label = { Text(text = if (isEditing) "编辑消息" else "消息") },
-                    placeholder = { Text(text = if (isEditing) "修改消息" else "输入消息") },
+                    placeholder = {
+                        Text(
+                            text = if (isEditing) "修改消息..." else "输入消息...",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
                     minLines = 1,
                     maxLines = 5,
                     enabled = !isGenerating,
+                    shape = MaterialTheme.shapes.medium,
+                    colors = workbenchTextFieldColors(
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+                    ),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = if (input.contains('\n')) ImeAction.Default else ImeAction.Send,
@@ -118,16 +144,73 @@ internal fun InputBar(
                 FilledIconButton(
                     onClick = if (isGenerating) onStop else onSend,
                     enabled = isGenerating || canSubmitMessage(input, canSend, imageDrafts),
+                    modifier = Modifier.size(48.dp),
+                    colors = if (isGenerating) {
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        )
+                    } else {
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    },
                 ) {
                     Icon(
                         imageVector = if (isGenerating) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
                         contentDescription = if (isGenerating) "停止" else "发送",
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
         }
     }
 }
+
+@Composable
+private fun InputStatusBar(
+    status: InputStatus,
+    isEditing: Boolean,
+    canSend: Boolean,
+    isGenerating: Boolean,
+    onOpenProviders: () -> Unit,
+    onCancelEdit: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 4.dp),
+    ) {
+        Text(
+            text = status.label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = status.toneColor(),
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        when {
+            isEditing -> {
+                TextButton(onClick = onCancelEdit) {
+                    Text(
+                        text = "取消",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+            !canSend && !isGenerating -> {
+                TextButton(onClick = onOpenProviders) {
+                    Text(
+                        text = "配置模型",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InputStatus.toneColor() = statusColors(tone).content
 
 @Composable
 internal fun ChatImagePreview(
@@ -142,7 +225,7 @@ internal fun ChatImagePreview(
         ) {
             Icon(
                 imageVector = Icons.Filled.Image,
-                contentDescription = null,
+                contentDescription = "图片加载失败",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -180,7 +263,7 @@ private fun ImageDraftRow(
             Box {
                 ChatImagePreview(
                     image = images[index],
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(64.dp),
                 )
                 WorkbenchIconButton(
                     icon = Icons.Filled.Close,
@@ -189,43 +272,6 @@ private fun ImageDraftRow(
                     modifier = Modifier.align(Alignment.TopEnd),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun InputStatusRow(
-    isGenerating: Boolean,
-    isEditing: Boolean,
-    hasImageDrafts: Boolean,
-    canSend: Boolean,
-    onOpenProviders: () -> Unit,
-    onCancelEdit: () -> Unit,
-) {
-    val status = inputStatus(
-        isGenerating = isGenerating,
-        isEditing = isEditing,
-        hasImageDrafts = hasImageDrafts,
-        canSend = canSend,
-    ) ?: return
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = status.label,
-            style = MaterialTheme.typography.bodySmall,
-            color = status.tone.contentColor(),
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        when {
-            isEditing -> {
-                TextButton(onClick = onCancelEdit) {
-                    Text(text = "取消")
-                }
-            }
-            !canSend && !isGenerating -> {
-                TextButton(onClick = onOpenProviders) {
-                    Text(text = "配置模型连接")
-                }
             }
         }
     }
@@ -244,19 +290,19 @@ internal fun inputStatus(
 ): InputStatus? =
     when {
         isGenerating -> InputStatus(
-            label = "生成中",
+            label = "生成中...",
             tone = StatusTone.Accent,
         )
         isEditing -> InputStatus(
-            label = "编辑中",
+            label = "编辑消息中",
             tone = StatusTone.Warning,
         )
         hasImageDrafts && canSend -> InputStatus(
-            label = "图片将作为多模态内容发送给模型",
+            label = "图片将作为多模态内容发送",
             tone = StatusTone.Warning,
         )
         !canSend -> InputStatus(
-            label = "需要模型连接",
+            label = "需要先配置模型连接",
             tone = StatusTone.Critical,
         )
         else -> null

@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -157,7 +157,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = providerRepository,
-            conversationCompactor = ConversationCompactor(repository, clock),
+            contextProvider = ConversationCompactor(repository, clock),
             providerRegistry = ProviderRegistry(),
             clock = clock,
         )
@@ -190,7 +190,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(emptyList(), emptyMap()),
-            conversationCompactor = ConversationCompactor(repository, clock),
+            contextProvider = ConversationCompactor(repository, clock),
             providerRegistry = ProviderRegistry(),
             clock = clock,
         )
@@ -227,7 +227,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(listOf(provider), emptyMap()),
-            conversationCompactor = ConversationCompactor(repository, clock),
+            contextProvider = ConversationCompactor(repository, clock),
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },
@@ -347,7 +347,7 @@ class GenerationControllerTest {
         GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key")),
-            conversationCompactor = ConversationCompactor(repository, clock),
+            contextProvider = ConversationCompactor(repository, clock),
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },
@@ -527,6 +527,10 @@ private class GenerationControllerConversationRepository(
         val flow = messages.getOrPut(message.conversationId) { MutableStateFlow(emptyList()) }
         flow.value = flow.value.filterNot { it.id == message.id } + message
     }
+
+    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) = Unit
+
+    override fun observeConversationsWithPreview(): kotlinx.coroutines.flow.Flow<List<com.aichat.workbench.domain.model.ConversationPreview>> = kotlinx.coroutines.flow.flowOf(emptyList())
 
     override suspend fun deleteMessages(conversationId: ConversationId) {
         messages.getOrPut(conversationId) { MutableStateFlow(emptyList()) }.value = emptyList()

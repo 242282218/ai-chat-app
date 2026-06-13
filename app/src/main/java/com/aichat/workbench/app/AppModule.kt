@@ -19,6 +19,7 @@ import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationCompactor
+import com.aichat.workbench.feature.chat.ConversationContextProvider
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
 import com.aichat.workbench.feature.conversations.ConversationsViewModel
@@ -136,7 +137,7 @@ val appModule: Module = module {
         )
     }
     single<ProviderConnectionTestClient> { get<ProviderConnectionTester>() }
-    factory {
+    factory<ConversationContextProvider> {
         ConversationCompactor(
             conversationRepository = get(),
             clock = get(),
@@ -147,7 +148,7 @@ val appModule: Module = module {
         GenerationController(
             conversationRepository = get(),
             providerRepository = get(),
-            conversationCompactor = get(),
+            contextProvider = get(),
             providerRegistry = get(),
             clock = get(),
         )

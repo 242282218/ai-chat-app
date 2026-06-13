@@ -1,11 +1,15 @@
-package com.aichat.workbench.data.repository
+﻿package com.aichat.workbench.data.repository
 
 import com.aichat.workbench.data.local.dao.ConversationDao
 import com.aichat.workbench.data.mapper.toDomain
+import com.aichat.workbench.data.mapper.toPreview
+
 import com.aichat.workbench.data.mapper.toEntity
 import com.aichat.workbench.domain.model.Conversation
+import com.aichat.workbench.domain.model.ConversationPreview
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.model.MessageId
 import com.aichat.workbench.domain.repository.ConversationRepository
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
@@ -59,5 +63,14 @@ class RoomConversationRepository(
         dao.deleteMessages(conversationId.value)
         dao.touchConversation(conversationId.value, clock.millis())
     }
+
+    override suspend fun deleteMessage(messageId: MessageId) {
+        dao.deleteMessage(messageId.value)
+    }
+
+    override fun observeConversationsWithPreview(): Flow<List<ConversationPreview>> =
+        dao.observeConversationsWithPreview().map { entities ->
+            entities.map { it.toPreview() }
+        }
 
 }

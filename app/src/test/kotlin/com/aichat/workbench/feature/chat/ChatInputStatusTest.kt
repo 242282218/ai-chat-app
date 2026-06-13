@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.ui.component.StatusTone
@@ -20,7 +20,7 @@ class ChatInputStatusTest {
 
         assertEquals(
             InputStatus(
-                label = "图片将作为多模态内容发送给模型",
+                label = "图片将作为多模态内容发送",
                 tone = StatusTone.Warning,
             ),
             status,
@@ -30,7 +30,7 @@ class ChatInputStatusTest {
     @Test
     fun inputStatusKeepsHigherPriorityStatesBeforeImageWarning() {
         assertEquals(
-            "生成中",
+            "生成中...",
             inputStatus(
                 isGenerating = true,
                 isEditing = false,
@@ -39,7 +39,7 @@ class ChatInputStatusTest {
             )?.label,
         )
         assertEquals(
-            "编辑中",
+            "编辑消息中",
             inputStatus(
                 isGenerating = false,
                 isEditing = true,
@@ -60,7 +60,7 @@ class ChatInputStatusTest {
 
         assertEquals(
             InputStatus(
-                label = "需要模型连接",
+                label = "需要先配置模型连接",
                 tone = StatusTone.Critical,
             ),
             status,

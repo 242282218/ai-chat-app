@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.image
+﻿package com.aichat.workbench.feature.image
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,7 +51,7 @@ data class ImageGenerationUiState(
     val error: String? = null,
 ) {
     val selectedProvider: ProviderConfig?
-        get() = selectedProviderId?.let { id -> providers.firstOrNull { it.id.value == id } }
+        get() = selectedProviderId?.let { id -> providers.firstOrNull { it.id.value == id && it.enabled } }
 
     val selectedModelUnsupported: Boolean
         get() {
@@ -100,10 +100,10 @@ class ImageGenerationViewModel(
     }
 
     fun selectProvider(id: String) {
-        val provider = _state.value.providers.firstOrNull { it.id.value == id }
+        val provider = _state.value.providers.firstOrNull { it.id.value == id && it.enabled } ?: return
         val model = provider
-            ?.rolePreferenceModel(_state.value.modelRolePreferences, ModelRole.Image)
-            ?: provider?.defaultImageModel().orEmpty().ifBlank { _state.value.model }
+            .rolePreferenceModel(_state.value.modelRolePreferences, ModelRole.Image)
+            ?: provider.defaultImageModel().ifBlank { _state.value.model }
         _state.update {
             it.copy(
                 selectedProviderId = id,
@@ -112,9 +112,7 @@ class ImageGenerationViewModel(
         }
         viewModelScope.launch {
             preferencesRepository.saveSelectedProvider(id)
-            provider?.let {
-                modelRolePreferenceRepository.setRoleModel(it.id, ModelRole.Image, model)
-            }
+            modelRolePreferenceRepository.setRoleModel(provider.id, ModelRole.Image, model)
         }
     }
 
@@ -156,13 +154,15 @@ class ImageGenerationViewModel(
 
     fun regenerate(generation: ImageGeneration) {
         _state.update {
+            val historyProviderAvailable = generation.providerId?.value
+                ?.let { id -> it.providers.any { provider -> provider.id.value == id && provider.enabled } } == true
             val providerId = generation.providerId?.value
-                ?.takeIf { id -> it.providers.any { provider -> provider.id.value == id } }
+                ?.takeIf { historyProviderAvailable }
                 ?: it.selectedProviderId
             it.copy(
                 selectedProviderId = providerId,
                 prompt = generation.prompt,
-                model = generation.model.orEmpty().ifBlank { it.model },
+                model = if (historyProviderAvailable) generation.model.orEmpty().ifBlank { it.model } else it.model,
                 size = generation.size.orEmpty().ifBlank { it.size },
                 quality = generation.quality.orEmpty().ifBlank { it.quality },
                 count = generation.count.coerceIn(1, 4).toString(),
@@ -291,7 +291,7 @@ class ImageGenerationViewModel(
             }.onSuccess {
                 _state.update { it.copy(error = null) }
             }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "清空图片历史失败。") }
+                _state.update { it.copy(error = error.message ?: "清空图片历史失败，请重试。") }
             }
         }
     }

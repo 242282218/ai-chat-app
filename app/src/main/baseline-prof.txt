@@ -3,7 +3,10 @@ HSPLcom/aichat/workbench/app/AiChatApplication;->**(**)**
 HSPLcom/aichat/workbench/app/AppModuleKt;->**(**)**
 HSPLcom/aichat/workbench/navigation/AppDestination;->**(**)**
 HSPLcom/aichat/workbench/navigation/AppNavHostKt;->**(**)**
-HSPLcom/aichat/workbench/ui/component/WorkbenchComponentsKt;->**(**)**
+HSPLcom/aichat/workbench/ui/component/StatusToneKt;->**(**)**
+HSPLcom/aichat/workbench/ui/component/WorkbenchButtonsKt;->**(**)**
+HSPLcom/aichat/workbench/ui/component/WorkbenchFeedbackKt;->**(**)**
+HSPLcom/aichat/workbench/ui/component/WorkbenchLayoutKt;->**(**)**
 HSPLcom/aichat/workbench/ui/theme/ThemeKt;->**(**)**
 HSPLorg/koin/androidx/viewmodel/**->**(**)**
 HSPLorg/koin/core/**->**(**)**

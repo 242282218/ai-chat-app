@@ -1,10 +1,11 @@
-package com.aichat.workbench.data.local.dao
+﻿package com.aichat.workbench.data.local.dao
 
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import com.aichat.workbench.data.local.entity.ConversationEntity
+import com.aichat.workbench.data.local.entity.ConversationWithPreview
 import com.aichat.workbench.data.local.entity.MessageEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -68,5 +69,28 @@ interface ConversationDao {
 
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteMessages(conversationId: String)
+
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteMessage(id: String)
+
+    @Query(
+        """
+        SELECT c.id, c.title, c.created_at, c.updated_at, c.default_provider_id,
+               m.content AS last_message_content, m.role AS last_message_role
+        FROM conversations c
+        LEFT JOIN (
+            SELECT conversation_id, content, role
+            FROM messages
+            WHERE id IN (
+                SELECT id FROM messages AS m2
+                WHERE m2.conversation_id = messages.conversation_id
+                ORDER BY m2.created_at DESC, m2.id DESC
+                LIMIT 1
+            )
+        ) m ON m.conversation_id = c.id
+        ORDER BY c.updated_at DESC
+        """,
+    )
+    fun observeConversationsWithPreview(): Flow<List<ConversationWithPreview>>
 
 }

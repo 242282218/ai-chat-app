@@ -9,6 +9,7 @@ import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.modelDiscoveryBaseUrl
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.supportsOpenAiCompatibleImageGeneration
+import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.ui.component.StatusTone
 import java.net.URI
 
@@ -40,6 +41,7 @@ internal data class ProviderHealthStats(
     val httpCount: Int,
     val customHeaderCount: Int,
     val unsupportedEnabledCount: Int,
+    val imageCapableCount: Int,
 )
 
 internal data class ProviderCapabilityTag(
@@ -69,6 +71,7 @@ internal fun List<ProviderConfig>.providerHealthStats(): ProviderHealthStats {
         httpCount = count { it.baseUrl.startsWith("http://", ignoreCase = true) },
         customHeaderCount = count { it.headers.isNotEmpty() },
         unsupportedEnabledCount = count { it.enabled && !it.supportsChatProvider() },
+        imageCapableCount = count { it.enabled && it.supportsImageGeneration() },
     )
 }
 

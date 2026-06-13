@@ -1,8 +1,7 @@
-package com.aichat.workbench.feature.image
+﻿package com.aichat.workbench.feature.image
 
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ModelConfig
-import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.ui.component.StatusTone
@@ -132,6 +131,16 @@ internal fun ImageGeneration.toChatReferenceDraft(): String =
             本地图片路径：$originalPath
         """.trimIndent()
     }
+
+internal fun String.toConnectionTestChatDraft(): String =
+    """
+        请根据下面的图片模型连接测试诊断，判断配置是否可用于图片生成，并给出下一步处理建议。
+        只能基于诊断字段分析，不要要求我粘贴 API Key，也不要输出或推测 API Key 明文。
+
+        ```text
+        ${trim()}
+        ```
+    """.trimIndent()
 
 private fun ImageGeneration.toImageGenerationRequestJson(): String =
     buildString {

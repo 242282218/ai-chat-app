@@ -8,25 +8,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import java.util.Base64
 
-internal sealed interface InlineImageSource {
-    data class RemoteUrl(val url: String) : InlineImageSource
-    data class LocalContent(val raw: String) : InlineImageSource
-    data object Unsupported : InlineImageSource
-}
-
-internal fun resolveInlineImageSource(imageUrl: String?): InlineImageSource {
-    val normalized = imageUrl?.trim().orEmpty()
-    if (normalized.isBlank()) return InlineImageSource.Unsupported
-    return when {
-        normalized.startsWith("http://", ignoreCase = true) ||
-            normalized.startsWith("https://", ignoreCase = true) -> InlineImageSource.RemoteUrl(normalized)
-        normalized.startsWith("data:image", ignoreCase = true) -> InlineImageSource.LocalContent(normalized)
-        normalized.startsWith("file://", ignoreCase = true) -> InlineImageSource.LocalContent(normalized)
-        File(normalized).isFile -> InlineImageSource.LocalContent(normalized)
-        else -> InlineImageSource.Unsupported
-    }
-}
-
 internal fun decodeInlineImageBitmap(
     raw: String,
     maxSide: Int = DEFAULT_INLINE_IMAGE_MAX_SIDE,

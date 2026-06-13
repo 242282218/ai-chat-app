@@ -1,4 +1,4 @@
-package com.aichat.workbench.feature.chat
+﻿package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -106,6 +106,33 @@ class ChatViewModel(
 
     fun cancelEdit() = updateDraft { it.copy(editingMessageId = null, input = "") }
 
+    fun updateSearchQuery(query: String) = updateState { it.copy(searchQuery = query, currentMatchIndex = 0) }
+
+    fun toggleSearch() = updateState {
+        it.copy(
+            isSearchActive = !it.isSearchActive,
+            searchQuery = if (it.isSearchActive) "" else it.searchQuery,
+            currentMatchIndex = 0,
+        )
+    }
+
+    fun navigateMatch(delta: Int) = updateState {
+        val count = it.searchMatchCount
+        if (count == 0) return@updateState it
+        it.copy(currentMatchIndex = (it.currentMatchIndex + delta + count) % count)
+    }
+
+    fun deleteMessage(id: MessageId) {
+        val message = _state.value.messages.firstOrNull { it.id == id } ?: return
+        if (message.status == MessageStatus.Streaming || message.status == MessageStatus.Pending) return
+        viewModelScope.launch {
+            conversationRepository.deleteMessage(id)
+            if (_state.value.editingMessageId == id) {
+                updateDraft { it.copy(editingMessageId = null, input = "") }
+            }
+        }
+    }
+
     fun sendMessage() {
         val current = _state.value
         val text = current.input.trim()
@@ -119,7 +146,9 @@ class ChatViewModel(
 
     fun retryMessage(id: MessageId) {
         val failed = _state.value.messages.firstOrNull {
-            it.id == id && it.role == MessageRole.Assistant && it.status == MessageStatus.Failed
+            it.id == id &&
+                it.role == MessageRole.Assistant &&
+                (it.status == MessageStatus.Failed || it.status == MessageStatus.Cancelled)
         } ?: return
         if (generationController.isActive) return
         generationController.start(viewModelScope, _state.value, null, null, failed, ::selectGeneratedConversation, ::updateState)

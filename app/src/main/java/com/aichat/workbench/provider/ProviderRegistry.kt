@@ -8,6 +8,10 @@ import com.aichat.workbench.domain.model.ProviderModelDiscoveryFormat
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.api.ChatProvider
 
+const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+const val DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+const val DEFAULT_OLLAMA_BASE_URL = "http://10.0.2.2:11434"
+
 class ProviderRegistry {
     private val providers = mutableMapOf<String, ChatProvider>()
     private val descriptors = mutableMapOf<String, ProviderDescriptor>()
@@ -33,8 +37,6 @@ class ProviderRegistry {
 
     fun descriptors(): List<ProviderDescriptor> =
         descriptors.values.sortedBy { it.displayName }
-
-    fun registeredTypes(): Set<String> = providers.keys.toSet()
 
     fun isRegistered(type: ProviderType): Boolean =
         providers.containsKey(type.value)
@@ -86,7 +88,7 @@ class ProviderRegistry {
                 displayName = "OpenAI",
                 authMode = ProviderAuthMode.ApiKey,
                 supportsCustomBaseUrl = false,
-                defaultBaseUrl = "https://api.openai.com/v1",
+                defaultBaseUrl = DEFAULT_OPENAI_BASE_URL,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
                 capabilities = openAiCapabilities,
             ),
@@ -147,7 +149,7 @@ class ProviderRegistry {
                 displayName = "OpenRouter",
                 authMode = ProviderAuthMode.ApiKey,
                 supportsCustomBaseUrl = true,
-                defaultBaseUrl = "https://openrouter.ai/api/v1",
+                defaultBaseUrl = DEFAULT_OPENROUTER_BASE_URL,
                 modelDiscovery = ProviderModelDiscovery("/models", ProviderModelDiscoveryFormat.OpenAiModels),
                 capabilities = ProviderCapabilities(
                     text = true,
@@ -160,7 +162,7 @@ class ProviderRegistry {
                 displayName = "Ollama",
                 authMode = ProviderAuthMode.None,
                 supportsCustomBaseUrl = true,
-                defaultBaseUrl = "http://10.0.2.2:11434",
+                defaultBaseUrl = DEFAULT_OLLAMA_BASE_URL,
                 modelDiscovery = ProviderModelDiscovery("/api/tags", ProviderModelDiscoveryFormat.OllamaTags),
                 capabilities = ProviderCapabilities(
                     text = true,

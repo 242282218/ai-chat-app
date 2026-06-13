@@ -86,8 +86,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.room.ktx)
     implementation(libs.room.runtime)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.datastore.preferences)
 
     baselineProfile(project(":baselineprofile"))

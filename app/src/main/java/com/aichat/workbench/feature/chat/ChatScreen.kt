@@ -4,7 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,27 +16,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,14 +53,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.Message
-import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.ui.component.InlineNotice
@@ -58,8 +71,8 @@ import com.aichat.workbench.ui.component.MessageBubble as LinearMessageBubble
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import com.aichat.workbench.ui.component.workbenchTextFieldColors
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
-import java.io.File
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -78,6 +91,7 @@ fun ChatScreen(
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
     var confirmSendImages by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     val controlSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -94,8 +108,6 @@ fun ChatScreen(
     }
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
 
-    // Track whether the initial conversation selection has been performed, so it
-    // runs exactly once when the target appears — not on every conversations update.
     var initialSelectionDone by rememberSaveable(initialConversationId) { mutableStateOf(false) }
     LaunchedEffect(initialConversationId, state.conversations) {
         if (
@@ -115,11 +127,13 @@ fun ChatScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             ChatTopBar(
                 state = state,
                 onBack = onBack,
-                onOpenControls = { showControls = true },
+                onOpenControls = androidx.compose.runtime.remember { { showControls = true } },
+                onToggleSearch = { viewModel.toggleSearch() },
             )
         },
     ) { innerPadding ->
@@ -128,12 +142,26 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
+            if (state.isSearchActive) {
+                SearchBar(
+                    query = state.searchQuery,
+                    matchCount = state.searchMatchCount,
+                    currentMatchIndex = state.currentMatchIndex,
+                    onQueryChange = viewModel::updateSearchQuery,
+                    onNavigateMatch = viewModel::navigateMatch,
+                    onClose = { viewModel.toggleSearch() },
+                )
+            }
             MessageList(
-                messages = state.messages,
+                messages = state.filteredMessages,
                 hasEnabledProvider = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onEdit = viewModel::editMessage,
                 onRetry = viewModel::retryMessage,
+                onDelete = { pendingDeleteMessageId = it.value },
+                highlightQuery = state.searchQuery,
+                matchingMessageIds = state.matchingMessageIds,
+                currentMatchIndex = state.currentMatchIndex,
                 modifier = Modifier.weight(1f),
             )
             state.error?.let {
@@ -156,13 +184,15 @@ fun ChatScreen(
                 canSend = state.providers.any { it.enabled },
                 onOpenProviders = onOpenProviders,
                 onInputChange = viewModel::updateInput,
-                onPickImage = { imagePickerLauncher.launch("image/*") },
+                onPickImage = androidx.compose.runtime.remember(imagePickerLauncher) { { imagePickerLauncher.launch("image/*") } },
                 onRemoveImage = viewModel::removeImageDraft,
-                onSend = {
-                    if (shouldConfirmImageSend(state.imageDrafts)) {
-                        confirmSendImages = true
-                    } else {
-                        viewModel.sendMessage()
+                onSend = androidx.compose.runtime.remember(state.imageDrafts) {
+                    {
+                        if (shouldConfirmImageSend(state.imageDrafts)) {
+                            confirmSendImages = true
+                        } else {
+                            viewModel.sendMessage()
+                        }
                     }
                 },
                 onStop = viewModel::stopGeneration,
@@ -196,7 +226,7 @@ fun ChatScreen(
     if (confirmDeleteConversation && selectedConversation != null) {
         WorkbenchConfirmDialog(
             title = "删除对话？",
-            message = "这会从本地历史删除「${selectedConversation.title}」及其消息。",
+            message = "这会从本地历史删除「${selectedConversation.title}」及其消息，删除后无法恢复。",
             confirmLabel = "删除",
             onConfirm = {
                 confirmDeleteConversation = false
@@ -232,6 +262,19 @@ fun ChatScreen(
             tone = StatusTone.Warning,
         )
     }
+
+    pendingDeleteMessageId?.let { messageId ->
+        WorkbenchConfirmDialog(
+            title = "删除消息？",
+            message = "删除后无法恢复。",
+            confirmLabel = "删除",
+            onConfirm = {
+                pendingDeleteMessageId = null
+                viewModel.deleteMessage(com.aichat.workbench.domain.model.MessageId(messageId))
+            },
+            onDismiss = { pendingDeleteMessageId = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -240,6 +283,7 @@ private fun ChatTopBar(
     state: ChatUiState,
     onBack: () -> Unit,
     onOpenControls: () -> Unit,
+    onToggleSearch: () -> Unit,
 ) {
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
     TopAppBar(
@@ -248,16 +292,20 @@ private fun ChatTopBar(
                 Text(
                     text = selectedConversation?.title ?: "新对话",
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = chatSubtitle(state),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val subtitle = chatSubtitle(state)
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
         navigationIcon = {
@@ -269,11 +317,19 @@ private fun ChatTopBar(
         },
         actions = {
             WorkbenchIconButton(
+                icon = Icons.Filled.Search,
+                label = "搜索消息",
+                onClick = onToggleSearch,
+            )
+            WorkbenchIconButton(
                 icon = Icons.Filled.MoreVert,
                 label = "更多",
                 onClick = onOpenControls,
             )
         },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
     )
 }
 
@@ -283,16 +339,15 @@ private fun ChatErrorPanel(
     onOpenProviders: () -> Unit,
     onRetry: (() -> Unit)?,
 ) {
-    // LocalClipboardManager is deprecated but still the standard way to access clipboard in Compose
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     InlineNotice(
-        text = "生成失败：$message",
+        text = "回复生成失败，内容未完成。$message",
         icon = Icons.Filled.Info,
         tone = StatusTone.Critical,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
     ) {
         WorkbenchIconButton(
             icon = Icons.Filled.ContentCopy,
@@ -313,18 +368,110 @@ private fun ChatErrorPanel(
 }
 
 @Composable
-private fun MessageList(
-    messages: List<Message>,
-    hasEnabledProvider: Boolean,
-    onOpenProviders: () -> Unit,
-    onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
-    onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
-    modifier: Modifier = Modifier,
+private fun SearchBar(
+    query: String,
+    matchCount: Int,
+    currentMatchIndex: Int,
+    onQueryChange: (String) -> Unit,
+    onNavigateMatch: (Int) -> Unit,
+    onClose: () -> Unit,
 ) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        placeholder = { Text(text = "搜索消息...") },
+        singleLine = true,
+        shape = MaterialTheme.shapes.large,
+        colors = workbenchTextFieldColors(),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        trailingIcon = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (query.isNotBlank() && matchCount > 0) {
+                    Text(
+                        text = "${currentMatchIndex + 1}/$matchCount",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 2.dp),
+                    )
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.KeyboardArrowUp,
+                        label = "上一个匹配",
+                        onClick = { onNavigateMatch(-1) },
+                    )
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.KeyboardArrowDown,
+                        label = "下一个匹配",
+                        onClick = { onNavigateMatch(1) },
+                    )
+                } else if (query.isNotBlank()) {
+                    Text(
+                        text = "无匹配",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 4.dp),
+                    )
+                }
+                WorkbenchIconButton(
+                    icon = Icons.Filled.Close,
+                    label = "关闭搜索",
+                    onClick = onClose,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun MessageList(
+        messages: List<Message>,
+        hasEnabledProvider: Boolean,
+        onOpenProviders: () -> Unit,
+        onEdit: (com.aichat.workbench.domain.model.MessageId) -> Unit,
+        onRetry: (com.aichat.workbench.domain.model.MessageId) -> Unit,
+        onDelete: (com.aichat.workbench.domain.model.MessageId) -> Unit,
+        highlightQuery: String = "",
+        matchingMessageIds: List<com.aichat.workbench.domain.model.MessageId> = emptyList(),
+        currentMatchIndex: Int = 0,
+        modifier: Modifier = Modifier,
+    ) {
+    val listState = rememberLazyListState()
+    // Track whether user is near the bottom; auto-scroll on new content if so
+    var isNearBottom by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+            lastVisible != null && lastVisible.index >= listState.layoutInfo.totalItemsCount - 1
+        }.collect { atBottom ->
+            isNearBottom = atBottom
+        }
+    }
+    // Auto-scroll on new messages or streaming content when near bottom
+    val lastMessage = messages.lastOrNull()
+    val contentKey = lastMessage?.let { "${it.id.value}:${it.content.length}" }
+    LaunchedEffect(contentKey) {
+        if (messages.isNotEmpty() && isNearBottom) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+    // Auto-scroll to current search match
+    LaunchedEffect(currentMatchIndex, matchingMessageIds) {
+        if (matchingMessageIds.isNotEmpty() && currentMatchIndex in matchingMessageIds.indices) {
+            val targetId = matchingMessageIds[currentMatchIndex]
+            val scrollIndex = messages.indexOfFirst { it.id == targetId }
+            if (scrollIndex >= 0) {
+                isNearBottom = false // prevent auto-scroll fight
+                listState.animateScrollToItem(scrollIndex)
+            }
+        }
+    }
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (messages.isEmpty()) {
             item {
@@ -338,10 +485,15 @@ private fun MessageList(
                 messages,
                 key = { it.id.value },
             ) { message ->
+                val editAction = androidx.compose.runtime.remember(message.id) { { onEdit(message.id) } }
+                val retryAction = androidx.compose.runtime.remember(message.id) { { onRetry(message.id) } }
+                val deleteAction = androidx.compose.runtime.remember(message.id) { { onDelete(message.id) } }
                 MessageItem(
                     message = message,
-                    onEdit = { onEdit(message.id) },
-                    onRetry = { onRetry(message.id) },
+                    onEdit = editAction,
+                    onRetry = retryAction,
+                    onDelete = deleteAction,
+                    highlightQuery = highlightQuery,
                     modifier = Modifier.animateItem(),
                 )
             }
@@ -351,16 +503,19 @@ private fun MessageList(
 
 @Composable
 private fun MessageItem(
-    message: Message,
-    onEdit: () -> Unit,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+        message: Message,
+        onEdit: () -> Unit,
+        onRetry: () -> Unit,
+        onDelete: () -> Unit = {},
+        highlightQuery: String = "",
+        modifier: Modifier = Modifier,
+    ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
+    val copyState = rememberCopyState(message.id)
 
     if (message.status == MessageStatus.Compressed) {
-        CompressedMessagesCard(message = message)
+        CompressedMessagesCard(message = message, highlightQuery = highlightQuery)
         return
     }
     when {
@@ -370,11 +525,18 @@ private fun MessageItem(
             message.status == MessageStatus.Completed -> {
             LinearMessageBubble(
                 message = message,
+                highlightQuery = highlightQuery,
             )
             MessageActionRow(
                 message = message,
+                copyState = copyState.value,
                 onCopy = {
-                    clipboardManager.setText(AnnotatedString(message.content))
+                    try {
+                        clipboardManager.setText(AnnotatedString(message.content))
+                        copyState.value = CopyState.Copied
+                    } catch (_: Exception) {
+                        copyState.value = CopyState.Failed
+                    }
                 },
                 onEdit = onEdit,
                 onRetry = onRetry,
@@ -384,40 +546,50 @@ private fun MessageItem(
             message = message,
             onEdit = onEdit,
             onRetry = onRetry,
+            onDelete = onDelete,
+            highlightQuery = highlightQuery,
         )
     }
 }
 
 @Composable
-private fun CompressedMessagesCard(message: Message) {
+private fun CompressedMessagesCard(message: Message, highlightQuery: String = "") {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         shape = MaterialTheme.shapes.small,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = "上下文已压缩",
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                    fontWeight = FontWeight.Medium,
                 )
             }
-            MarkdownMessageContent(text = message.content)
+            MarkdownMessageContent(text = message.content, highlightQuery = highlightQuery)
         }
     }
 }

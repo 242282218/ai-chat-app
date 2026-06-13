@@ -24,6 +24,17 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 
+private const val ConversationTitleMaxLength = 40
+
+internal fun conversationTitlePreview(message: String): String {
+    val normalized = message.replace(Regex("\\s+"), " ").trim()
+    return when {
+        normalized.isBlank() -> "新对话"
+        normalized.length <= ConversationTitleMaxLength -> normalized
+        else -> "${normalized.take(ConversationTitleMaxLength - 3)}..."
+    }
+}
+
 data class ChatTurnRequest(
     val selectedConversationId: ConversationId?,
     val providers: List<ProviderConfig>,

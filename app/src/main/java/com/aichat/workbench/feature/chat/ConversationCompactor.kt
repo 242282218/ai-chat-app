@@ -35,20 +35,4 @@ class ConversationCompactor(
             chatProvider = chatProvider,
         )
 
-    suspend fun compactIfNeeded(
-        conversation: Conversation,
-        provider: ProviderConfig,
-        apiKey: String?,
-        model: String,
-        messages: List<Message>,
-        chatProvider: ChatProvider,
-    ): ConversationContext =
-        build(
-            conversation = conversation,
-            provider = provider,
-            apiKey = apiKey,
-            model = model,
-            messages = messages,
-            chatProvider = chatProvider,
-        )
 }
