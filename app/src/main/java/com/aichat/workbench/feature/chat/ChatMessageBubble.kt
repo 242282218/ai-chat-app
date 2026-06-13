@@ -49,6 +49,8 @@ import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
+import com.aichat.workbench.ui.component.AssistantAvatar
+import com.aichat.workbench.ui.component.UserAvatar
 import com.aichat.workbench.ui.component.StatusPill
 import kotlinx.coroutines.delay
 import com.aichat.workbench.ui.component.StatusTone
@@ -94,11 +96,11 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
     ) {
         if (!isUser) {
             AssistantAvatar()
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
         }
 
         Column(
-            modifier = Modifier.widthIn(max = if (isUser) 320.dp else 600.dp),
+            modifier = Modifier.widthIn(max = if (isUser) 300.dp else 600.dp),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
         ) {
             // Status pills for non-completed messages
@@ -183,48 +185,11 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
         }
 
         if (isUser) {
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             UserAvatar()
         }
     }
 }
-
-@Composable
-private fun AssistantAvatar() {
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "AI",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
-private fun UserAvatar() {
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "U",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-    }
-}
-
 
 @Composable
 private fun TypingIndicator() {
@@ -275,21 +240,22 @@ internal fun MessageActionRow(
     onRetry: () -> Unit,
 ) {
     Row(
-        // default arrangement
+        modifier = Modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WorkbenchIconButton(
             icon = when (copyState) { CopyState.Copied -> Icons.Filled.Check; CopyState.Failed -> Icons.Filled.Close; CopyState.Ready -> Icons.Filled.ContentCopy },
             label = when (copyState) { CopyState.Copied -> "已复制"; CopyState.Failed -> "复制失败"; CopyState.Ready -> "复制消息" },
             onClick = onCopy,
-            tint = when (copyState) { CopyState.Copied -> MaterialTheme.colorScheme.primary; CopyState.Failed -> MaterialTheme.colorScheme.error; CopyState.Ready -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) },
+            tint = when (copyState) { CopyState.Copied -> MaterialTheme.colorScheme.primary; CopyState.Failed -> MaterialTheme.colorScheme.error; CopyState.Ready -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f) },
         )
         if (message.role == MessageRole.User) {
             WorkbenchIconButton(
                 icon = Icons.Filled.Edit,
                 label = "编辑消息",
                 onClick = onEdit,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
             )
         }
         if (message.role == MessageRole.Assistant && (message.status == MessageStatus.Failed || message.status == MessageStatus.Cancelled)) {
@@ -300,21 +266,29 @@ internal fun MessageActionRow(
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
+        if (message.role == MessageRole.Assistant && message.status == MessageStatus.Completed && !message.model.isNullOrBlank()) {
+            Text(
+                text = message.model,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun messageContainerColor(message: Message) =
     when (message.role) {
-        MessageRole.User -> MaterialTheme.colorScheme.primaryContainer
+        MessageRole.User -> MaterialTheme.colorScheme.primary
         MessageRole.Assistant -> MaterialTheme.colorScheme.surfaceContainerLow
-        MessageRole.System -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        MessageRole.System -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     }
 
 @Composable
 private fun messageContentColor(message: Message) =
     when (message.role) {
-        MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer
+        MessageRole.User -> MaterialTheme.colorScheme.onPrimary
         MessageRole.Assistant -> MaterialTheme.colorScheme.onSurface
         MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -322,8 +296,8 @@ private fun messageContentColor(message: Message) =
 @Composable
 private fun messageContainerBorder(message: Message): BorderStroke? =
     when (message.role) {
-        MessageRole.System -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        MessageRole.Assistant -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        MessageRole.System -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        MessageRole.Assistant -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
         MessageRole.User -> null
     }
 

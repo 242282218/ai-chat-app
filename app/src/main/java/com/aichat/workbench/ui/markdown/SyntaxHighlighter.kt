@@ -1,8 +1,9 @@
-﻿package com.aichat.workbench.ui.markdown
+package com.aichat.workbench.ui.markdown
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -19,18 +20,18 @@ import androidx.compose.ui.text.withStyle
 @Composable
 fun rememberHighlightedCode(code: String, language: String?): AnnotatedString {
     val colorScheme = MaterialTheme.colorScheme
-    return remember(code, language) {
+    return remember(code, language, colorScheme) {
         if (language.isNullOrBlank()) {
             return@remember AnnotatedString(code)
         }
         val highlighter = languageToHighlighter(language) ?: return@remember AnnotatedString(code)
         highlighter.highlight(
             code = code,
-            keywordColor = colorScheme.primary.hashCode(),
-            stringColor = colorScheme.tertiary.hashCode(),
-            commentColor = colorScheme.onSurfaceVariant.hashCode(),
-            numberColor = colorScheme.secondary.hashCode(),
-            annotationColor = colorScheme.error.hashCode(),
+            keywordColor = colorScheme.primary,
+            stringColor = colorScheme.tertiary,
+            commentColor = colorScheme.onSurfaceVariant,
+            numberColor = colorScheme.secondary,
+            annotationColor = colorScheme.error,
         )
     }
 }
@@ -69,11 +70,11 @@ private abstract class SyntaxHighlighter {
 
     fun highlight(
         code: String,
-        keywordColor: Int,
-        stringColor: Int,
-        commentColor: Int,
-        numberColor: Int,
-        annotationColor: Int,
+        keywordColor: Color,
+        stringColor: Color,
+        commentColor: Color,
+        numberColor: Color,
+        annotationColor: Color,
     ): AnnotatedString {
         val tokens = tokenize(code)
         return buildAnnotatedString {
@@ -89,7 +90,7 @@ private abstract class SyntaxHighlighter {
                     TokenType.Number -> numberColor
                     TokenType.Annotation -> annotationColor
                 }
-                withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color(color))) {
+                withStyle(SpanStyle(color = color)) {
                     append(code.substring(token.start, token.end))
                 }
                 pos = token.end

@@ -18,7 +18,7 @@ import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.feature.chat.ChatViewModel
-import com.aichat.workbench.feature.chat.ConversationCompactor
+import com.aichat.workbench.feature.chat.ConversationContextBuilder
 import com.aichat.workbench.feature.chat.ConversationContextProvider
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
@@ -138,7 +138,7 @@ val appModule: Module = module {
     }
     single<ProviderConnectionTestClient> { get<ProviderConnectionTester>() }
     factory<ConversationContextProvider> {
-        ConversationCompactor(
+        ConversationContextBuilder(
             conversationRepository = get(),
             clock = get(),
         )

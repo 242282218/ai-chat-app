@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.image
+package com.aichat.workbench.feature.image
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -93,11 +93,11 @@ internal fun ImageGenerationRow(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Box {
                 generation.thumbnailPath?.let { path ->
                     LocalThumbnail(path = path)
@@ -111,12 +111,12 @@ internal fun ImageGenerationRow(
                 )
             }
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = generation.prompt.preview(120),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -137,7 +137,7 @@ internal fun ImageGenerationRow(
                 }
             }
             LazyRow(
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.Message
@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -52,16 +53,20 @@ class GenerationController(
         onConversationReady: (Conversation) -> Unit,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
-        if (isActive) return
-        generationJob = scope.launch {
-            runGeneration(
-                current = current,
-                userText = userText,
-                editedMessage = editedMessage,
-                retryFailedMessage = retryFailedMessage,
-                onConversationReady = onConversationReady,
-                onStateChanged = onStateChanged,
-            )
+        scope.launch {
+            stateMutex.withLock {
+                if (generationJob?.isActive == true) return@launch
+                generationJob = scope.launch {
+                    runGeneration(
+                        current = current,
+                        userText = userText,
+                        editedMessage = editedMessage,
+                        retryFailedMessage = retryFailedMessage,
+                        onConversationReady = onConversationReady,
+                        onStateChanged = onStateChanged,
+                    )
+                }
+            }
         }
     }
 
@@ -116,6 +121,7 @@ class GenerationController(
         onConversationReady: (Conversation) -> Unit,
         onStateChanged: ((ChatUiState) -> ChatUiState) -> Unit,
     ) {
+        val myJob = currentCoroutineContext()[Job]
         try {
             chatTurnOrchestrator.run(
                 request = current.toChatTurnRequest(
@@ -140,7 +146,7 @@ class GenerationController(
                     }
 
                     override suspend fun onActiveAssistantMessageChanged(message: Message?) {
-                        activeAssistantMessage = message
+                        stateMutex.withLock { activeAssistantMessage = message }
                     }
 
                     override suspend fun onMessageChanged(message: Message) {
@@ -161,8 +167,13 @@ class GenerationController(
         } catch (error: Throwable) {
             onStateChanged { it.copy(error = error.message ?: "发送失败，请检查网络连接后重试。") }
         } finally {
-            activeAssistantMessage = null
-            onStateChanged { it.copy(isGenerating = false) }
+            stateMutex.withLock {
+                // Only clear state if no new generation has taken over
+                if (generationJob == null || generationJob === myJob) {
+                    activeAssistantMessage = null
+                    onStateChanged { it.copy(isGenerating = false) }
+                }
+            }
         }
     }
 

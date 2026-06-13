@@ -11,7 +11,6 @@ import com.aichat.workbench.provider.api.providerFailureSummary
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
 import java.time.Clock
-import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 
@@ -47,7 +46,7 @@ class GenerateImageUseCase(
                 val base64 = generated.base64
                     ?: error("Provider 返回的是图片 URL；本地保存需要 base64 图片数据。")
                 val id = if (index == 0) pending.id else ImageGenerationId(UUID.randomUUID().toString())
-                val paths = imageStorage.savePng(id, Base64.getDecoder().decode(base64))
+                val paths = imageStorage.savePng(id, kotlin.io.encoding.Base64.Default.decode(base64))
                 pending.copy(
                     id = id,
                     count = response.images.size,

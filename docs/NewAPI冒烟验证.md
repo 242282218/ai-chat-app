@@ -2,10 +2,28 @@
 
 本项目的 NewAPI 冒烟验证只从环境变量读取密钥，不把真实 API Key 写入脚本、文档、测试 fixture、日志或 Git 历史。
 
+## 测试API配置
+
+项目提供测试API配置脚本，用于快速设置测试环境：
+
+```powershell
+# 配置测试API环境变量（临时）
+.\scripts\test\configure_test_api.ps1
+
+# 配置测试API环境变量（持久化到用户级别）
+.\scripts\test\configure_test_api.ps1 -Persistent
+```
+
+测试API配置包括：
+- 聊天API：https://zzshu.cc
+- 图像生成API：https://zzshu.cc/v1/images/generations
+- Brave Search API：用于网络搜索功能
+
 ## 环境变量
 
 - `NEWAPI_API_KEY`：聊天/模型接口 Key。
 - `NEWAPI_IMAGE_KEY`：图片生成接口 Key。
+- `BRAVE_SEARCH_API_KEY`：Brave Search API Key。
 
 ## 非计费验证
 

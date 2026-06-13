@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.data.local
+package com.aichat.workbench.data.local
 
 import android.content.Context
 import androidx.room.Room
@@ -306,6 +306,7 @@ class AiChatDatabaseTest {
             database.providerConfigDao(),
             FakeSecretStore(),
             clock,
+            database.modelRolePreferenceDao(),
         )
         val providerId = ProviderId("provider-1")
         val saveProvider = SaveProviderConfigUseCase(providerRepository)

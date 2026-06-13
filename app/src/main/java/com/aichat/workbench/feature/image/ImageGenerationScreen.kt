@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.image
+package com.aichat.workbench.feature.image
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -142,7 +142,7 @@ private fun EmptyImageState() {
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(72.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
                 contentAlignment = Alignment.Center,
@@ -150,11 +150,11 @@ private fun EmptyImageState() {
                 Icon(
                     imageVector = Icons.Outlined.AutoAwesome,
                     contentDescription = null,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            Spacer(modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.size(20.dp))
             Text(
                 text = "暂无图片",
                 style = MaterialTheme.typography.titleMedium,

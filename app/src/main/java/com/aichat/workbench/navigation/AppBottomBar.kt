@@ -23,13 +23,13 @@ fun AppBottomBar(
     onTabSelected: (AppDestination) -> Unit,
 ) {
     HorizontalDivider(
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
         thickness = 0.5.dp,
     )
     NavigationBar(
         tonalElevation = 0.dp,
         containerColor = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.height(60.dp),
+        modifier = Modifier.height(64.dp),
     ) {
         bottomTabItems.forEach { tab ->
             val selected = currentRoute == tab.destination.route
@@ -61,7 +61,7 @@ fun AppBottomBar(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),

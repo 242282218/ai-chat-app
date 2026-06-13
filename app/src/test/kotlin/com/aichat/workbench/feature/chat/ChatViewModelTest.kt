@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
 import com.aichat.workbench.app.AppDispatchers
@@ -615,7 +615,7 @@ class ChatViewModelTest : KoinTest {
                         GenerationController(
                             conversationRepository = get(),
                             providerRepository = get(),
-                            contextProvider = ConversationCompactor(get(), get()),
+                            contextProvider = ConversationContextBuilder(get(), get()),
                             providerRegistry = get(),
                             clock = get(),
                         )

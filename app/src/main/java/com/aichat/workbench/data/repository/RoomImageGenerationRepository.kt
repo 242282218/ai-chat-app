@@ -33,6 +33,7 @@ class RoomImageGenerationRepository(
     }
 
     override suspend fun deleteAllImageGenerations() {
+        imageStorage.deleteAllImages()
         dao.deleteAllImageGenerations()
     }
 }

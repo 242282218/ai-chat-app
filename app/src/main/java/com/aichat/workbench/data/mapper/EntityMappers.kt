@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.data.mapper
+package com.aichat.workbench.data.mapper
 
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.ConversationWithPreview
@@ -148,7 +148,8 @@ fun ImageGenerationEntity.toDomain(): ImageGeneration =
         count = count,
         originalPath = originalPath,
         thumbnailPath = thumbnailPath,
-        status = ImageGenerationStatus.valueOf(status),
+        status = ImageGenerationStatus.entries.firstOrNull { it.name == status }
+            ?: ImageGenerationStatus.Failed,
         errorSummary = errorSummary,
         createdAt = Instant.ofEpochMilli(createdAt),
     )

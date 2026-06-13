@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.image
+package com.aichat.workbench.feature.image
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -176,13 +176,13 @@ class ImageGenerationViewModel(
         generationJob = viewModelScope.launch {
             val current = _state.value
             val provider = current.selectedProvider
-            val imageCount = current.count.trim().toIntOrNull()
+            val imageCount = current.count.trim().toIntOrNull() ?: 1
             runCatching {
                 requireNotNull(provider) { "模型服务未配置。" }
                 require(current.prompt.isNotBlank()) { "图片提示词不能为空。" }
                 require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
                 require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
-                require(imageCount != null && imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
+                require(imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
                 if (provider.requiresApiKey()) {
                     require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
@@ -209,6 +209,7 @@ class ImageGenerationViewModel(
             }.onFailure { error ->
                 if (error is CancellationException) {
                     _state.update { it.copy(error = "已停止，提示词和参数已保留，可修改后重新生成。") }
+                    throw error
                 } else {
                     _state.update { it.copy(error = error.providerFailureSummary("图片生成失败。")) }
                 }

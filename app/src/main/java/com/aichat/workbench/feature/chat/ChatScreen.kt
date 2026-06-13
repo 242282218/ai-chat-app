@@ -339,7 +339,6 @@ private fun ChatErrorPanel(
     onOpenProviders: () -> Unit,
     onRetry: (() -> Unit)?,
 ) {
-    @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
     InlineNotice(
         text = "回复生成失败，内容未完成。$message",
@@ -384,7 +383,7 @@ private fun SearchBar(
             .padding(horizontal = 12.dp, vertical = 4.dp),
         placeholder = { Text(text = "搜索消息...") },
         singleLine = true,
-        shape = MaterialTheme.shapes.large,
+        shape = MaterialTheme.shapes.extraLarge,
         colors = workbenchTextFieldColors(),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         trailingIcon = {
@@ -510,7 +509,6 @@ private fun MessageItem(
         highlightQuery: String = "",
         modifier: Modifier = Modifier,
     ) {
-    @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     val copyState = rememberCopyState(message.id)
 

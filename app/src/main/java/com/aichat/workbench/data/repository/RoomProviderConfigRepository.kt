@@ -18,7 +18,7 @@ class RoomProviderConfigRepository(
     private val providerDao: ProviderConfigDao,
     private val secretStore: SecretStore,
     private val clock: Clock,
-    private val modelRolePreferenceDao: ModelRolePreferenceDao? = null,
+    private val modelRolePreferenceDao: ModelRolePreferenceDao,
 ) : ProviderConfigRepository {
     override fun observeProviders(): Flow<List<ProviderConfig>> =
         providerDao.observeProviders().map { entities -> entities.map { it.toDomain() } }
@@ -73,7 +73,7 @@ class RoomProviderConfigRepository(
     override suspend fun deleteProvider(id: ProviderId) {
         val existing = providerDao.getProvider(id.value)
         providerDao.deleteProvider(id.value)
-        modelRolePreferenceDao?.deleteForProvider(id.value)
+        modelRolePreferenceDao.deleteForProvider(id.value)
         existing?.apiKeyRef?.let { secretStore.deleteSecret(it) }
     }
 

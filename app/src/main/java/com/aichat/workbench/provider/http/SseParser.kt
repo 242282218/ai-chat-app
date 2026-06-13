@@ -12,30 +12,31 @@ data class SseEvent(
 
 fun parseSse(input: InputStream): Sequence<SseEvent> =
     sequence {
-        val reader = BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8))
-        var eventName: String? = null
-        val data = StringBuilder()
+        BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).use { reader ->
+            var eventName: String? = null
+            val data = StringBuilder()
 
-        while (true) {
-            val line = reader.readLine() ?: break
-            when {
-                line.isEmpty() -> {
-                    if (data.isNotEmpty()) {
-                        yield(SseEvent(eventName, data.toString().trimEnd('\n')))
+            while (true) {
+                val line = reader.readLine() ?: break
+                when {
+                    line.isEmpty() -> {
+                        if (data.isNotEmpty()) {
+                            yield(SseEvent(eventName, data.toString().trimEnd('\n')))
+                        }
+                        eventName = null
+                        data.clear()
                     }
-                    eventName = null
-                    data.clear()
-                }
-                line.startsWith("event:") -> {
-                    eventName = line.removePrefix("event:").trim()
-                }
-                line.startsWith("data:") -> {
-                    data.append(line.removePrefix("data:").trimStart()).append('\n')
+                    line.startsWith("event:") -> {
+                        eventName = line.removePrefix("event:").trim()
+                    }
+                    line.startsWith("data:") -> {
+                        data.append(line.removePrefix("data:").trimStart()).append('\n')
+                    }
                 }
             }
-        }
 
-        if (data.isNotEmpty()) {
-            yield(SseEvent(eventName, data.toString().trimEnd('\n')))
+            if (data.isNotEmpty()) {
+                yield(SseEvent(eventName, data.toString().trimEnd('\n')))
+            }
         }
     }

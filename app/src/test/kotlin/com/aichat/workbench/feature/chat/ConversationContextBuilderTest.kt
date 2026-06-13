@@ -29,14 +29,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ConversationCompactorTest {
+class ConversationContextBuilderTest {
     private val clock: Clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
 
     @Test
     fun existingSummaryReplacesEarlierMessagesInProviderContext() = runTest {
         val repository = CompactingConversationRepository()
         val chatProvider = SummaryChatProvider("unused")
-        val compactor = ConversationCompactor(repository, clock)
+        val builder = ConversationContextBuilder(repository, clock)
         val conversation = conversation()
         val messages = listOf(
             message("old", "old content", createdAtOffset = 1),
@@ -50,7 +50,7 @@ class ConversationCompactorTest {
             message("recent", "recent content", createdAtOffset = 3),
         )
 
-        val context = compactor.build(
+        val context = builder.build(
             conversation = conversation,
             provider = provider(maxContextTokens = 1_000),
             apiKey = "key",
@@ -68,7 +68,7 @@ class ConversationCompactorTest {
     fun overLimitCreatesSummaryAndKeepsRecentMessages() = runTest {
         val repository = CompactingConversationRepository()
         val chatProvider = SummaryChatProvider("compressed facts")
-        val compactor = ConversationCompactor(repository, clock)
+        val builder = ConversationContextBuilder(repository, clock)
         val conversation = conversation()
         val messages = (1..14).map { index ->
             message(
@@ -78,7 +78,7 @@ class ConversationCompactorTest {
             )
         }
 
-        val context = compactor.build(
+        val context = builder.build(
             conversation = conversation,
             provider = provider(maxContextTokens = 90),
             apiKey = "key",
@@ -150,7 +150,6 @@ class ConversationCompactorTest {
             updatedAt = clock.instant().plusMillis(createdAtOffset),
             parentMessageId = null,
         )
-
 }
 
 private class SummaryChatProvider(private val summary: String) : ChatProvider {

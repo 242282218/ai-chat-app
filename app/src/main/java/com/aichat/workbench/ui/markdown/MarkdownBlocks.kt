@@ -184,13 +184,16 @@ private class MarkdownBlockCache(
             size > maxSize
     }
 
-    fun getOrPut(key: String, producer: () -> List<MarkdownBlock>): List<MarkdownBlock> =
-        synchronized(entries) { entries[key] }
-            ?: producer().also { parsed ->
-                synchronized(entries) {
-                    entries[key] ?: parsed.also { entries[key] = it }
-                }
-            }
+    fun getOrPut(key: String, producer: () -> List<MarkdownBlock>): List<MarkdownBlock> {
+        synchronized(entries) {
+            entries[key]?.let { return it }
+        }
+        val parsed = producer()
+        synchronized(entries) {
+            entries.getOrPut(key) { parsed }
+        }
+        return parsed
+    }
 }
 
 private const val DEFAULT_MARKDOWN_CACHE_SIZE = 128

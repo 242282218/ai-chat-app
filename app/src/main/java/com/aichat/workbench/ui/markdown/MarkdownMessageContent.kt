@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,14 +86,14 @@ private fun rememberHighlightedText(text: String, query: String): AnnotatedStrin
     val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
     return remember(text, query, highlightBg) {
         if (query.isBlank()) AnnotatedString(text)
-        else buildHighlightedAnnotatedString(text, query, highlightBg.hashCode())
+        else buildHighlightedAnnotatedString(text, query, highlightBg)
     }
 }
 
 private fun buildHighlightedAnnotatedString(
     text: String,
     query: String,
-    highlightColor: Int,
+    highlightColor: Color,
 ): AnnotatedString = buildAnnotatedString {
     val lowerText = text.lowercase()
     val lowerQuery = query.lowercase()
@@ -106,7 +107,7 @@ private fun buildHighlightedAnnotatedString(
         if (matchIndex > pos) {
             append(text.substring(pos, matchIndex))
         }
-        withStyle(SpanStyle(background = androidx.compose.ui.graphics.Color(highlightColor))) {
+        withStyle(SpanStyle(background = highlightColor)) {
             append(text.substring(matchIndex, matchIndex + query.length))
         }
         pos = matchIndex + query.length
@@ -319,7 +320,6 @@ private fun TableRow(cells: List<String>, header: Boolean, highlightQuery: Strin
 // ---- Copy header ----
 
 @Composable
-@Suppress("DEPRECATION")
 private fun CopyHeader(label: String, value: String) {
     val clipboardManager = LocalClipboardManager.current
     val copyState = rememberCopyState(value)

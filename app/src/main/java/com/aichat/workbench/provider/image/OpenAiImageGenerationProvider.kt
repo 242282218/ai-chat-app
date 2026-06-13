@@ -8,7 +8,6 @@ import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.api.readErrorBodySafely
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -140,7 +139,7 @@ class OpenAiImageGenerationProvider(
                 "图片实际大小超过限制：${bytes.size} bytes"
             }
 
-            return Base64.getEncoder().encodeToString(bytes)
+            return kotlin.io.encoding.Base64.Default.encode(bytes)
         }
     }
 

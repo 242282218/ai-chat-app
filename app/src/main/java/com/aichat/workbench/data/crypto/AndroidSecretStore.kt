@@ -5,7 +5,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
-import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -40,8 +39,8 @@ class AndroidSecretStore(context: Context) : SecretStore {
 
         return try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            val iv = Base64.getDecoder().decode(parts[0])
-            val ciphertext = Base64.getDecoder().decode(parts[1])
+            val iv = kotlin.io.encoding.Base64.UrlSafe.decode(parts[0])
+            val ciphertext = kotlin.io.encoding.Base64.UrlSafe.decode(parts[1])
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (e: Exception) {
@@ -80,7 +79,7 @@ class AndroidSecretStore(context: Context) : SecretStore {
     }
 
     private fun ByteArray.toBase64(): String =
-        Base64.getEncoder().encodeToString(this)
+        kotlin.io.encoding.Base64.UrlSafe.encode(this)
 
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"

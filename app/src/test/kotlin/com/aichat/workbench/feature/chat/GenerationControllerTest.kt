@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
@@ -157,7 +157,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = providerRepository,
-            contextProvider = ConversationCompactor(repository, clock),
+            contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
             clock = clock,
         )
@@ -190,7 +190,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(emptyList(), emptyMap()),
-            contextProvider = ConversationCompactor(repository, clock),
+            contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
             clock = clock,
         )
@@ -227,7 +227,7 @@ class GenerationControllerTest {
         val controller = GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(listOf(provider), emptyMap()),
-            contextProvider = ConversationCompactor(repository, clock),
+            contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },
@@ -347,7 +347,7 @@ class GenerationControllerTest {
         GenerationController(
             conversationRepository = repository,
             providerRepository = GenerationControllerProviderRepository(listOf(provider), mapOf(provider.id to "key")),
-            contextProvider = ConversationCompactor(repository, clock),
+            contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },

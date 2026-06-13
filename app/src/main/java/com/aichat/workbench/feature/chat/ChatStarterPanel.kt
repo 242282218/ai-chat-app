@@ -39,22 +39,22 @@ internal fun EmptyConversationPanel(
     ) {
         Box(
             modifier = Modifier
-                .size(72.dp)
+                .size(80.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Outlined.AutoAwesome,
                 contentDescription = null,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(36.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
-        Spacer(modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.size(24.dp))
         Text(
             text = if (hasEnabledProvider) "开始新的对话" else "连接模型",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onBackground,
