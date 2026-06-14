@@ -1,8 +1,6 @@
 package com.aichat.workbench.ui.component
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +27,7 @@ fun MessageBubble(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = 3.dp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Top,
     ) {
@@ -49,15 +47,16 @@ fun MessageBubble(
             } else {
                 MaterialTheme.colorScheme.onSurface
             },
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 0.dp,
-            border = if (isUser) {
-                null
+            shape = if (isUser) {
+                MaterialTheme.shapes.extraLarge
             } else {
-                BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                MaterialTheme.shapes.large
             },
+            tonalElevation = 0.dp,
         ) {
-            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
                 MarkdownMessageContent(text = message.content.ifBlank { "..." })
             }
         }

@@ -1,8 +1,6 @@
-﻿package com.aichat.workbench.ui.component
+package com.aichat.workbench.ui.component
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,38 +34,33 @@ fun InlineNotice(
     val colors = statusColors(tone)
     val noticeModifier = modifier
         .fillMaxWidth()
+        .background(colors.container, MaterialTheme.shapes.medium)
         .semantics {
             if (tone == StatusTone.Critical) {
                 liveRegion = LiveRegionMode.Polite
                 error(text)
             }
         }
-    Surface(
-        modifier = noticeModifier,
-        color = colors.container,
-        contentColor = colors.content,
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(0.5.dp, colors.border),
+    Row(
+        modifier = noticeModifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = text,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-            action()
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = colors.content,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.content,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        action()
     }
 }
 
@@ -82,7 +74,6 @@ fun StatusPill(
     Text(
         text = text,
         modifier = modifier
-            .border(0.5.dp, colors.border, MaterialTheme.shapes.small)
             .background(colors.container, MaterialTheme.shapes.small)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         color = colors.content,

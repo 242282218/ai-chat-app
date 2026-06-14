@@ -1,17 +1,21 @@
 package com.aichat.workbench.feature.chat
 
 import android.net.Uri
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -25,13 +29,14 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -40,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
-import com.aichat.workbench.ui.component.workbenchTextFieldColors
 import com.aichat.workbench.ui.component.statusColors
 import com.aichat.workbench.ui.component.decodeInlineImageBitmap
 import java.io.File
@@ -61,19 +65,14 @@ internal fun InputBar(
     onCancelEdit: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        shadowElevation = 8.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            // Status indicator
             val status = inputStatus(
                 isGenerating = isGenerating,
                 isEditing = isEditing,
@@ -91,7 +90,6 @@ internal fun InputBar(
                 )
             }
 
-            // Image drafts preview
             if (imageDrafts.isNotEmpty()) {
                 ImageDraftRow(
                     images = imageDrafts,
@@ -99,10 +97,9 @@ internal fun InputBar(
                 )
             }
 
-            // Main input row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 WorkbenchIconButton(
@@ -115,20 +112,21 @@ internal fun InputBar(
                 OutlinedTextField(
                     value = input,
                     onValueChange = onInputChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp),
                     placeholder = {
                         Text(
-                            text = if (isEditing) "修改消息..." else "输入消息...",
+                            text = if (isEditing) "修改消息..." else "发消息...",
                             style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         )
                     },
                     minLines = 1,
                     maxLines = 5,
                     enabled = !isGenerating,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = workbenchTextFieldColors(
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
-                    ),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = workbenchInputColors(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = if (input.contains('\n')) ImeAction.Default else ImeAction.Send,
@@ -141,30 +139,44 @@ internal fun InputBar(
                         },
                     ),
                 )
-                FilledIconButton(
-                    onClick = if (isGenerating) onStop else onSend,
+                SendButton(
+                    isGenerating = isGenerating,
                     enabled = isGenerating || canSubmitMessage(input, canSend, imageDrafts),
-                    modifier = Modifier.size(48.dp),
-                    colors = if (isGenerating) {
-                        IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        )
-                    } else {
-                        IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    },
-                ) {
-                    Icon(
-                        imageVector = if (isGenerating) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
-                        contentDescription = if (isGenerating) "停止" else "发送",
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                    onClick = if (isGenerating) onStop else onSend,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun SendButton(
+    isGenerating: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(44.dp),
+        shape = CircleShape,
+        colors = if (isGenerating) {
+            IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            )
+        } else {
+            IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
+        },
+    ) {
+        Icon(
+            imageVector = if (isGenerating) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
+            contentDescription = if (isGenerating) "停止" else "发送",
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -231,7 +243,7 @@ internal fun ChatImagePreview(
         }
         return
     }
-    androidx.compose.foundation.Image(
+    Image(
         bitmap = bitmap,
         contentDescription = "已选择图片",
         contentScale = ContentScale.Crop,
@@ -307,3 +319,16 @@ internal fun inputStatus(
         )
         else -> null
     }
+
+@Composable
+internal fun workbenchInputColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+    cursorColor = MaterialTheme.colorScheme.primary,
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+)

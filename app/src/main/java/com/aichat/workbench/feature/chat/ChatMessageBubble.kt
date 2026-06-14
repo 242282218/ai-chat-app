@@ -1,11 +1,14 @@
 package com.aichat.workbench.feature.chat
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,19 +19,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -50,13 +49,13 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.ui.component.AssistantAvatar
-import com.aichat.workbench.ui.component.UserAvatar
 import com.aichat.workbench.ui.component.StatusPill
-import kotlinx.coroutines.delay
+import com.aichat.workbench.ui.component.UserAvatar
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.util.isReduceMotionEnabled
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
+import kotlinx.coroutines.delay
 
 internal enum class CopyState { Ready, Copied, Failed }
 
@@ -75,21 +74,21 @@ internal fun rememberCopyState(messageId: Any): MutableState<CopyState> {
 @Composable
 @Suppress("DEPRECATION")
 internal fun MessageBubble(
-        message: Message,
-        onEdit: () -> Unit,
-        onRetry: () -> Unit,
-        onDelete: () -> Unit = {},
-        highlightQuery: String = "",
-    ) {
+    message: Message,
+    onEdit: () -> Unit,
+    onRetry: () -> Unit,
+    onDelete: () -> Unit = {},
+    highlightQuery: String = "",
+) {
     val clipboardManager = LocalClipboardManager.current
     val copyState = rememberCopyState(message.id)
     val isUser = message.role == MessageRole.User
 
-val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
+    val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
+            .padding(vertical = 3.dp)
             .semantics { contentDescription = semanticsLabel },
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Top,
@@ -103,7 +102,6 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
             modifier = Modifier.widthIn(max = if (isUser) 300.dp else 600.dp),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
         ) {
-            // Status pills for non-completed messages
             if (message.status != MessageStatus.Completed && message.status != MessageStatus.Compressed) {
                 Row(
                     modifier = Modifier.padding(bottom = 4.dp),
@@ -125,15 +123,13 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
             Surface(
                 color = messageContainerColor(message),
                 contentColor = messageContentColor(message),
-                shape = MaterialTheme.shapes.medium,
+                shape = if (isUser) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.large,
                 tonalElevation = 0.dp,
-                border = messageContainerBorder(message),
             ) {
                 Column(
                     modifier = Modifier.padding(message.contentPadding()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // Inline images
                     val images = message.contentParts.filterIsInstance<MessagePart.Image>()
                     if (images.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -149,14 +145,12 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
                         }
                     }
 
-                    // Content
                     if (message.content.isBlank() && images.isEmpty() && message.errorSummary == null) {
                         TypingIndicator()
                     } else if (message.content.isNotBlank()) {
                         MarkdownMessageContent(text = message.content, highlightQuery = highlightQuery)
                     }
 
-                    // Error
                     message.errorSummary?.let {
                         Text(
                             text = it,
@@ -167,7 +161,6 @@ val semanticsLabel = if (isUser) "你发送的消息" else "AI 回复的消息"
                 }
             }
 
-            // Action row
             MessageActionRow(
                 message = message,
                 copyState = copyState.value,
@@ -293,19 +286,11 @@ private fun messageContentColor(message: Message) =
         MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-@Composable
-private fun messageContainerBorder(message: Message): BorderStroke? =
-    when (message.role) {
-        MessageRole.System -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        MessageRole.Assistant -> BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-        MessageRole.User -> null
-    }
-
-private fun Message.contentPadding(): PaddingValues =
+private fun Message.contentPadding(): androidx.compose.foundation.layout.PaddingValues =
     when (role) {
-        MessageRole.Assistant -> PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-        MessageRole.User -> PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-        MessageRole.System -> PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        MessageRole.Assistant -> androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+        MessageRole.User -> androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+        MessageRole.System -> androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
     }
 
 private fun Message.roleTone(): StatusTone =
