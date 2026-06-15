@@ -87,7 +87,7 @@ class ProviderModelDiscoveryClient(
         }
 
     private fun Response.bodyText(): String =
-        body?.string().orEmpty()
+        body?.readErrorBodySafely().orEmpty()
 
     private fun ProviderModelDiscovery.modelsOrNull(
         body: String,

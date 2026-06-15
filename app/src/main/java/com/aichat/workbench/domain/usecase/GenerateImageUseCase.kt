@@ -39,24 +39,34 @@ class GenerateImageUseCase(
         val pending = request.pendingGeneration()
         repository.saveImageGeneration(pending)
 
+        val savedImages = mutableListOf<ImageGeneration>()
         return try {
             val response = imageProvider.generate(request.toProviderRequest())
             require(response.images.isNotEmpty()) { "Provider 未返回图片。" }
+
             response.images.mapIndexed { index, generated ->
                 val base64 = generated.base64
                     ?: error("Provider 返回的是图片 URL；本地保存需要 base64 图片数据。")
                 val id = if (index == 0) pending.id else ImageGenerationId(UUID.randomUUID().toString())
                 val paths = imageStorage.savePng(id, kotlin.io.encoding.Base64.Default.decode(base64))
-                pending.copy(
+                val completed = pending.copy(
                     id = id,
                     count = response.images.size,
                     originalPath = paths.originalPath,
                     thumbnailPath = paths.thumbnailPath,
                     status = ImageGenerationStatus.Completed,
                     errorSummary = null,
-                ).also { repository.saveImageGeneration(it) }
+                )
+                repository.saveImageGeneration(completed)
+                savedImages.add(completed)
+                completed
             }
         } catch (error: CancellationException) {
+            // Rollback saved images on cancellation
+            savedImages.forEach { image ->
+                imageStorage.deleteImage(image.id)
+                repository.deleteImageGeneration(image.id)
+            }
             repository.saveImageGeneration(
                 pending.copy(
                     status = ImageGenerationStatus.Cancelled,
@@ -65,6 +75,11 @@ class GenerateImageUseCase(
             )
             throw error
         } catch (error: Throwable) {
+            // Rollback saved images on failure
+            savedImages.forEach { image ->
+                imageStorage.deleteImage(image.id)
+                repository.deleteImageGeneration(image.id)
+            }
             val failed = pending.copy(
                 status = ImageGenerationStatus.Failed,
                 errorSummary = error.summary(),

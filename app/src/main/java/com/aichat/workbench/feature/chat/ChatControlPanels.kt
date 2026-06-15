@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -203,6 +203,7 @@ private fun NewConversationButton(onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
     ) {
         Icon(imageVector = Icons.Filled.Add, contentDescription = null)
         Spacer(modifier = Modifier.width(8.dp))

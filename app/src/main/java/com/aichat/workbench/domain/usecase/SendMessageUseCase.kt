@@ -1,5 +1,6 @@
 package com.aichat.workbench.domain.usecase
 
+import com.aichat.workbench.domain.model.ChatConfig
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageStatus
@@ -18,6 +19,7 @@ class SendMessageUseCase(
     private val conversationRepository: ConversationRepository,
     private val chatProvider: ChatProvider,
     private val clock: Clock,
+    private val chatConfig: ChatConfig = ChatConfig(),
 ) {
     operator fun invoke(
         assistantMessage: Message,
@@ -37,7 +39,7 @@ class SendMessageUseCase(
             suspend fun flush(force: Boolean = false) {
                 if (!dirty) return
                 val now = clock.millis()
-                if (force || deltaCount >= FLUSH_DELTA_COUNT || now - lastFlushAt >= FLUSH_INTERVAL_MILLIS) {
+                if (force || deltaCount >= chatConfig.flushDeltaCount || now - lastFlushAt >= chatConfig.flushIntervalMillis) {
                     conversationRepository.saveMessage(current)
                     dirty = false
                     deltaCount = 0
@@ -128,8 +130,6 @@ class SendMessageUseCase(
         this == MessageStatus.Completed || this == MessageStatus.Failed || this == MessageStatus.Cancelled
 
     private companion object {
-        const val FLUSH_DELTA_COUNT = 10
-        const val FLUSH_INTERVAL_MILLIS = 500L
         const val GENERATED_IMAGE_PLACEHOLDER = "已生成图片。"
     }
 }

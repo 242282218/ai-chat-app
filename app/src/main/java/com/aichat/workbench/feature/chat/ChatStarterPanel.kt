@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,15 +39,15 @@ internal fun EmptyConversationPanel(
     ) {
         Box(
             modifier = Modifier
-                .size(80.dp)
+                .size(72.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Outlined.AutoAwesome,
                 contentDescription = null,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(32.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
@@ -55,7 +55,7 @@ internal fun EmptyConversationPanel(
         Text(
             text = if (hasEnabledProvider) "开始新的对话" else "连接模型",
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -72,7 +72,10 @@ internal fun EmptyConversationPanel(
         )
         if (!hasEnabledProvider) {
             Spacer(modifier = Modifier.size(24.dp))
-            Button(onClick = onOpenProviders) {
+            Button(
+                onClick = onOpenProviders,
+                shape = MaterialTheme.shapes.medium,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Tune,
                     contentDescription = null,

@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.image
+package com.aichat.workbench.feature.image
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +88,7 @@ internal fun ImageGenerationForm(
             label = { Text(text = "提示词 *") },
             placeholder = { Text(text = "描述主体、风格、构图和约束") },
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
         )
         ImageGenerationReadiness(state)
         CompactGenerationControlsSummary(
@@ -112,6 +114,7 @@ internal fun ImageGenerationForm(
                     placeholder = { Text(text = "输入图片模型名称") },
                     singleLine = true,
                     colors = workbenchTextFieldColors(),
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -132,6 +135,7 @@ internal fun ImageGenerationForm(
                     placeholder = { Text(text = "自定义尺寸，如 1024x1024") },
                     singleLine = true,
                     colors = workbenchTextFieldColors(),
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -176,6 +180,7 @@ internal fun ImageGenerationForm(
             },
             enabled = state.isGenerating || state.canGenerateImages(),
             modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
         ) {
             Icon(
                 imageVector = if (state.isGenerating) Icons.Filled.Stop else Icons.Filled.Image,
@@ -188,6 +193,7 @@ internal fun ImageGenerationForm(
             onClick = viewModel::testConnection,
             enabled = state.selectedProvider != null && !state.isGenerating && !state.isTestingConnection,
             modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
         ) {
             Icon(imageVector = Icons.Filled.Check, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
@@ -389,10 +395,6 @@ private fun imageControlSummary(state: ImageGenerationUiState): String {
     val count = state.count.ifBlank { "?" }
     return "$provider · $model · $size · $quality · $count 张"
 }
-
-
-
-
 
 private val imageSizePresets = listOf("1024x1024", "1024x1792", "1792x1024")
 private val imageQualityPresets = listOf("auto", "low", "medium", "high")

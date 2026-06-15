@@ -10,6 +10,7 @@ import com.aichat.workbench.data.repository.RoomImageGenerationRepository
 import com.aichat.workbench.data.repository.RoomModelRolePreferenceRepository
 import com.aichat.workbench.data.repository.RoomProviderConfigRepository
 import com.aichat.workbench.data.settings.DataStoreImageGenerationPreferencesRepository
+import com.aichat.workbench.domain.model.ChatConfig
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
@@ -17,6 +18,10 @@ import com.aichat.workbench.domain.repository.ImageGenerationRepository
 import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
+import com.aichat.workbench.domain.usecase.CreateConversationUseCase
+import com.aichat.workbench.domain.usecase.GenerateImageUseCase
+import com.aichat.workbench.domain.usecase.SaveProviderConfigUseCase
+import com.aichat.workbench.domain.usecase.SendMessageUseCase
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.chat.ConversationContextBuilder
 import com.aichat.workbench.feature.chat.ConversationContextProvider
@@ -47,6 +52,7 @@ val appModule: Module = module {
     single { AppDispatchers() }
     single { ApplicationScope(dispatchers = get()) }
     single { Clock.systemUTC() }
+    single { ChatConfig() }
     single<OkHttpClient>(named("jsonHttpClient")) { WorkbenchHttpClients.json() }
     single<OkHttpClient>(named("streamingHttpClient")) { WorkbenchHttpClients.streaming() }
     single<OkHttpClient>(named("longRunningHttpClient")) { WorkbenchHttpClients.longRunning() }
@@ -150,6 +156,21 @@ val appModule: Module = module {
             providerRepository = get(),
             contextProvider = get(),
             providerRegistry = get(),
+            createConversationUseCase = get(),
+            clock = get(),
+        )
+    }
+    factory {
+        CreateConversationUseCase(
+            repository = get(),
+            clock = get(),
+        )
+    }
+    factory {
+        GenerateImageUseCase(
+            repository = get(),
+            imageProvider = get(),
+            imageStorage = get(),
             clock = get(),
         )
     }
@@ -165,6 +186,7 @@ val appModule: Module = module {
             imageStorage = get(),
             connectionTester = get(),
             clock = get(),
+            generateImageUseCase = get(),
         )
     }
 }

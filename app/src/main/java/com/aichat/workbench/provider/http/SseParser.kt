@@ -10,17 +10,32 @@ data class SseEvent(
     val data: String,
 )
 
+private const val MAX_LINE_LENGTH = 1024 * 1024 // 1MB per line
+private const val MAX_EVENT_SIZE = 10 * 1024 * 1024 // 10MB per event data
+private const val MAX_EVENTS = 10000 // Maximum number of events in a single stream
+
 fun parseSse(input: InputStream): Sequence<SseEvent> =
     sequence {
         BufferedReader(InputStreamReader(input, StandardCharsets.UTF_8)).use { reader ->
             var eventName: String? = null
             val data = StringBuilder()
+            var eventCount = 0
 
             while (true) {
                 val line = reader.readLine() ?: break
+
+                // Guard against excessively long lines
+                if (line.length > MAX_LINE_LENGTH) {
+                    throw SseParseException("SSE line exceeds maximum length: ${line.length} bytes")
+                }
+
                 when {
                     line.isEmpty() -> {
                         if (data.isNotEmpty()) {
+                            eventCount++
+                            if (eventCount > MAX_EVENTS) {
+                                throw SseParseException("SSE stream exceeded maximum event count: $MAX_EVENTS")
+                            }
                             yield(SseEvent(eventName, data.toString().trimEnd('\n')))
                         }
                         eventName = null
@@ -30,13 +45,24 @@ fun parseSse(input: InputStream): Sequence<SseEvent> =
                         eventName = line.removePrefix("event:").trim()
                     }
                     line.startsWith("data:") -> {
-                        data.append(line.removePrefix("data:").trimStart()).append('\n')
+                        val newData = line.removePrefix("data:").trimStart()
+                        // Guard against excessively large event data
+                        if (data.length + newData.length > MAX_EVENT_SIZE) {
+                            throw SseParseException("SSE event data exceeds maximum size: $MAX_EVENT_SIZE bytes")
+                        }
+                        data.append(newData).append('\n')
                     }
                 }
             }
 
             if (data.isNotEmpty()) {
+                eventCount++
+                if (eventCount > MAX_EVENTS) {
+                    throw SseParseException("SSE stream exceeded maximum event count: $MAX_EVENTS")
+                }
                 yield(SseEvent(eventName, data.toString().trimEnd('\n')))
             }
         }
     }
+
+class SseParseException(message: String) : RuntimeException(message)

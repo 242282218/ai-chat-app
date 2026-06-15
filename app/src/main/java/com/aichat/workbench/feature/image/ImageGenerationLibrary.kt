@@ -2,6 +2,7 @@ package com.aichat.workbench.feature.image
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,15 +21,21 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +47,8 @@ import com.aichat.workbench.ui.component.QuietSectionHeader
 import com.aichat.workbench.ui.component.StatusPill
 import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ImageLibraryHeader(
@@ -94,8 +103,7 @@ internal fun ImageGenerationRow(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         shape = MaterialTheme.shapes.large,
-        tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+        tonalElevation = 2.dp,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Box {
@@ -142,7 +150,10 @@ internal fun ImageGenerationRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 item {
-                    OutlinedButton(onClick = onReusePrompt) {
+                    OutlinedButton(
+                        onClick = onReusePrompt,
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
                         Text(text = "复用提示词")
                     }
                 }
@@ -248,13 +259,40 @@ private fun ImageGenerationUiState.imageLibrarySummaryLabel(): String {
 
 @Composable
 private fun LocalThumbnail(path: String) {
-    val bitmap = remember(path) {
-        BitmapFactory.decodeFile(path)?.asImageBitmap()
+    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(path) {
+        bitmap = withContext(Dispatchers.IO) {
+            try {
+                BitmapFactory.decodeFile(path)?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            } finally {
+                isLoading = false
+            }
+        }
+        isLoading = false
     }
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+        }
+        return
+    }
+
     if (bitmap == null) {
         MissingThumbnail()
         return
     }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -262,7 +300,7 @@ private fun LocalThumbnail(path: String) {
         shape = MaterialTheme.shapes.medium,
     ) {
         Image(
-            bitmap = bitmap,
+            bitmap = bitmap!!,
             contentDescription = "生成图片预览",
             modifier = Modifier.fillMaxWidth(),
             contentScale = ContentScale.Crop,
@@ -278,4 +316,3 @@ private fun String.preview(maxLength: Int): String {
         "${normalized.take(maxLength - 3)}..."
     }
 }
-

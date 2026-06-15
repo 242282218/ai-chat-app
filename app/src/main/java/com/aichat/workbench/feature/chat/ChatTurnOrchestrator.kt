@@ -24,14 +24,14 @@ import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 
-private const val ConversationTitleMaxLength = 40
+private const val CONVERSATION_TITLE_MAX_LENGTH = 40
 
 internal fun conversationTitlePreview(message: String): String {
     val normalized = message.replace(Regex("\\s+"), " ").trim()
     return when {
         normalized.isBlank() -> "新对话"
-        normalized.length <= ConversationTitleMaxLength -> normalized
-        else -> "${normalized.take(ConversationTitleMaxLength - 3)}..."
+        normalized.length <= CONVERSATION_TITLE_MAX_LENGTH -> normalized
+        else -> "${normalized.take(CONVERSATION_TITLE_MAX_LENGTH - 3)}..."
     }
 }
 
@@ -66,6 +66,7 @@ class ChatTurnOrchestrator(
     private val providerRepository: ProviderConfigRepository,
     private val contextProvider: ConversationContextProvider,
     private val providerRegistry: ProviderRegistry,
+    private val createConversationUseCase: CreateConversationUseCase,
     private val clock: Clock,
 ) {
     suspend fun run(
@@ -116,7 +117,7 @@ class ChatTurnOrchestrator(
     }
 
     private suspend fun createConversation(request: ChatTurnRequest): Conversation {
-        return CreateConversationUseCase(conversationRepository, clock)(
+        return createConversationUseCase(
             title = conversationTitlePreview(request.userText ?: "重试"),
             defaultProviderId = request.selectedProviderId?.let(::ProviderId),
         )

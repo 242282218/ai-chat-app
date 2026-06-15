@@ -39,7 +39,7 @@ internal fun Response.requireSuccessfulProviderResponse() {
 }
 
 internal fun Response.bodyText(): String =
-    body?.string().orEmpty()
+    body?.readErrorBodySafely().orEmpty()
 
 internal fun Response.requireBody() =
     requireNotNull(body) { "Provider 响应 body 为空。" }

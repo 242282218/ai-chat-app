@@ -2,6 +2,7 @@ package com.aichat.workbench.provider.http
 
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import okhttp3.ConnectionPool
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 
@@ -30,6 +31,13 @@ object WorkbenchHttpClients {
     private fun baseBuilder(): OkHttpClient.Builder =
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
+            .connectionPool(
+                ConnectionPool(
+                    maxIdleConnections = 10,
+                    keepAliveDuration = 3,
+                    timeUnit = TimeUnit.MINUTES
+                )
+            )
             .addInterceptor(defaultHeadersInterceptor())
 
     private fun defaultHeadersInterceptor(): Interceptor =

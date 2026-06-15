@@ -1,6 +1,5 @@
 package com.aichat.workbench.ui.markdown
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,8 +11,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -21,11 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -38,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import com.aichat.workbench.feature.chat.CopyState
 import com.aichat.workbench.feature.chat.rememberCopyState
 import com.aichat.workbench.ui.component.WorkbenchIconButton
@@ -62,7 +56,7 @@ fun MarkdownMessageContent(
 }
 
 @Composable
-private fun MarkdownBlockContent(
+internal fun MarkdownBlockContent(
     block: MarkdownBlock,
     highlightQuery: String,
 ) {
@@ -75,15 +69,16 @@ private fun MarkdownBlockContent(
         is MarkdownBlock.BulletList -> BulletListContent(block, highlightQuery)
         is MarkdownBlock.OrderedList -> OrderedListContent(block, highlightQuery)
         is MarkdownBlock.Table -> TableContent(block, highlightQuery)
-        MarkdownBlock.Divider -> HorizontalDivider()
+        MarkdownBlock.Divider -> HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant,
+            thickness = 0.5.dp,
+        )
     }
 }
 
-// ---- Highlight utility ----
-
 @Composable
 private fun rememberHighlightedText(text: String, query: String): AnnotatedString {
-    val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    val highlightBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
     return remember(text, query, highlightBg) {
         if (query.isBlank()) AnnotatedString(text)
         else buildHighlightedAnnotatedString(text, query, highlightBg)
@@ -113,8 +108,6 @@ private fun buildHighlightedAnnotatedString(
         pos = matchIndex + query.length
     }
 }
-
-// ---- Block composables ----
 
 @Composable
 private fun ParagraphText(text: String, highlightQuery: String) {
@@ -150,8 +143,7 @@ private fun HeadingText(block: MarkdownBlock.Heading, highlightQuery: String) {
 private fun QuoteContent(block: MarkdownBlock.Quote, highlightQuery: String) {
     val annotated = rememberHighlightedText(block.text, highlightQuery)
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         shape = MaterialTheme.shapes.small,
         tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
@@ -221,10 +213,9 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock, highlightQuery: Str
     }
     val highlightedCode = rememberHighlightedCode(block.content, block.language)
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         shape = MaterialTheme.shapes.small,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -253,10 +244,9 @@ private fun CodeBlockContent(block: MarkdownBlock.CodeBlock, highlightQuery: Str
 private fun LatexBlockContent(block: MarkdownBlock.LatexBlock, highlightQuery: String) {
     val annotated = rememberHighlightedText(block.content, highlightQuery)
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         shape = MaterialTheme.shapes.small,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -275,10 +265,9 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock, highlightQuery: S
 @Composable
 private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
         shape = MaterialTheme.shapes.small,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -291,7 +280,7 @@ private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
                 TableRow(block.headers, header = true, highlightQuery = highlightQuery)
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.outlineVariant,
                     thickness = 0.5.dp,
                 )
             }
@@ -316,8 +305,6 @@ private fun TableRow(cells: List<String>, header: Boolean, highlightQuery: Strin
         }
     }
 }
-
-// ---- Copy header ----
 
 @Composable
 private fun CopyHeader(label: String, value: String) {

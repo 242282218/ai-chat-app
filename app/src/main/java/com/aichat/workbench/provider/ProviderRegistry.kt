@@ -18,11 +18,17 @@ class ProviderRegistry {
 
     fun register(type: String, provider: ChatProvider) {
         val providerType = ProviderType.fromStorage(type)
+        require(!providers.containsKey(providerType.value)) {
+            "ChatProvider already registered for type: ${providerType.value}"
+        }
         providers[providerType.value] = provider
         descriptors[providerType.value] = builtInDescriptor(providerType) ?: customDescriptor(providerType)
     }
 
     fun register(descriptor: ProviderDescriptor, provider: ChatProvider) {
+        require(!providers.containsKey(descriptor.type.value)) {
+            "ChatProvider already registered for type: ${descriptor.type.value}"
+        }
         providers[descriptor.type.value] = provider
         descriptors[descriptor.type.value] = descriptor
     }

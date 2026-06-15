@@ -24,7 +24,6 @@ class AndroidSecretStore(context: Context) : SecretStore {
                 .putString(ref, "${iv.toBase64()}:${ciphertext.toBase64()}")
                 .apply()
         } catch (e: Exception) {
-            android.util.Log.e("AndroidSecretStore", "Failed to encrypt secret for ref=$ref", e)
             throw SecretStoreException("加密存储失败：${e.message}", e)
         }
     }
@@ -33,7 +32,6 @@ class AndroidSecretStore(context: Context) : SecretStore {
         val encoded = preferences.getString(ref, null) ?: return null
         val parts = encoded.split(":", limit = 2)
         if (parts.size != 2) {
-            android.util.Log.w("AndroidSecretStore", "Invalid encrypted secret format for ref=$ref")
             return null
         }
 
@@ -44,8 +42,6 @@ class AndroidSecretStore(context: Context) : SecretStore {
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (e: Exception) {
-            android.util.Log.e("AndroidSecretStore", "Failed to decrypt secret for ref=$ref", e)
-            // Return null instead of throwing to allow graceful degradation
             null
         }
     }
@@ -73,7 +69,6 @@ class AndroidSecretStore(context: Context) : SecretStore {
 
             (keyStore.getEntry(KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
         } catch (e: Exception) {
-            android.util.Log.e("AndroidSecretStore", "Failed to get/create keystore key", e)
             throw SecretStoreException("无法访问安全存储：${e.message}", e)
         }
     }

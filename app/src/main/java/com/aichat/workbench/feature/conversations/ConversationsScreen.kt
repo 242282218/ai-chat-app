@@ -201,38 +201,17 @@ fun ConversationsScreen(
                             state = dismissState,
                             enableDismissFromStartToEnd = false,
                             backgroundContent = {
-                                val color by animateColorAsState(
-                                    targetValue = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
-                                        MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
-                                    } else {
-                                        MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
-                                    },
-                                    animationSpec = spring(),
-                                    label = "swipe_bg",
+                                // Use new SwipeDeleteBackground component
+                                com.aichat.workbench.feature.conversations.SwipeDeleteBackground(
+                                    dismissProgress = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) 1f else 0f
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(color)
-                                        .padding(horizontal = 20.dp),
-                                    contentAlignment = Alignment.CenterEnd,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Delete,
-                                        contentDescription = "删除",
-                                        tint = MaterialTheme.colorScheme.onError,
-                                    )
-                                }
                             },
                             content = {
-                                ConversationRow(
-                                    title = conversation.title,
-                                    subtitle = listOfNotNull(
-                                        conversation.lastMessagePreview(),
-                                        formatRelativeTime(conversation.updatedAt),
-                                    ).joinToString(" \u00B7 "),
+                                // Use new ConversationCard component
+                                com.aichat.workbench.feature.conversations.ConversationCard(
+                                    conversation = conversation,
                                     onClick = { onConversationClick(conversation.id) },
-                                    modifier = Modifier.animateItem(),
+                                    modifier = Modifier.animateItem()
                                 )
                             },
                         )

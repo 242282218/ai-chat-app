@@ -617,6 +617,7 @@ class ChatViewModelTest : KoinTest {
                             providerRepository = get(),
                             contextProvider = ConversationContextBuilder(get(), get()),
                             providerRegistry = get(),
+                            createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(get(), get()),
                             clock = get(),
                         )
                     }

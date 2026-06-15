@@ -9,6 +9,7 @@ import com.aichat.workbench.provider.api.ProviderTextResponse
 import com.aichat.workbench.provider.compatible.OpenAiChatCompletionsProtocol
 import com.aichat.workbench.provider.http.parseSse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -49,6 +50,7 @@ open class OpenAiChatProvider(
                 it.requireSuccessfulProviderResponse()
                 var terminalEventReceived = false
                 for (event in parseSse(it.requireBody().byteStream())) {
+                    kotlin.coroutines.coroutineContext.ensureActive()
                     OpenAiResponsesProtocol.mapSse(event.data)?.let { mapped ->
                         terminalEventReceived = terminalEventReceived || mapped.isTerminal()
                         emit(mapped)

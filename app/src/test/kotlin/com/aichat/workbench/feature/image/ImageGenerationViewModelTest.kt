@@ -18,6 +18,8 @@ import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.repository.StoredImagePaths
+import com.aichat.workbench.domain.usecase.GenerateImageRequest
+import com.aichat.workbench.domain.usecase.GenerateImageUseCase
 import com.aichat.workbench.provider.image.GeneratedImage
 import com.aichat.workbench.provider.image.ImageGenerationProvider
 import com.aichat.workbench.provider.image.ImageGenerationProviderRequest
@@ -692,6 +694,7 @@ class ImageGenerationViewModelTest {
             imageStorage = storage,
             connectionTester = connectionTester,
             clock = clock,
+            generateImageUseCase = GenerateImageUseCase(repository, imageProvider, storage, clock),
         )
 
     private fun imageGeneration(): ImageGeneration =

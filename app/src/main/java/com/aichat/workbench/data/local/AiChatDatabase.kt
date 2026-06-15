@@ -356,39 +356,12 @@ abstract class AiChatDatabase : RoomDatabase() {
 
         val MIGRATION_12_13: Migration = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE conversations_backup AS
-                    SELECT
+                db.recreateConversationsWithSchema(
+                    conversationColumns = """
                         id, title, created_at, updated_at, default_provider_id, default_model,
                         model_parameters_json, system_prompt, is_temporary, archived_at
-                    FROM conversations
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE messages_backup AS
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE image_generations_backup AS
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations
-                    """.trimIndent(),
-                )
-                db.execSQL("DELETE FROM messages")
-                db.execSQL("DELETE FROM image_generations")
-                db.execSQL("DROP TABLE conversations")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS conversations (
+                    conversationSchema = """
                         id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
@@ -400,85 +373,23 @@ abstract class AiChatDatabase : RoomDatabase() {
                         is_temporary INTEGER NOT NULL,
                         archived_at INTEGER,
                         PRIMARY KEY(id)
-                    )
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO conversations (
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt, is_temporary, archived_at
-                    )
-                    SELECT
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt, is_temporary, archived_at
-                    FROM conversations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_archived_at ON conversations(archived_at)")
-                db.execSQL(
-                    """
-                    INSERT INTO image_generations (
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    )
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO messages (
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    )
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages_backup
-                    """.trimIndent(),
+                    conversationIndices = listOf(
+                        "CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)",
+                        "CREATE INDEX IF NOT EXISTS index_conversations_archived_at ON conversations(archived_at)",
+                    ),
                 )
             }
         }
 
         val MIGRATION_13_14: Migration = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE conversations_backup AS
-                    SELECT
+                db.recreateConversationsWithSchema(
+                    conversationColumns = """
                         id, title, created_at, updated_at, default_provider_id, default_model,
                         model_parameters_json, system_prompt, is_temporary
-                    FROM conversations
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE messages_backup AS
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE image_generations_backup AS
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations
-                    """.trimIndent(),
-                )
-                db.execSQL("DELETE FROM messages")
-                db.execSQL("DELETE FROM image_generations")
-                db.execSQL("DROP TABLE conversations")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS conversations (
+                    conversationSchema = """
                         id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
@@ -489,45 +400,10 @@ abstract class AiChatDatabase : RoomDatabase() {
                         system_prompt TEXT,
                         is_temporary INTEGER NOT NULL,
                         PRIMARY KEY(id)
-                    )
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO conversations (
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt, is_temporary
-                    )
-                    SELECT
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt, is_temporary
-                    FROM conversations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
-                db.execSQL(
-                    """
-                    INSERT INTO image_generations (
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    )
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO messages (
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    )
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages_backup
-                    """.trimIndent(),
+                    conversationIndices = listOf(
+                        "CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)",
+                    ),
                 )
             }
         }
@@ -547,39 +423,12 @@ abstract class AiChatDatabase : RoomDatabase() {
 
         val MIGRATION_15_16: Migration = object : Migration(15, 16) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE conversations_backup AS
-                    SELECT
+                db.recreateConversationsWithSchema(
+                    conversationColumns = """
                         id, title, created_at, updated_at, default_provider_id, default_model,
                         model_parameters_json, system_prompt
-                    FROM conversations
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE messages_backup AS
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE image_generations_backup AS
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations
-                    """.trimIndent(),
-                )
-                db.execSQL("DELETE FROM messages")
-                db.execSQL("DELETE FROM image_generations")
-                db.execSQL("DROP TABLE conversations")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS conversations (
+                    conversationSchema = """
                         id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
@@ -589,45 +438,10 @@ abstract class AiChatDatabase : RoomDatabase() {
                         model_parameters_json TEXT NOT NULL,
                         system_prompt TEXT,
                         PRIMARY KEY(id)
-                    )
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO conversations (
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt
-                    )
-                    SELECT
-                        id, title, created_at, updated_at, default_provider_id, default_model,
-                        model_parameters_json, system_prompt
-                    FROM conversations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
-                db.execSQL(
-                    """
-                    INSERT INTO image_generations (
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    )
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO messages (
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    )
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages_backup
-                    """.trimIndent(),
+                    conversationIndices = listOf(
+                        "CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)",
+                    ),
                 )
             }
         }
@@ -640,81 +454,19 @@ abstract class AiChatDatabase : RoomDatabase() {
 
         val MIGRATION_17_18: Migration = object : Migration(17, 18) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE conversations_backup AS
-                    SELECT
-                        id, title, created_at, updated_at, default_provider_id
-                    FROM conversations
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE messages_backup AS
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    CREATE TEMP TABLE image_generations_backup AS
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations
-                    """.trimIndent(),
-                )
-                db.execSQL("DELETE FROM messages")
-                db.execSQL("DELETE FROM image_generations")
-                db.execSQL("DROP TABLE conversations")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS conversations (
+                db.recreateConversationsWithSchema(
+                    conversationColumns = "id, title, created_at, updated_at, default_provider_id",
+                    conversationSchema = """
                         id TEXT NOT NULL,
                         title TEXT NOT NULL,
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
                         default_provider_id TEXT,
                         PRIMARY KEY(id)
-                    )
                     """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO conversations (
-                        id, title, created_at, updated_at, default_provider_id
-                    )
-                    SELECT
-                        id, title, created_at, updated_at, default_provider_id
-                    FROM conversations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)")
-                db.execSQL(
-                    """
-                    INSERT INTO image_generations (
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    )
-                    SELECT
-                        id, conversation_id, prompt, provider_id, model, size, quality, count,
-                        original_path, thumbnail_path, status, error_summary, created_at
-                    FROM image_generations_backup
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    """
-                    INSERT INTO messages (
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    )
-                    SELECT
-                        id, conversation_id, role, content, content_parts_json, provider_id, model,
-                        status, error_summary, created_at, updated_at, parent_message_id
-                    FROM messages_backup
-                    """.trimIndent(),
+                    conversationIndices = listOf(
+                        "CREATE INDEX IF NOT EXISTS index_conversations_updated_at ON conversations(updated_at)",
+                    ),
                 )
             }
         }

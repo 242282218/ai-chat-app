@@ -1,11 +1,13 @@
-﻿package com.aichat.workbench.navigation
+package com.aichat.workbench.navigation
 
 import android.net.Uri
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -54,24 +56,24 @@ fun AppNavHost() {
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
                 slideInHorizontally(
-                    initialOffsetX = { it / 4 },
-                    animationSpec = tween(280),
+                    initialOffsetX = { it / 3 },
+                    animationSpec = tween(300),
                 ) + fadeIn(animationSpec = tween(200))
             },
             exitTransition = {
-                fadeOut(animationSpec = tween(180))
+                fadeOut(animationSpec = tween(150))
             },
             popEnterTransition = {
                 slideInHorizontally(
-                    initialOffsetX = { -it / 4 },
-                    animationSpec = tween(280),
+                    initialOffsetX = { -it / 3 },
+                    animationSpec = tween(300),
                 ) + fadeIn(animationSpec = tween(200))
             },
             popExitTransition = {
                 slideOutHorizontally(
-                    targetOffsetX = { it / 4 },
-                    animationSpec = tween(280),
-                ) + fadeOut(animationSpec = tween(180))
+                    targetOffsetX = { it / 3 },
+                    animationSpec = tween(300),
+                ) + fadeOut(animationSpec = tween(150))
             },
         ) {
             composable(AppDestination.Conversations.route) {

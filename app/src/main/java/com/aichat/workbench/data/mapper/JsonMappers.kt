@@ -8,14 +8,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-private val mapperJson = Json {
+private val MAPPER_JSON = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     encodeDefaults = true
 }
 
 fun List<MessagePart>.toJson(): String =
-    mapperJson.encodeToString(
+    MAPPER_JSON.encodeToString(
         map { part ->
             when (part) {
                 is MessagePart.Text -> MessagePartJson(type = "text", text = part.text)
@@ -30,7 +30,7 @@ fun List<MessagePart>.toJson(): String =
 
 fun messagePartsFromJson(value: String): List<MessagePart> {
     if (value.isBlank()) return emptyList()
-    return runCatching { mapperJson.decodeFromString<List<MessagePartJson>>(value) }
+    return runCatching { MAPPER_JSON.decodeFromString<List<MessagePartJson>>(value) }
         .getOrDefault(emptyList())
         .mapNotNull { part ->
         when (part.type) {
@@ -42,26 +42,26 @@ fun messagePartsFromJson(value: String): List<MessagePart> {
 }
 
 fun Map<String, String>.toJsonObjectString(): String =
-    mapperJson.encodeToString<Map<String, String>>(toSortedMap())
+    MAPPER_JSON.encodeToString<Map<String, String>>(toSortedMap())
 
 fun stringMapFromJson(value: String): Map<String, String> {
     if (value.isBlank()) return emptyMap()
-    return mapperJson.decodeFromString(value)
+    return MAPPER_JSON.decodeFromString(value)
 }
 
 fun List<ModelConfig>.toModelConfigsJson(): String =
-    mapperJson.encodeToString(map { it.toJsonModel() })
+    MAPPER_JSON.encodeToString(map { it.toJsonModel() })
 
 fun modelConfigsFromJson(value: String): List<ModelConfig> {
     if (value.isBlank()) return emptyList()
-    return mapperJson.decodeFromString<List<ModelConfigJson>>(value).map { it.toDomain() }
+    return MAPPER_JSON.decodeFromString<List<ModelConfigJson>>(value).map { it.toDomain() }
 }
 
 fun ModelCapability.toJson(): String =
-    mapperJson.encodeToString(toJsonModel())
+    MAPPER_JSON.encodeToString(toJsonModel())
 
 fun modelCapabilityFromJson(value: String): ModelCapability =
-    mapperJson.decodeFromString<ModelCapabilityJson>(value).toDomain()
+    MAPPER_JSON.decodeFromString<ModelCapabilityJson>(value).toDomain()
 
 private fun ModelConfig.toJsonModel(): ModelConfigJson =
     ModelConfigJson(

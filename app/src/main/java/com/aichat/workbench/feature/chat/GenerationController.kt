@@ -28,6 +28,7 @@ class GenerationController(
     providerRepository: ProviderConfigRepository,
     contextProvider: ConversationContextProvider,
     providerRegistry: ProviderRegistry,
+    createConversationUseCase: com.aichat.workbench.domain.usecase.CreateConversationUseCase,
     private val clock: Clock,
 ) {
     private val chatTurnOrchestrator = ChatTurnOrchestrator(
@@ -35,6 +36,7 @@ class GenerationController(
         providerRepository = providerRepository,
         contextProvider = contextProvider,
         providerRegistry = providerRegistry,
+        createConversationUseCase = createConversationUseCase,
         clock = clock,
     )
     private val stateMutex = Mutex()
@@ -56,7 +58,7 @@ class GenerationController(
         scope.launch {
             stateMutex.withLock {
                 if (generationJob?.isActive == true) return@launch
-                generationJob = scope.launch {
+                generationJob = launch {
                     runGeneration(
                         current = current,
                         userText = userText,

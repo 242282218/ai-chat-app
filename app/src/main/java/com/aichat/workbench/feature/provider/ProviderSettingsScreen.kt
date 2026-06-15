@@ -253,6 +253,7 @@ fun ProviderSettingsScreen(
                 onClick = { openNewProviderEditor() },
                 icon = { Icon(imageVector = Icons.Filled.Add, contentDescription = null) },
                 text = { Text(text = "添加模型连接") },
+                shape = MaterialTheme.shapes.medium,
             )
         },
         topBar = {
@@ -262,7 +263,7 @@ fun ProviderSettingsScreen(
                         Text(
                             text = "模型连接",
                             style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -276,7 +277,7 @@ fun ProviderSettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.background,
                 ),
                 navigationIcon = {
                     if (showBackButton) {

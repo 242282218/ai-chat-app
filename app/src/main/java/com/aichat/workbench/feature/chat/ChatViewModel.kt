@@ -1,8 +1,9 @@
-﻿package com.aichat.workbench.feature.chat
+package com.aichat.workbench.feature.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aichat.workbench.domain.model.ChatConfig
 import com.aichat.workbench.domain.model.Conversation
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.domain.model.MessageId
@@ -30,6 +31,7 @@ class ChatViewModel(
     private val generationController: GenerationController,
     private val providerRegistry: ProviderRegistry,
     private val applicationScope: com.aichat.workbench.app.ApplicationScope,
+    private val chatConfig: ChatConfig = ChatConfig(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ChatUiState(draft = DraftState.fromSavedState(savedStateHandle)))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -185,7 +187,7 @@ class ChatViewModel(
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             combine(
-                conversationRepository.observeRecentMessages(id, CHAT_MESSAGE_WINDOW_SIZE),
+                conversationRepository.observeRecentMessages(id, chatConfig.messageWindowSize),
                 conversationRepository.observeMessageCount(id),
             ) { messages, count ->
                 messages to count
@@ -212,9 +214,7 @@ class ChatViewModel(
 
     private fun updateState(transform: (ChatUiState) -> ChatUiState) {
         var nextState: ChatUiState? = null
-        _state.update { current -> transform(current).also { nextState = it } }
+        _state.update { current -> transform(current).withSearchApplied().also { nextState = it } }
         nextState?.draft?.toSavedState(savedStateHandle)
     }
 }
-
-private const val CHAT_MESSAGE_WINDOW_SIZE = 200

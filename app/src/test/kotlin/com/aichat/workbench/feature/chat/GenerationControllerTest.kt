@@ -159,6 +159,7 @@ class GenerationControllerTest {
             providerRepository = providerRepository,
             contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
+            createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
             clock = clock,
         )
         var state = stateFor(provider, input = "Question")
@@ -192,6 +193,7 @@ class GenerationControllerTest {
             providerRepository = GenerationControllerProviderRepository(emptyList(), emptyMap()),
             contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
+            createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
             clock = clock,
         )
         var state = ChatUiState(draft = DraftState(input = "Question"))
@@ -231,6 +233,7 @@ class GenerationControllerTest {
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },
+            createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
             clock = clock,
         )
         var state = stateFor(provider, input = "Question")
@@ -351,6 +354,7 @@ class GenerationControllerTest {
             providerRegistry = ProviderRegistry().apply {
                 register(provider.type.value, chatProvider)
             },
+            createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
             clock = clock,
         )
 
