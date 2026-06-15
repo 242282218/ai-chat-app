@@ -23,21 +23,18 @@ data class ChatUiState(
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val currentMatchIndex: Int = 0,
-    val filteredMessages: List<Message> = emptyList(),
-    val searchMatchCount: Int = 0,
-    val matchingMessageIds: List<MessageId> = emptyList(),
 ) {
     val input: String get() = draft.input
     val titleDraft: String get() = draft.title
     val editingMessageId: MessageId? get() = draft.editingMessageId
 
-    fun withSearchApplied(): ChatUiState {
-        val filtered = if (searchQuery.isBlank()) messages
+    val filteredMessages: List<Message>
+        get() = if (searchQuery.isBlank()) messages
         else messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
-        return copy(
-            filteredMessages = filtered,
-            searchMatchCount = if (searchQuery.isBlank()) 0 else filtered.size,
-            matchingMessageIds = filtered.map { it.id },
-        )
-    }
+
+    val searchMatchCount: Int
+        get() = if (searchQuery.isBlank()) 0 else filteredMessages.size
+
+    val matchingMessageIds: List<MessageId>
+        get() = filteredMessages.map { it.id }
 }

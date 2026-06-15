@@ -41,7 +41,7 @@ class ConversationsViewModelTest {
     val mainDispatcherRule = ConversationsMainDispatcherRule()
 
     @Test
-    fun exposesRecentThirtyConversations() = runTest(mainDispatcherRule.testDispatcher) {
+    fun exposesAllConversations() = runTest(mainDispatcherRule.testDispatcher) {
         val conversations = (1..35).map(::testConversation)
         val viewModel = ConversationsViewModel(
             conversationRepository = ConversationsOnlyRepository(conversations),
@@ -53,9 +53,9 @@ class ConversationsViewModelTest {
         }
         advanceUntilIdle()
 
-        assertEquals(30, viewModel.state.value.recentConversations.size)
+        assertEquals(35, viewModel.state.value.recentConversations.size)
         assertEquals("Conversation 1", viewModel.state.value.recentConversations.first().title)
-        assertEquals("Conversation 30", viewModel.state.value.recentConversations.last().title)
+        assertEquals("Conversation 35", viewModel.state.value.recentConversations.last().title)
     }
 
     @Test

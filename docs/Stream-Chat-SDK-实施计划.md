@@ -1,0 +1,403 @@
+# Stream Chat SDK + Material 3 实施计划
+
+## 技术调研结论
+
+### 核心依赖（来自 chatgpt-android）
+
+```kotlin
+// libs.versions.toml
+[versions]
+streamChatSDK = "6.5.1"
+streamLog = "1.1.4"
+
+[libraries]
+stream-client = { group = "io.getstream", name = "stream-chat-android-client", version.ref = "streamChatSDK" }
+stream-offline = { group = "io.getstream", name = "stream-chat-android-offline", version.ref = "streamChatSDK" }
+stream-compose = { group = "io.getstream", name = "stream-chat-android-compose", version.ref = "streamChatSDK" }
+stream-log = { group = "io.getstream", name = "stream-log-android", version.ref = "streamLog" }
+```
+
+### Stream SDK 核心组件
+
+1. **ChatClient** - 主入口，处理用户连接、消息发送等底层操作
+2. **MessageList** - 消息列表 Compose 组件
+3. **MessageComposer** - 消息输入框 Compose 组件
+4. **MessageListHeader** - 顶部栏组件
+5. **ChatTheme** - 主题系统，可定制颜色、字体等
+
+### 关键发现
+
+从 `chatgpt-android` 的实现中学到：
+
+1. **初始化方式** (`StreamChatInitializer.kt`)：
+   ```kotlin
+   val chatClient = ChatClient.Builder(apiKey, context)
+       .withPlugins(offlinePluginFactory, statePluginFactory)
+       .logLevel(logLevel)
+       .build()
+   
+   chatClient.connectUser(user, token).enqueue()
+   ```
+
+2. **UI 组件使用** (`ChatGPTMessages.kt`)：
+   - 使用 Stream 的 `MessageList` + `MessageComposer` 组件
+   - 通过 `MessagesViewModelFactory` 创建 ViewModel
+   - 用 `ChatGPTStreamTheme` 包裹实现自定义主题
+   - 支持长按消息、Reaction、删除等操作
+
+3. **主题定制** (`ChatGPTStreamTheme`)：
+   - 可以自定义颜色、字体、形状
+   - 与 Material 3 共存
+
+## 实施策略
+
+### 决策：渐进式迁移 vs 完全重写
+
+**选择：渐进式迁移**
+
+理由：
+1. ✅ 保持应用可用，逐步替换组件
+2. ✅ 可以对比新旧实现，验证效果
+3. ✅ 降低风险，出问题可以快速回退
+4. ✅ 学习成本分散，逐步掌握 Stream SDK
+
+### 迁移顺序
+
+```
+Phase 1: 依赖和初始化
+  ↓
+Phase 2A: 创建并行版本（实验）
+  ↓
+Phase 2B: 验证核心功能
+  ↓
+Phase 3: 逐步替换现有组件
+  ↓
+Phase 4: 清理旧代码
+```
+
+## Phase 1: 依赖和初始化（1-2 天）
+
+### 目标
+- 添加 Stream SDK 依赖
+- 配置初始化
+- 创建基础主题
+
+### 任务清单
+
+#### 1.1 添加依赖
+- [ ] 更新 `gradle/libs.versions.toml`
+- [ ] 在 `app/build.gradle.kts` 中添加依赖
+- [ ] Gradle Sync
+
+#### 1.2 配置初始化
+- [ ] 创建 `StreamChatConfig` 对象（保存 API Key 配置）
+- [ ] 创建初始化类（借鉴 `StreamChatInitializer`）
+- [ ] 在 Application 或 Koin 中初始化
+
+**注意**：我们不需要真实的 Stream API Key，因为：
+- 我们只使用 UI 组件，不连接 Stream 服务器
+- 可以使用离线模式或 mock 数据
+
+#### 1.3 创建基础主题
+- [ ] 创建 `AiChatStreamTheme` Composable
+- [ ] 映射当前 Material 3 颜色到 Stream Chat 颜色
+- [ ] 保持 emerald 主题风格
+
+### 实现示例
+
+```kotlin
+// app/src/main/java/com/aichat/workbench/chat/stream/AiChatStreamTheme.kt
+@Composable
+fun AiChatStreamTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colors = if (darkTheme) {
+        StreamColors.defaultDarkColors().copy(
+            appBackground = Color(0xFF0A0E0F),
+            primaryAccent = Color(0xFF10B981), // emerald-500
+            // ... 其他颜色映射
+        )
+    } else {
+        StreamColors.defaultColors().copy(
+            appBackground = Color.White,
+            primaryAccent = Color(0xFF10B981),
+            // ... 其他颜色映射
+        )
+    }
+    
+    ChatTheme(
+        colors = colors,
+        typography = StreamTypography.defaultTypography(),
+        shapes = StreamShapes.defaultShapes(),
+        content = content
+    )
+}
+```
+
+## Phase 2A: 创建并行版本（2-3 天）
+
+### 目标
+- 创建新的 Stream-based ChatScreen（不影响现有实现）
+- 验证 UI 组件工作正常
+- 对比新旧实现
+
+### 任务清单
+
+#### 2A.1 创建实验性 Screen
+- [ ] 创建 `ChatScreenStream.kt`（并行于 `ChatScreen.kt`）
+- [ ] 创建 `ChatViewModelStream.kt`
+- [ ] 添加导航路由（可选，用于测试）
+
+#### 2A.2 适配数据模型
+- [ ] 创建 `Message` → Stream `Message` 转换器
+- [ ] 创建 `Conversation` → Stream `Channel` 转换器
+- [ ] 实现本地数据源适配器
+
+#### 2A.3 实现核心功能
+- [ ] 消息列表展示
+- [ ] 消息发送
+- [ ] 流式响应渲染（关键）
+- [ ] Markdown 支持
+
+### 关键技术点
+
+#### 流式响应渲染
+
+Stream SDK 的消息是不可变的，但我们需要实现打字机效果：
+
+**方案 A**：不断更新消息内容
+```kotlin
+// 在 ViewModel 中
+fun streamResponse(text: String) {
+    var currentText = ""
+    text.forEach { char ->
+        currentText += char
+        updateMessage(messageId, currentText)
+        delay(10)
+    }
+}
+```
+
+**方案 B**：自定义消息渲染组件
+```kotlin
+// 自定义 MessageContent
+@Composable
+fun StreamingMessageContent(
+    message: Message,
+    isStreaming: Boolean
+) {
+    if (isStreaming) {
+        AnimatedTypingText(message.text)
+    } else {
+        MarkdownText(message.text)
+    }
+}
+```
+
+## Phase 2B: 验证核心功能（1-2 天）
+
+### 目标
+- 确保关键功能正常工作
+- 性能测试
+- 用户体验对比
+
+### 验证项
+
+#### 功能验证
+- [ ] 发送消息
+- [ ] 接收 AI 响应
+- [ ] 流式响应渲染
+- [ ] Markdown 渲染（代码块、列表等）
+- [ ] 长按消息操作（复制、删除等）
+- [ ] 会话切换
+- [ ] 搜索消息
+
+#### 性能验证
+- [ ] 大量消息（1000+ 条）滚动流畅度
+- [ ] 内存占用
+- [ ] 初始化时间
+- [ ] 冷启动时间
+
+#### UX 验证
+- [ ] 动画流畅度
+- [ ] 响应速度
+- [ ] 视觉一致性
+
+### 决策点
+
+根据验证结果决定：
+- ✅ 继续 Phase 3（全面迁移）
+- ⚠️ 调整方案（如果有性能或兼容性问题）
+- ❌ 回退到 Material 3 + 自定义方案
+
+## Phase 3: 逐步替换现有组件（3-5 天）
+
+### 目标
+- 用 Stream 组件替换现有实现
+- 保持功能完整性
+- 平滑过渡
+
+### 任务清单
+
+#### 3.1 替换消息列表
+- [ ] 将 `ChatMessageList.kt` 迁移到 Stream `MessageList`
+- [ ] 适配自定义消息类型（如系统消息）
+- [ ] 迁移消息操作（复制、删除、重试）
+
+#### 3.2 替换输入框
+- [ ] 将 `ChatInputBar.kt` 迁移到 Stream `MessageComposer`
+- [ ] 保持现有的快捷操作
+- [ ] 迁移附件支持（如果需要）
+
+#### 3.3 替换顶部栏
+- [ ] 将 `ChatTopBar.kt` 迁移到 Stream `MessageListHeader`
+- [ ] 保持现有的 Provider 切换功能
+- [ ] 保持搜索功能
+
+#### 3.4 数据层集成
+- [ ] 修改 `ChatViewModel` 使用 Stream 数据流
+- [ ] 保持 Room 数据库作为持久化层
+- [ ] 实现双向同步（Room ↔ Stream）
+
+### 集成策略
+
+```kotlin
+// 混合模式：Stream UI + 我们的数据层
+class ChatViewModel : ViewModel() {
+    // 现有的 Room 数据源
+    private val messageRepository: MessageRepository
+    
+    // Stream 的 Channel State
+    private val streamChannelState: StateFlow<ChannelState>
+    
+    // 同步逻辑
+    init {
+        // Room → Stream
+        messageRepository.messages.collect { roomMessages ->
+            syncToStream(roomMessages)
+        }
+        
+        // Stream → Room（用户操作）
+        streamChannelState.collect { state ->
+            syncToRoom(state.messages)
+        }
+    }
+}
+```
+
+## Phase 4: 清理和优化（2-3 天）
+
+### 目标
+- 删除旧代码
+- 优化性能
+- 完善文档
+
+### 任务清单
+
+#### 4.1 代码清理
+- [ ] 删除旧的 `ChatMessageList.kt`
+- [ ] 删除旧的 `ChatInputBar.kt`
+- [ ] 删除未使用的辅助类
+- [ ] 更新导航逻辑
+
+#### 4.2 性能优化
+- [ ] 优化消息加载（分页）
+- [ ] 优化图片加载
+- [ ] 减少重组次数
+- [ ] 内存泄漏检查
+
+#### 4.3 主题完善
+- [ ] 完善 light/dark 主题
+- [ ] 调整间距和圆角
+- [ ] 统一动画效果
+- [ ] 无障碍支持
+
+#### 4.4 文档
+- [ ] 更新 CLAUDE.md
+- [ ] 编写迁移笔记
+- [ ] 更新 README.md
+- [ ] 记录已知问题和限制
+
+## 风险和缓解措施
+
+### 风险 1：Stream SDK 包体积大
+
+**影响**：APK 体积增加
+
+**缓解**：
+- 使用 ProGuard/R8 优化
+- 只导入需要的模块
+- 监控 APK 体积变化
+
+### 风险 2：与现有架构不兼容
+
+**影响**：需要大量重构
+
+**缓解**：
+- Phase 2A 并行开发，提前发现问题
+- 保留 fallback 到旧实现的能力
+- 渐进式迁移，而非一次性重写
+
+### 风险 3：自定义需求无法满足
+
+**影响**：某些功能无法实现
+
+**缓解**：
+- 研究 Stream SDK 的扩展点
+- 必要时自定义 Compose 组件
+- 最坏情况：混合使用（部分用 Stream，部分自定义）
+
+### 风险 4：学习曲线陡峭
+
+**影响**：开发时间延长
+
+**缓解**：
+- 深入学习 chatgpt-android 实现
+- 阅读 Stream 官方文档和示例
+- 在 Phase 2A 充分实验
+
+## 成功标准
+
+### 功能标准
+- ✅ 所有现有功能正常工作
+- ✅ 流式响应渲染流畅
+- ✅ Markdown 正确渲染
+- ✅ 消息操作（复制、删除）正常
+
+### 性能标准
+- ✅ 消息列表滚动 60 FPS
+- ✅ 冷启动时间 ≤ 当前 + 200ms
+- ✅ 内存占用 ≤ 当前 + 20MB
+- ✅ APK 体积 ≤ 当前 + 3MB
+
+### 质量标准
+- ✅ 无崩溃
+- ✅ 无内存泄漏
+- ✅ 单元测试覆盖核心逻辑
+- ✅ 无严重 lint 警告
+
+## 时间估算
+
+| Phase | 任务 | 预估时间 | 累计时间 |
+|-------|------|---------|---------|
+| 1 | 依赖和初始化 | 1-2 天 | 1-2 天 |
+| 2A | 创建并行版本 | 2-3 天 | 3-5 天 |
+| 2B | 验证核心功能 | 1-2 天 | 4-7 天 |
+| 3 | 逐步替换组件 | 3-5 天 | 7-12 天 |
+| 4 | 清理和优化 | 2-3 天 | 9-15 天 |
+
+**总预估时间**：9-15 天（取决于遇到的问题）
+
+## 下一步行动
+
+1. **确认方向** - 确认使用 Stream Chat SDK 方案
+2. **开始 Phase 1** - 添加依赖和配置初始化
+3. **研究深入** - 仔细阅读 chatgpt-android 的实现细节
+4. **创建分支** - 在新分支上开始实验
+
+---
+
+**创建日期**：2026-06-15  
+**作者**：Claude Code  
+**状态**：待审批

@@ -1,0 +1,665 @@
+# Phase 3: 组件迁移
+
+**预估时间**: 3-5 天  
+**难度**: ⭐⭐⭐⭐⭐  
+**风险**: 中高
+
+## 前置条件
+
+- ✅ Phase 2B 测试通过（总分 ≥ 85）
+- ✅ 所有关键功能验证正常
+- ✅ 性能指标达标
+- ✅ Git 分支已保存当前进度
+
+## 目标
+
+- 用 Stream 组件替换现有实现
+- 保持功能完整性
+- 确保平滑过渡
+- 无破坏性变更
+
+## 迁移策略
+
+### 渐进式替换
+
+```
+步骤 1: 替换消息列表 (保留输入框和顶部栏)
+   ↓ 验证
+步骤 2: 替换输入框 (保留顶部栏)
+   ↓ 验证
+步骤 3: 替换顶部栏
+   ↓ 验证
+步骤 4: 数据层集成
+   ↓ 验证
+完成
+```
+
+每一步完成后都要验证功能正常再继续。
+
+---
+
+## 步骤 1: 替换消息列表
+
+### 1.1 备份现有实现
+
+```bash
+# 创建备份
+cp app/src/main/java/com/aichat/workbench/feature/chat/ChatMessageList.kt \
+   app/src/main/java/com/aichat/workbench/feature/chat/ChatMessageList.kt.backup
+```
+
+### 1.2 修改 ChatScreen.kt
+
+打开 `app/src/main/java/com/aichat/workbench/feature/chat/ChatScreen.kt`
+
+找到消息列表部分，替换为 Stream 组件：
+
+```kotlin
+// 旧代码（注释掉，暂不删除）
+/*
+ChatMessageList(
+    messages = state.messages,
+    onMessageClick = { ... },
+    modifier = Modifier.weight(1f)
+)
+*/
+
+// 新代码：使用 Stream MessageList
+val context = LocalContext.current
+val factory = remember(state.selectedConversationId) {
+    MessagesViewModelFactory(
+        context = context,
+        channelId = "messaging:conversation_${state.selectedConversationId}",
+        messageLimit = 30
+    )
+}
+
+val messageListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+    modelClass = io.getstream.chat.android.compose.viewmodel.messages.MessageListViewModel::class.java,
+    factory = factory
+)
+
+// 同步 Room 数据到 Stream
+LaunchedEffect(state.messages) {
+    // 将 Room 中的消息转换并同步到 Stream
+    syncMessagesToStream(state.messages, messageListViewModel)
+}
+
+// 使用 Stream MessageList
+io.getstream.chat.android.compose.ui.messages.list.MessageList(
+    modifier = Modifier
+        .weight(1f)
+        .fillMaxWidth(),
+    viewModel = messageListViewModel,
+    onThreadClick = { message ->
+        // 处理线程点击（可选功能）
+    }
+)
+```
+
+### 1.3 实现数据同步
+
+在 `ChatViewModel.kt` 中添加同步逻辑：
+
+```kotlin
+/**
+ * 同步 Room 消息到 Stream
+ */
+private suspend fun syncMessagesToStream(
+    messages: List<Message>,
+    streamViewModel: MessageListViewModel
+) {
+    val currentUser = streamChatRepository.currentUser.value ?: return
+    
+    messages.forEach { domainMessage ->
+        val streamMessage = MessageConverter.toStreamMessage(
+            domainMessage = domainMessage,
+            currentUser = currentUser,
+            isOwnMessage = domainMessage.role == Message.Role.USER
+        )
+        
+        // 添加到 Stream Channel（这里需要调用 Stream API）
+        // streamViewModel.channel.sendMessage(streamMessage)
+    }
+}
+```
+
+### 1.4 验证
+
+**测试项**:
+- [ ] 消息列表正确显示
+- [ ] 滚动正常
+- [ ] 新消息自动滚动到底部
+- [ ] 无崩溃和错误
+
+**如果验证失败**:
+```bash
+# 回滚到备份
+mv app/src/main/java/com/aichat/workbench/feature/chat/ChatMessageList.kt.backup \
+   app/src/main/java/com/aichat/workbench/feature/chat/ChatMessageList.kt
+```
+
+**验证通过后提交**:
+```bash
+git add .
+git commit -m "refactor(stream): 步骤 1 - 替换消息列表组件
+
+- 使用 Stream MessageList 替换 ChatMessageList
+- 实现 Room 到 Stream 的数据同步
+- 保留旧代码作为注释
+
+验证: 消息列表功能正常"
+```
+
+---
+
+## 步骤 2: 替换输入框
+
+### 2.1 备份现有实现
+
+```bash
+cp app/src/main/java/com/aichat/workbench/feature/chat/ChatInputBar.kt \
+   app/src/main/java/com/aichat/workbench/feature/chat/ChatInputBar.kt.backup
+```
+
+### 2.2 修改 ChatScreen.kt
+
+找到输入框部分，替换为 Stream 组件：
+
+```kotlin
+// 旧代码（注释掉）
+/*
+ChatInputBar(
+    input = state.input,
+    onInputChange = viewModel::updateInput,
+    onSend = { viewModel.sendMessage() },
+    modifier = Modifier.fillMaxWidth()
+)
+*/
+
+// 新代码：使用 Stream MessageComposer
+val composerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+    modelClass = io.getstream.chat.android.compose.viewmodel.messages.MessageComposerViewModel::class.java,
+    factory = factory // 与 MessageList 共享
+)
+
+io.getstream.chat.android.compose.ui.messages.composer.MessageComposer(
+    modifier = Modifier.fillMaxWidth(),
+    viewModel = composerViewModel,
+    onSendMessage = { message ->
+        // 发送消息到 Domain 层
+        viewModel.sendMessage(message.text)
+        
+        // 通过 Stream 发送
+        composerViewModel.sendMessage(message)
+    },
+    onAttachmentsClick = { 
+        // 附件功能（可选）
+    },
+    onCommandsClick = { 
+        // 命令功能（可选）
+    }
+)
+```
+
+### 2.3 保持现有发送逻辑
+
+在 `ChatViewModel.kt` 中确保 `sendMessage()` 逻辑保持不变：
+
+```kotlin
+fun sendMessage(text: String) {
+    val conversationId = state.value.selectedConversationId ?: return
+    
+    viewModelScope.launch {
+        // 1. 保存到 Room（现有逻辑）
+        val userMessage = Message(
+            id = MessageId(UUID.randomUUID().toString()),
+            conversationId = conversationId,
+            content = text,
+            role = Message.Role.USER,
+            timestamp = System.currentTimeMillis()
+        )
+        messageRepository.insertMessage(userMessage)
+        
+        // 2. 调用 API 获取 AI 响应（现有逻辑）
+        callAiApi(text, conversationId)
+    }
+}
+```
+
+### 2.4 验证
+
+**测试项**:
+- [ ] 输入框正常显示
+- [ ] 可以输入文本
+- [ ] 发送按钮可点击
+- [ ] 消息发送成功
+- [ ] 发送后输入框清空
+- [ ] AI 响应正常显示
+
+**验证通过后提交**:
+```bash
+git add .
+git commit -m "refactor(stream): 步骤 2 - 替换输入框组件
+
+- 使用 Stream MessageComposer 替换 ChatInputBar
+- 保持现有的发送逻辑
+- 保留旧代码作为注释
+
+验证: 消息发送功能正常"
+```
+
+---
+
+## 步骤 3: 替换顶部栏
+
+### 3.1 备份现有实现
+
+```bash
+cp app/src/main/java/com/aichat/workbench/feature/chat/ChatTopBar.kt \
+   app/src/main/java/com/aichat/workbench/feature/chat/ChatTopBar.kt.backup
+```
+
+### 3.2 修改 ChatScreen.kt
+
+找到顶部栏部分：
+
+```kotlin
+// 旧代码（注释掉）
+/*
+ChatTopBar(
+    title = state.conversationTitle,
+    onBack = onBack,
+    onOpenProviders = onOpenProviders,
+    onSearch = { viewModel.toggleSearch() }
+)
+*/
+
+// 新代码：使用 Stream MessageListHeader + 自定义操作
+Scaffold(
+    topBar = {
+        Column {
+            // Stream 标准 Header
+            io.getstream.chat.android.compose.ui.messages.header.MessageListHeader(
+                channel = messageListViewModel.channel,
+                currentUser = messageListViewModel.user.collectAsStateWithLifecycle().value,
+                connectionState = messageListViewModel.connectionState.collectAsStateWithLifecycle().value,
+                messageMode = messageListViewModel.messageMode,
+                onBackPressed = onBack,
+                onHeaderTitleClick = { /* 可选操作 */ }
+            )
+            
+            // 自定义操作栏（保留 Provider 切换等功能）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Provider 切换
+                Text(
+                    text = state.currentProvider?.name ?: "未选择",
+                    modifier = Modifier.clickable { onOpenProviders() }
+                )
+                
+                // 搜索按钮
+                IconButton(onClick = { viewModel.toggleSearch() }) {
+                    Icon(Icons.Default.Search, contentDescription = "搜索")
+                }
+            }
+        }
+    }
+) { paddingValues ->
+    // 内容区域
+}
+```
+
+### 3.3 保持自定义功能
+
+如果 Stream Header 不满足需求，可以完全自定义：
+
+```kotlin
+@Composable
+fun CustomStreamHeader(
+    channel: Channel,
+    onBack: () -> Unit,
+    onOpenProviders: () -> Unit,
+    onSearch: () -> Unit
+) {
+    TopAppBar(
+        title = { Text(channel.name) },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+            }
+        },
+        actions = {
+            // 自定义操作
+            TextButton(onClick = onOpenProviders) {
+                Text("Provider")
+            }
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Default.Search, contentDescription = "搜索")
+            }
+        }
+    )
+}
+```
+
+### 3.4 验证
+
+**测试项**:
+- [ ] 顶部栏正确显示
+- [ ] 返回按钮正常
+- [ ] Provider 切换正常
+- [ ] 搜索功能正常
+- [ ] 标题显示正确
+
+**验证通过后提交**:
+```bash
+git add .
+git commit -m "refactor(stream): 步骤 3 - 替换顶部栏组件
+
+- 使用 Stream MessageListHeader
+- 保留自定义操作（Provider、搜索）
+- 保留旧代码作为注释
+
+验证: 顶部栏功能正常"
+```
+
+---
+
+## 步骤 4: 数据层深度集成
+
+### 4.1 实现双向同步
+
+目标：Room 和 Stream 数据保持一致
+
+创建 `app/src/main/java/com/aichat/workbench/stream/sync/DataSyncManager.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.sync
+
+import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.repository.MessageRepository
+import com.aichat.workbench.stream.converter.MessageConverter
+import io.getstream.chat.android.client.ChatClient
+import io.getstream.chat.android.models.User
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+
+/**
+ * 数据同步管理器
+ * 
+ * 负责 Room 和 Stream 之间的双向同步
+ */
+class DataSyncManager(
+    private val messageRepository: MessageRepository,
+    private val chatClient: ChatClient,
+    private val currentUser: User,
+    private val scope: CoroutineScope
+) {
+    
+    /**
+     * 开始同步指定会话
+     */
+    fun startSync(conversationId: ConversationId) {
+        scope.launch {
+            // Room → Stream: 监听 Room 数据库变化
+            messageRepository.getMessages(conversationId).collect { messages ->
+                syncToStream(conversationId, messages)
+            }
+        }
+        
+        // Stream → Room: 监听 Stream 事件（如果需要）
+        // (通常我们不需要，因为所有数据源自 Room)
+    }
+    
+    /**
+     * 同步消息到 Stream
+     */
+    private suspend fun syncToStream(
+        conversationId: ConversationId,
+        messages: List<Message>
+    ) {
+        val channelId = "messaging:conversation_${conversationId.value}"
+        val channel = chatClient.channel(channelId)
+        
+        // 转换并发送
+        messages.forEach { domainMessage ->
+            val streamMessage = MessageConverter.toStreamMessage(
+                domainMessage = domainMessage,
+                currentUser = currentUser,
+                isOwnMessage = domainMessage.role == Message.Role.USER
+            )
+            
+            // 发送到 Stream（这里简化处理）
+            // 实际需要检查消息是否已存在
+        }
+    }
+}
+```
+
+### 4.2 在 ViewModel 中使用
+
+修改 `ChatViewModel.kt`:
+
+```kotlin
+private val dataSyncManager = DataSyncManager(
+    messageRepository = messageRepository,
+    chatClient = ChatClient.instance(),
+    currentUser = streamChatRepository.currentUser.value ?: createDefaultUser(),
+    scope = viewModelScope
+)
+
+fun selectConversation(conversationId: ConversationId) {
+    // 现有逻辑
+    // ...
+    
+    // 启动数据同步
+    dataSyncManager.startSync(conversationId)
+}
+```
+
+### 4.3 处理流式响应
+
+实现 AI 响应的流式更新：
+
+```kotlin
+/**
+ * 流式更新 AI 响应
+ */
+private suspend fun streamAiResponse(
+    conversationId: ConversationId,
+    messageId: String,
+    fullResponse: String
+) {
+    val channelId = "messaging:conversation_${conversationId.value}"
+    val channel = ChatClient.instance().channel(channelId)
+    
+    var currentText = ""
+    
+    // 创建初始消息
+    val initialMessage = MessageConverter.createStreamingMessage(
+        messageId = messageId,
+        partialText = "",
+        currentUser = streamChatRepository.currentUser.value!!
+    )
+    channel.sendMessage(initialMessage).await()
+    
+    // 逐字符更新
+    fullResponse.forEach { char ->
+        currentText += char
+        
+        // 更新消息
+        val updatedMessage = initialMessage.copy(text = currentText)
+        channel.updateMessage(updatedMessage).await()
+        
+        delay(30)
+    }
+    
+    // 保存完整消息到 Room
+    val finalMessage = Message(
+        id = MessageId(messageId),
+        conversationId = conversationId,
+        content = fullResponse,
+        role = Message.Role.ASSISTANT,
+        timestamp = System.currentTimeMillis()
+    )
+    messageRepository.insertMessage(finalMessage)
+}
+```
+
+### 4.4 验证
+
+**测试项**:
+- [ ] Room 新增消息立即显示在 UI
+- [ ] Stream UI 操作同步回 Room
+- [ ] 流式响应正常工作
+- [ ] 无重复消息
+- [ ] 无数据丢失
+
+**验证通过后提交**:
+```bash
+git add .
+git commit -m "refactor(stream): 步骤 4 - 数据层深度集成
+
+- 实现 Room ↔ Stream 双向同步
+- 实现流式响应更新
+- 确保数据一致性
+
+验证: 数据同步正常"
+```
+
+---
+
+## 步骤 5: 清理旧代码（可选）
+
+**注意**: 建议在 Phase 4 再进行全面清理，现在只做标记
+
+### 5.1 标记待删除文件
+
+创建 `docs/implementation-guide/deprecated-files.md`:
+
+```markdown
+# 待删除文件列表
+
+## Phase 3 已替换的文件
+
+### 已备份（可以删除原文件）
+- [ ] `ChatMessageList.kt.backup` → 备份，Phase 4 删除
+- [ ] `ChatInputBar.kt.backup` → 备份，Phase 4 删除  
+- [ ] `ChatTopBar.kt.backup` → 备份，Phase 4 删除
+
+### 已注释（暂时保留）
+- `ChatScreen.kt` 中的旧代码 → Phase 4 清理注释
+
+### 完全未使用（可以删除）
+- [ ] `feature/chat/message/OldMessageItem.kt` (如果有)
+- [ ] 其他未使用的旧组件
+
+## 删除时机
+在 Phase 4 进行，确保新实现完全稳定后再删除。
+```
+
+---
+
+## 回归测试清单
+
+完成所有步骤后，进行全面回归测试：
+
+### 功能测试
+- [ ] 创建新会话
+- [ ] 发送消息
+- [ ] 接收 AI 响应
+- [ ] 流式响应显示
+- [ ] Markdown 渲染
+- [ ] 消息操作（复制、删除）
+- [ ] 会话切换
+- [ ] 搜索消息
+- [ ] Provider 切换
+- [ ] 返回导航
+
+### 边界情况
+- [ ] 网络断开时发送消息
+- [ ] 应用后台返回
+- [ ] 设备旋转
+- [ ] 极长消息
+- [ ] 空会话
+
+### 性能测试
+- [ ] 1000+ 条消息滚动流畅
+- [ ] 内存无泄漏
+- [ ] CPU 占用正常
+
+---
+
+## 完成 Phase 3
+
+### 验证清单
+
+**所有功能正常**:
+- [ ] 消息列表替换完成
+- [ ] 输入框替换完成
+- [ ] 顶部栏替换完成
+- [ ] 数据同步正常
+- [ ] 回归测试通过
+
+### 提交代码
+
+```bash
+git add .
+git commit -m "refactor(stream): Phase 3 完成 - 组件全面迁移
+
+完成项目:
+✅ 消息列表替换为 Stream MessageList
+✅ 输入框替换为 Stream MessageComposer
+✅ 顶部栏替换为 Stream MessageListHeader
+✅ 实现数据层双向同步
+✅ 流式响应正常工作
+
+回归测试: 全部通过
+
+下一步: Phase 4 代码清理和优化"
+
+git push origin feature/stream-chat-ui
+```
+
+---
+
+## 常见问题
+
+### Q1: 数据同步冲突
+
+**问题**: Room 和 Stream 数据不一致
+
+**解决**:
+1. 检查 MessageConverter 转换逻辑
+2. 确认 messageId 唯一性
+3. 添加日志追踪同步过程
+
+### Q2: 流式响应卡顿
+
+**问题**: AI 响应显示不流畅
+
+**解决**:
+1. 调整 delay 时间（20-50ms）
+2. 使用 `updateMessage` 而非重新发送
+3. 考虑批量更新（每 N 个字符更新一次）
+
+### Q3: 旧功能丢失
+
+**问题**: 某些旧功能在新版本中没有
+
+**解决**:
+1. 检查是否可以用 Stream 的替代功能
+2. 如果必须保留，实现自定义组件
+3. 在顶部栏或其他地方添加自定义操作
+
+---
+
+## 下一步
+
+Phase 3 完成！继续阅读 `05-Phase4-清理优化.md` 进行代码清理和性能优化。

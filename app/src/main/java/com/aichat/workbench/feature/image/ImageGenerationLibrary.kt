@@ -293,6 +293,9 @@ private fun LocalThumbnail(path: String) {
         return
     }
 
+    // Cache the loaded bitmap to avoid re-decoding on recomposition
+    val cachedBitmap = remember(bitmap) { bitmap }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -300,7 +303,7 @@ private fun LocalThumbnail(path: String) {
         shape = MaterialTheme.shapes.medium,
     ) {
         Image(
-            bitmap = bitmap!!,
+            bitmap = cachedBitmap!!,
             contentDescription = "生成图片预览",
             modifier = Modifier.fillMaxWidth(),
             contentScale = ContentScale.Crop,

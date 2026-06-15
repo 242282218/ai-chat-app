@@ -86,6 +86,7 @@ fun ChatScreen(
                 onBack = onBack,
                 onOpenControls = androidx.compose.runtime.remember { { showControls = true } },
                 onToggleSearch = { viewModel.toggleSearch() },
+                onSelectProvider = viewModel::selectProvider,
             )
         },
     ) { innerPadding ->
@@ -136,6 +137,7 @@ fun ChatScreen(
         ModalBottomSheet(
             onDismissRequest = { showControls = false },
             sheetState = controlSheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
         ) {
             ChatControlSheet(
                 state = state,

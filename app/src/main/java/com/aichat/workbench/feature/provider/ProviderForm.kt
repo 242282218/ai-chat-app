@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.provider
+package com.aichat.workbench.feature.provider
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -577,25 +577,10 @@ private fun providerMessageLabel(message: String): String =
     }
 
 private fun providerMessageTone(message: String): StatusTone {
-    val normalized = message.lowercase()
-    return when {
-        message == "已保存" -> StatusTone.Success
-        message == "测试中..." -> StatusTone.Accent
-        normalized.contains("failed") ||
-            normalized.contains("invalid") ||
-            normalized.contains("missing") ||
-            normalized.contains("returned") ||
-            normalized.contains("enable allow http") ||
-            normalized.contains("失败") ||
-            normalized.contains("无效") ||
-            normalized.contains("缺失") ||
-            normalized.contains("返回") ||
-            normalized.contains("启用 allow http") ||
-            normalized.contains("暂未接入") ||
-            normalized.contains("must") ->
-            StatusTone.Critical
-        else -> StatusTone.Success
-    }
+    if (message == "已保存") return StatusTone.Success
+    if (message == "测试中..." || message == "刷新模型中...") return StatusTone.Accent
+    if (message.contains("成功") || message.contains("可用")) return StatusTone.Success
+    return StatusTone.Critical
 }
 
 

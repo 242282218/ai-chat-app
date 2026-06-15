@@ -1,0 +1,545 @@
+# Phase 1: 依赖配置和初始化
+
+**预估时间**: 1-2 天  
+**难度**: ⭐⭐☆☆☆  
+**风险**: 低
+
+## 目标
+
+- 添加 Stream Chat SDK 依赖
+- 配置 Gradle 构建
+- 创建初始化代码
+- 创建基础主题系统
+
+## 步骤 1: 更新 libs.versions.toml
+
+### 1.1 添加版本号
+
+打开 `gradle/libs.versions.toml`，在 `[versions]` 部分添加：
+
+```toml
+[versions]
+# ... 现有版本 ...
+streamChatSDK = "6.5.1"
+streamLog = "1.1.4"
+```
+
+### 1.2 添加库依赖
+
+在 `[libraries]` 部分添加：
+
+```toml
+[libraries]
+# ... 现有库 ...
+
+# Stream Chat SDK
+stream-client = { group = "io.getstream", name = "stream-chat-android-client", version.ref = "streamChatSDK" }
+stream-offline = { group = "io.getstream", name = "stream-chat-android-offline", version.ref = "streamChatSDK" }
+stream-compose = { group = "io.getstream", name = "stream-chat-android-compose", version.ref = "streamChatSDK" }
+stream-log = { group = "io.getstream", name = "stream-log-android", version.ref = "streamLog" }
+```
+
+### 验证
+
+执行 Gradle Sync，确保没有错误。
+
+```bash
+# 在 Android Studio 中: File -> Sync Project with Gradle Files
+# 或命令行:
+./gradlew --refresh-dependencies
+```
+
+---
+
+## 步骤 2: 更新 app/build.gradle.kts
+
+### 2.1 添加依赖
+
+打开 `app/build.gradle.kts`，在 `dependencies` 块中添加：
+
+```kotlin
+dependencies {
+    // ... 现有依赖 ...
+    
+    // Stream Chat SDK
+    implementation(libs.stream.client)
+    implementation(libs.stream.offline)
+    implementation(libs.stream.compose)
+    implementation(libs.stream.log)
+}
+```
+
+**位置建议**: 放在 `implementation(libs.koin.androidx.compose)` 附近
+
+### 2.2 验证构建
+
+```bash
+./gradlew assembleDebug
+```
+
+**预期结果**: 构建成功，可能需要下载依赖（首次）
+
+**预期 APK 体积增加**: ~2-3MB
+
+---
+
+## 步骤 3: 创建初始化配置
+
+### 3.1 创建配置对象
+
+创建新文件: `app/src/main/java/com/aichat/workbench/stream/StreamChatConfig.kt`
+
+```kotlin
+package com.aichat.workbench.stream
+
+object StreamChatConfig {
+    /**
+     * Stream API Key - 我们不使用真实的 Stream 服务器
+     * 这是一个占位符，用于初始化 SDK
+     */
+    const val API_KEY = "local-chat-key"
+    
+    /**
+     * 是否启用调试日志
+     */
+    val enableDebugLogging = true
+    
+    /**
+     * 用户 ID 前缀
+     */
+    const val USER_ID_PREFIX = "aichat_user_"
+}
+```
+
+### 3.2 创建初始化类
+
+创建新文件: `app/src/main/java/com/aichat/workbench/stream/StreamChatInitializer.kt`
+
+```kotlin
+package com.aichat.workbench.stream
+
+import android.content.Context
+import io.getstream.chat.android.client.ChatClient
+import io.getstream.chat.android.client.logger.ChatLogLevel
+import io.getstream.chat.android.models.User
+import io.getstream.chat.android.offline.plugin.factory.StreamOfflinePluginFactory
+import io.getstream.chat.android.state.plugin.config.StatePluginConfig
+import io.getstream.chat.android.state.plugin.factory.StreamStatePluginFactory
+import io.getstream.log.Priority
+import io.getstream.log.android.AndroidStreamLogger
+import io.getstream.log.streamLog
+import kotlin.random.Random
+
+/**
+ * Stream Chat SDK 初始化器
+ * 
+ * 注意: 我们使用 Stream SDK 的 UI 组件和本地数据管理，
+ * 但不连接到 Stream 服务器。所有数据存储在本地 Room 数据库。
+ */
+object StreamChatInitializer {
+    
+    private var isInitialized = false
+    
+    /**
+     * 初始化 Stream Chat SDK
+     * 
+     * @param context Application context
+     */
+    fun initialize(context: Context) {
+        if (isInitialized) {
+            streamLog { "StreamChatInitializer already initialized" }
+            return
+        }
+        
+        // 1. 配置日志
+        if (StreamChatConfig.enableDebugLogging) {
+            AndroidStreamLogger.installOnDebuggableApp(context)
+            AndroidStreamLogger.level = Priority.VERBOSE
+        }
+        
+        // 2. 创建离线插件（本地数据缓存）
+        val offlinePluginFactory = StreamOfflinePluginFactory(
+            appContext = context
+        )
+        
+        // 3. 创建状态插件（管理 UI 状态）
+        val statePluginFactory = StreamStatePluginFactory(
+            config = StatePluginConfig(
+                backgroundSyncEnabled = false, // 我们不需要后台同步
+                userPresence = false // 我们不需要用户在线状态
+            ),
+            appContext = context
+        )
+        
+        // 4. 构建 ChatClient
+        val logLevel = if (StreamChatConfig.enableDebugLogging) {
+            ChatLogLevel.ALL
+        } else {
+            ChatLogLevel.NOTHING
+        }
+        
+        ChatClient.Builder(StreamChatConfig.API_KEY, context)
+            .withPlugins(offlinePluginFactory, statePluginFactory)
+            .logLevel(logLevel)
+            .build()
+        
+        isInitialized = true
+        streamLog { "StreamChatInitializer initialized successfully" }
+    }
+    
+    /**
+     * 创建测试用户（用于开发和测试）
+     */
+    fun createTestUser(userId: String = "test_user"): User {
+        return User(
+            id = "${StreamChatConfig.USER_ID_PREFIX}$userId",
+            name = "Test User ${Random.nextInt(1000)}",
+            image = "https://picsum.photos/seed/$userId/200/200"
+        )
+    }
+    
+    /**
+     * 连接用户（开发模式，使用 devToken）
+     * 
+     * 注意: 生产环境不应该使用 devToken
+     */
+    fun connectUser(user: User) {
+        val client = ChatClient.instance()
+        val token = client.devToken(user.id)
+        
+        client.connectUser(user, token).enqueue { result ->
+            if (result.isSuccess) {
+                streamLog { "User connected: ${user.id}" }
+            } else {
+                streamLog { "Failed to connect user: ${result.errorOrNull()?.message}" }
+            }
+        }
+    }
+    
+    /**
+     * 断开用户连接
+     */
+    fun disconnectUser() {
+        ChatClient.instance().disconnect(flushPersistence = false).enqueue()
+    }
+}
+```
+
+### 3.3 在 AppModule 中注册初始化
+
+打开 `app/src/main/java/com/aichat/workbench/app/AppModule.kt`
+
+在文件顶部添加初始化调用：
+
+```kotlin
+package com.aichat.workbench.app
+
+import android.app.Application
+import com.aichat.workbench.stream.StreamChatInitializer // 新增
+import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.startKoin
+
+class WorkbenchApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        
+        // 初始化 Stream Chat SDK
+        StreamChatInitializer.initialize(this) // 新增
+        
+        // 初始化 Koin
+        startKoin {
+            androidLogger()
+            androidContext(this@WorkbenchApp)
+            modules(appModule)
+        }
+    }
+}
+```
+
+### 验证
+
+运行应用，查看 Logcat：
+
+```bash
+# 应该看到类似的日志:
+StreamChatInitializer initialized successfully
+```
+
+---
+
+## 步骤 4: 创建基础主题系统
+
+### 4.1 创建 Stream 主题配置
+
+创建新文件: `app/src/main/java/com/aichat/workbench/stream/theme/AiChatStreamTheme.kt`
+
+```kotlin
+package com.aichat.workbench.stream.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import io.getstream.chat.android.compose.ui.theme.ChatTheme
+import io.getstream.chat.android.compose.ui.theme.StreamColors
+import io.getstream.chat.android.compose.ui.theme.StreamShapes
+import io.getstream.chat.android.compose.ui.theme.StreamTypography
+
+/**
+ * AI Chat 应用的 Stream 主题
+ * 
+ * 基于当前的 emerald 配色方案，适配到 Stream Chat SDK
+ */
+@Composable
+fun AiChatStreamTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colors = if (darkTheme) {
+        streamDarkColors()
+    } else {
+        streamLightColors()
+    }
+    
+    val typography = streamTypography()
+    val shapes = StreamShapes.defaultShapes()
+    
+    ChatTheme(
+        colors = colors,
+        typography = typography,
+        shapes = shapes,
+        content = content
+    )
+}
+
+/**
+ * Light 模式颜色
+ */
+private fun streamLightColors(): StreamColors {
+    return StreamColors.defaultColors().copy(
+        // 主色调 - emerald
+        primaryAccent = Color(0xFF10B981),
+        
+        // 背景
+        appBackground = Color.White,
+        barsBackground = Color.White,
+        
+        // 消息背景
+        ownMessagesBackground = Color(0xFFF0FDF4), // emerald-50
+        otherMessagesBackground = Color(0xFFF3F4F6), // gray-100
+        
+        // 文字颜色
+        textHighEmphasis = Color(0xFF111827), // gray-900
+        textLowEmphasis = Color(0xFF6B7280), // gray-500
+        
+        // 输入框
+        inputBackground = Color(0xFFF9FAFB), // gray-50
+        
+        // 链接
+        linkBackground = Color(0xFF10B981).copy(alpha = 0.1f),
+    )
+}
+
+/**
+ * Dark 模式颜色
+ */
+private fun streamDarkColors(): StreamColors {
+    return StreamColors.defaultDarkColors().copy(
+        // 主色调 - emerald
+        primaryAccent = Color(0xFF10B981),
+        
+        // 背景
+        appBackground = Color(0xFF0F172A), // slate-900
+        barsBackground = Color(0xFF1E293B), // slate-800
+        
+        // 消息背景
+        ownMessagesBackground = Color(0xFF064E3B), // emerald-900
+        otherMessagesBackground = Color(0xFF1E293B), // slate-800
+        
+        // 文字颜色
+        textHighEmphasis = Color(0xFFF1F5F9), // slate-100
+        textLowEmphasis = Color(0xFF94A3B8), // slate-400
+        
+        // 输入框
+        inputBackground = Color(0xFF334155), // slate-700
+        
+        // 链接
+        linkBackground = Color(0xFF10B981).copy(alpha = 0.2f),
+    )
+}
+
+/**
+ * 字体配置
+ */
+private fun streamTypography(): StreamTypography {
+    return StreamTypography.defaultTypography().copy(
+        title3Bold = TextStyle(
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        ),
+        bodyBold = TextStyle(
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        ),
+        body = TextStyle(
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal
+        ),
+        footnote = TextStyle(
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
+        )
+    )
+}
+```
+
+### 4.2 验证主题
+
+创建测试文件验证主题是否正常工作（可选）:
+
+创建 `app/src/main/java/com/aichat/workbench/stream/theme/ThemePreview.kt`
+
+```kotlin
+package com.aichat.workbench.stream.theme
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import io.getstream.chat.android.compose.ui.theme.ChatTheme
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewStreamThemeLight() {
+    AiChatStreamTheme(darkTheme = false) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ChatTheme.colors.appBackground)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Light Theme Preview", color = ChatTheme.colors.textHighEmphasis)
+            Text("Primary Color", color = ChatTheme.colors.primaryAccent)
+            Text("Low Emphasis", color = ChatTheme.colors.textLowEmphasis)
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewStreamThemeDark() {
+    AiChatStreamTheme(darkTheme = true) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ChatTheme.colors.appBackground)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Dark Theme Preview", color = ChatTheme.colors.textHighEmphasis)
+            Text("Primary Color", color = ChatTheme.colors.primaryAccent)
+            Text("Low Emphasis", color = ChatTheme.colors.textLowEmphasis)
+        }
+    }
+}
+```
+
+在 Android Studio 中查看 Preview，确认颜色正确显示。
+
+---
+
+## 验证清单
+
+完成 Phase 1 后，检查以下项目：
+
+### 依赖验证
+- [ ] `libs.versions.toml` 添加了 Stream SDK 版本
+- [ ] `app/build.gradle.kts` 添加了 Stream SDK 依赖
+- [ ] Gradle Sync 成功，没有依赖冲突
+- [ ] 项目构建成功: `./gradlew assembleDebug`
+
+### 代码验证
+- [ ] 创建了 `StreamChatConfig.kt`
+- [ ] 创建了 `StreamChatInitializer.kt`
+- [ ] 在 `AppModule.kt` 中调用了初始化
+- [ ] 创建了 `AiChatStreamTheme.kt`
+
+### 运行验证
+- [ ] 应用可以正常启动
+- [ ] Logcat 显示 Stream 初始化成功
+- [ ] 没有崩溃或严重错误
+- [ ] 主题 Preview 显示正常（如果创建了）
+
+### APK 体积检查
+
+```bash
+ls -lh app/build/outputs/apk/debug/app-debug.apk
+```
+
+**预期**: 相比之前增加 2-3MB
+
+---
+
+## 常见问题
+
+### Q1: Gradle Sync 失败，提示找不到 Stream SDK
+
+**解决**:
+1. 检查网络连接
+2. 清理缓存: `./gradlew clean`
+3. 刷新依赖: `./gradlew --refresh-dependencies`
+4. 检查 `libs.versions.toml` 拼写是否正确
+
+### Q2: 编译错误 "Unresolved reference: stream"
+
+**解决**:
+1. 确认 Gradle Sync 已成功
+2. 重启 Android Studio
+3. Invalidate Caches: File -> Invalidate Caches / Restart
+
+### Q3: 应用启动后无初始化日志
+
+**解决**:
+1. 检查 Logcat 过滤器，确保显示所有日志
+2. 检查 `AppModule.kt` 中是否调用了 `StreamChatInitializer.initialize()`
+3. 添加断点调试
+
+### Q4: APK 体积增加超过 5MB
+
+**解决**:
+- 这是正常的，后续 Phase 4 会通过 ProGuard/R8 优化
+- 可以先继续，优化放在最后
+
+---
+
+## 提交代码
+
+Phase 1 完成后，提交代码：
+
+```bash
+git add .
+git commit -m "feat(stream): Phase 1 完成 - 添加 Stream SDK 依赖和初始化
+
+- 添加 Stream Chat SDK 6.5.1 依赖
+- 创建 StreamChatInitializer 初始化器
+- 创建 AiChatStreamTheme 主题系统
+- 集成到 AppModule 中
+
+APK 体积增加: ~2.5MB
+验证: 构建成功，应用正常启动"
+
+git push origin feature/stream-chat-ui
+```
+
+---
+
+## 下一步
+
+Phase 1 完成！继续阅读 `02-Phase2A-并行开发.md` 开始创建实验性实现。

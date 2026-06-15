@@ -213,8 +213,7 @@ class ChatViewModel(
         updateState { it.copy(draft = transform(it.draft)) }
 
     private fun updateState(transform: (ChatUiState) -> ChatUiState) {
-        var nextState: ChatUiState? = null
-        _state.update { current -> transform(current).withSearchApplied().also { nextState = it } }
-        nextState?.draft?.toSavedState(savedStateHandle)
+        _state.update { current -> transform(current) }
+        _state.value.draft.toSavedState(savedStateHandle)
     }
 }

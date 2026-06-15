@@ -14,9 +14,13 @@ fun workbenchTextFieldColors(
     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     disabledContainerColor = disabledContainerColor,
+    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
     focusedTextColor = MaterialTheme.colorScheme.onSurface,
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
     focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
     unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
     cursorColor = MaterialTheme.colorScheme.primary,
 )
+
+@Composable
+fun workbenchInputColors() = workbenchTextFieldColors()

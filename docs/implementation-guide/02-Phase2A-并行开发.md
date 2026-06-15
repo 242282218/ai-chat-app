@@ -1,0 +1,655 @@
+# Phase 2A: 并行开发实验版本
+
+**预估时间**: 2-3 天  
+**难度**: ⭐⭐⭐⭐☆  
+**风险**: 中
+
+## 目标
+
+- 创建基于 Stream SDK 的新 ChatScreen（不影响现有实现）
+- 实现数据模型转换
+- 验证核心功能可行性
+- 为 Phase 2B 测试做准备
+
+## 架构设计
+
+### 文件结构
+
+```
+app/src/main/java/com/aichat/workbench/
+├── feature/chat/          # 现有实现（保持不变）
+│   ├── ChatScreen.kt
+│   ├── ChatViewModel.kt
+│   └── ...
+│
+└── stream/                # 新的 Stream 实现
+    ├── chat/
+    │   ├── StreamChatScreen.kt      # 新的聊天界面
+    │   ├── StreamChatViewModel.kt   # 新的 ViewModel
+    │   ├── StreamMessageList.kt     # 消息列表组件
+    │   └── StreamMessageComposer.kt # 输入框组件
+    ├── converter/
+    │   ├── MessageConverter.kt      # 数据模型转换
+    │   └── ConversationConverter.kt
+    └── repository/
+        └── StreamChatRepository.kt  # Stream 数据层
+```
+
+### 数据流设计
+
+```
+Room Database (现有)
+       ↓
+MessageConverter
+       ↓
+Stream Message (内存)
+       ↓
+Stream UI Components
+```
+
+---
+
+## 步骤 1: 创建数据转换器
+
+### 1.1 消息转换器
+
+创建 `app/src/main/java/com/aichat/workbench/stream/converter/MessageConverter.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.converter
+
+import com.aichat.workbench.domain.model.Message as DomainMessage
+import com.aichat.workbench.domain.model.MessageId
+import io.getstream.chat.android.models.Message as StreamMessage
+import io.getstream.chat.android.models.User
+import java.util.Date
+
+/**
+ * 在 Domain Message 和 Stream Message 之间转换
+ */
+object MessageConverter {
+    
+    /**
+     * 将 Domain Message 转换为 Stream Message
+     */
+    fun toStreamMessage(
+        domainMessage: DomainMessage,
+        currentUser: User,
+        isOwnMessage: Boolean
+    ): StreamMessage {
+        return StreamMessage(
+            id = domainMessage.id.value,
+            text = domainMessage.content,
+            user = if (isOwnMessage) {
+                currentUser
+            } else {
+                createAiUser()
+            },
+            createdAt = Date(domainMessage.timestamp),
+            updatedAt = Date(domainMessage.timestamp),
+            extraData = mutableMapOf(
+                "messageId" to domainMessage.id.value,
+                "role" to domainMessage.role.name,
+                "isStreaming" to false
+            )
+        )
+    }
+    
+    /**
+     * 将 Stream Message 转换为 Domain Message
+     */
+    fun toDomainMessage(streamMessage: StreamMessage): DomainMessage {
+        val role = when (streamMessage.extraData["role"] as? String) {
+            "ASSISTANT" -> DomainMessage.Role.ASSISTANT
+            "SYSTEM" -> DomainMessage.Role.SYSTEM
+            else -> DomainMessage.Role.USER
+        }
+        
+        return DomainMessage(
+            id = MessageId(streamMessage.id),
+            content = streamMessage.text,
+            role = role,
+            timestamp = streamMessage.createdAt?.time ?: System.currentTimeMillis()
+        )
+    }
+    
+    /**
+     * 创建 AI 助手用户
+     */
+    private fun createAiUser(): User {
+        return User(
+            id = "ai_assistant",
+            name = "AI Assistant",
+            image = "" // 可以设置头像 URL
+        )
+    }
+    
+    /**
+     * 创建流式消息（用于打字机效果）
+     */
+    fun createStreamingMessage(
+        messageId: String,
+        partialText: String,
+        currentUser: User
+    ): StreamMessage {
+        return StreamMessage(
+            id = messageId,
+            text = partialText,
+            user = createAiUser(),
+            createdAt = Date(),
+            extraData = mutableMapOf(
+                "isStreaming" to true,
+                "role" to "ASSISTANT"
+            )
+        )
+    }
+}
+```
+
+### 1.2 会话转换器
+
+创建 `app/src/main/java/com/aichat/workbench/stream/converter/ConversationConverter.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.converter
+
+import com.aichat.workbench.domain.model.Conversation
+import io.getstream.chat.android.models.Channel
+import io.getstream.chat.android.models.ChannelData
+import java.util.Date
+
+/**
+ * 在 Domain Conversation 和 Stream Channel 之间转换
+ */
+object ConversationConverter {
+    
+    /**
+     * 将 Domain Conversation 转换为 Stream Channel ID
+     */
+    fun toChannelId(conversation: Conversation): String {
+        return "messaging:conversation_${conversation.id.value}"
+    }
+    
+    /**
+     * 创建 Channel Data
+     */
+    fun createChannelData(conversation: Conversation): ChannelData {
+        return ChannelData(
+            type = "messaging",
+            id = "conversation_${conversation.id.value}",
+            name = conversation.title,
+            createdAt = Date(conversation.createdAt),
+            extraData = mutableMapOf(
+                "conversationId" to conversation.id.value,
+                "title" to conversation.title
+            )
+        )
+    }
+}
+```
+
+---
+
+## 步骤 2: 创建 Stream Repository
+
+创建 `app/src/main/java/com/aichat/workbench/stream/repository/StreamChatRepository.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.repository
+
+import com.aichat.workbench.domain.model.Conversation
+import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.stream.converter.MessageConverter
+import io.getstream.chat.android.client.ChatClient
+import io.getstream.chat.android.models.Channel
+import io.getstream.chat.android.models.Message as StreamMessage
+import io.getstream.chat.android.models.User
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Stream Chat 数据仓库
+ * 
+ * 负责管理 Stream SDK 的数据流，并与 Domain 层交互
+ */
+class StreamChatRepository(
+    private val chatClient: ChatClient
+) {
+    
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: Flow<User?> = _currentUser.asStateFlow()
+    
+    /**
+     * 设置当前用户
+     */
+    fun setCurrentUser(user: User) {
+        _currentUser.value = user
+    }
+    
+    /**
+     * 将 Domain Messages 同步到 Stream Channel
+     */
+    suspend fun syncMessagesToChannel(
+        channelId: String,
+        messages: List<Message>
+    ): Result<Unit> {
+        return try {
+            val currentUser = _currentUser.value ?: return Result.failure(
+                IllegalStateException("User not set")
+            )
+            
+            val channel = chatClient.channel(channelId)
+            
+            // 转换消息
+            val streamMessages = messages.map { domainMessage ->
+                MessageConverter.toStreamMessage(
+                    domainMessage = domainMessage,
+                    currentUser = currentUser,
+                    isOwnMessage = domainMessage.role == Message.Role.USER
+                )
+            }
+            
+            // 这里简化处理，实际可能需要批量发送
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 从 Stream Channel 获取消息
+     */
+    suspend fun getChannelMessages(channelId: String): Result<List<StreamMessage>> {
+        return try {
+            val channel = chatClient.channel(channelId)
+            val result = channel.query().await()
+            
+            if (result.isSuccess) {
+                Result.success(result.getOrThrow().messages)
+            } else {
+                Result.failure(result.errorOrNull() ?: Exception("Unknown error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+```
+
+---
+
+## 步骤 3: 创建 StreamChatViewModel
+
+创建 `app/src/main/java/com/aichat/workbench/stream/chat/StreamChatViewModel.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.chat
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.aichat.workbench.domain.model.ConversationId
+import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.repository.MessageRepository
+import com.aichat.workbench.stream.converter.MessageConverter
+import com.aichat.workbench.stream.repository.StreamChatRepository
+import io.getstream.chat.android.models.Message as StreamMessage
+import io.getstream.chat.android.models.User
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+/**
+ * Stream Chat ViewModel
+ * 
+ * 桥接 Domain 层和 Stream UI 层
+ */
+class StreamChatViewModel(
+    private val conversationRepository: ConversationRepository,
+    private val messageRepository: MessageRepository,
+    private val streamChatRepository: StreamChatRepository
+) : ViewModel() {
+    
+    private val _uiState = MutableStateFlow<StreamChatUiState>(StreamChatUiState.Loading)
+    val uiState: StateFlow<StreamChatUiState> = _uiState.asStateFlow()
+    
+    private val _currentUser = MutableStateFlow(createDefaultUser())
+    val currentUser: StateFlow<User> = _currentUser.asStateFlow()
+    
+    private var currentConversationId: ConversationId? = null
+    
+    init {
+        streamChatRepository.setCurrentUser(_currentUser.value)
+    }
+    
+    /**
+     * 加载会话
+     */
+    fun loadConversation(conversationId: ConversationId) {
+        currentConversationId = conversationId
+        
+        viewModelScope.launch {
+            _uiState.value = StreamChatUiState.Loading
+            
+            try {
+                // 从 Room 加载消息
+                messageRepository.getMessages(conversationId).collect { messages ->
+                    // 转换为 Stream Messages
+                    val streamMessages = messages.map { domainMessage ->
+                        MessageConverter.toStreamMessage(
+                            domainMessage = domainMessage,
+                            currentUser = _currentUser.value,
+                            isOwnMessage = domainMessage.role == Message.Role.USER
+                        )
+                    }
+                    
+                    _uiState.value = StreamChatUiState.Success(
+                        channelId = "messaging:conversation_${conversationId.value}",
+                        messages = streamMessages
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = StreamChatUiState.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+    
+    /**
+     * 发送消息
+     */
+    fun sendMessage(text: String) {
+        val conversationId = currentConversationId ?: return
+        
+        viewModelScope.launch {
+            // 1. 保存用户消息到 Room
+            val userMessage = Message(
+                id = Message.MessageId(UUID.randomUUID().toString()),
+                conversationId = conversationId,
+                content = text,
+                role = Message.Role.USER,
+                timestamp = System.currentTimeMillis()
+            )
+            messageRepository.insertMessage(userMessage)
+            
+            // 2. 模拟 AI 响应（这里需要调用实际的 API）
+            simulateAiResponse(conversationId, text)
+        }
+    }
+    
+    /**
+     * 模拟 AI 流式响应
+     */
+    private suspend fun simulateAiResponse(conversationId: ConversationId, userMessage: String) {
+        val aiMessageId = UUID.randomUUID().toString()
+        val fullResponse = "This is a simulated AI response to: \"$userMessage\""
+        
+        // 流式显示
+        var currentText = ""
+        fullResponse.forEach { char ->
+            currentText += char
+            
+            // 更新 UI（这里简化处理，实际需要更新 Stream Channel）
+            delay(30) // 模拟打字机效果
+        }
+        
+        // 保存完整响应到 Room
+        val aiMessage = Message(
+            id = Message.MessageId(aiMessageId),
+            conversationId = conversationId,
+            content = fullResponse,
+            role = Message.Role.ASSISTANT,
+            timestamp = System.currentTimeMillis()
+        )
+        messageRepository.insertMessage(aiMessage)
+    }
+    
+    private fun createDefaultUser(): User {
+        return User(
+            id = "user_${UUID.randomUUID()}",
+            name = "You",
+            image = ""
+        )
+    }
+}
+
+/**
+ * UI 状态
+ */
+sealed class StreamChatUiState {
+    object Loading : StreamChatUiState()
+    data class Success(
+        val channelId: String,
+        val messages: List<StreamMessage>
+    ) : StreamChatUiState()
+    data class Error(val message: String) : StreamChatUiState()
+}
+```
+
+---
+
+## 步骤 4: 创建 StreamChatScreen
+
+创建 `app/src/main/java/com/aichat/workbench/stream/chat/StreamChatScreen.kt`:
+
+```kotlin
+package com.aichat.workbench.stream.chat
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aichat.workbench.stream.theme.AiChatStreamTheme
+import io.getstream.chat.android.compose.ui.messages.composer.MessageComposer
+import io.getstream.chat.android.compose.ui.messages.header.MessageListHeader
+import io.getstream.chat.android.compose.ui.messages.list.MessageList
+import io.getstream.chat.android.compose.viewmodel.messages.MessageComposerViewModel
+import io.getstream.chat.android.compose.viewmodel.messages.MessageListViewModel
+import io.getstream.chat.android.compose.viewmodel.messages.MessagesViewModelFactory
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+/**
+ * Stream Chat 聊天界面（实验版本）
+ * 
+ * 这是基于 Stream SDK 的新实现，与现有 ChatScreen.kt 并行存在
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StreamChatScreen(
+    channelId: String,
+    onBackPressed: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    
+    // 创建 Stream ViewModels
+    val factory = remember(channelId) {
+        MessagesViewModelFactory(
+            context = context,
+            channelId = channelId,
+            messageLimit = 30
+        )
+    }
+    
+    val listViewModel = viewModel(
+        modelClass = MessageListViewModel::class.java,
+        factory = factory
+    )
+    
+    val composerViewModel = viewModel(
+        modelClass = MessageComposerViewModel::class.java,
+        factory = factory
+    )
+    
+    AiChatStreamTheme {
+        Scaffold(
+            topBar = {
+                MessageListHeader(
+                    channel = listViewModel.channel,
+                    currentUser = listViewModel.user.collectAsStateWithLifecycle().value,
+                    connectionState = listViewModel.connectionState.collectAsStateWithLifecycle().value,
+                    messageMode = listViewModel.messageMode,
+                    onBackPressed = onBackPressed
+                )
+            },
+            bottomBar = {
+                MessageComposer(
+                    modifier = Modifier.fillMaxWidth(),
+                    viewModel = composerViewModel,
+                    onSendMessage = { message ->
+                        // 发送消息
+                        composerViewModel.sendMessage(message)
+                    }
+                )
+            }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                MessageList(
+                    modifier = Modifier.fillMaxSize(),
+                    viewModel = listViewModel
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 预览（用于开发）
+ */
+@Composable
+fun StreamChatScreenPreview() {
+    StreamChatScreen(
+        channelId = "messaging:sample",
+        onBackPressed = {}
+    )
+}
+```
+
+---
+
+## 步骤 5: 集成到 Koin
+
+### 5.1 更新 AppModule
+
+打开 `app/src/main/java/com/aichat/workbench/app/AppModule.kt`，添加：
+
+```kotlin
+import com.aichat.workbench.stream.chat.StreamChatViewModel
+import com.aichat.workbench.stream.repository.StreamChatRepository
+import io.getstream.chat.android.client.ChatClient
+
+val appModule = module {
+    // ... 现有定义 ...
+    
+    // Stream Chat
+    single { ChatClient.instance() }
+    single { StreamChatRepository(get()) }
+    viewModel { StreamChatViewModel(get(), get(), get()) }
+}
+```
+
+---
+
+## 步骤 6: 添加导航路由（可选）
+
+如果你想在应用中测试新界面，可以添加临时导航路由。
+
+打开 `app/src/main/java/com/aichat/workbench/navigation/Route.kt`，添加：
+
+```kotlin
+sealed class Route(val route: String) {
+    // ... 现有路由 ...
+    
+    // 实验性 Stream Chat 界面
+    data class StreamChat(val conversationId: String) : Route("stream_chat/$conversationId") {
+        companion object {
+            const val PATTERN = "stream_chat/{conversationId}"
+        }
+    }
+}
+```
+
+在导航图中添加（可选，仅用于测试）。
+
+---
+
+## 验证清单
+
+Phase 2A 完成后，检查以下项目：
+
+### 代码结构
+- [ ] 创建了 `stream/converter/` 目录和转换器
+- [ ] 创建了 `stream/repository/StreamChatRepository.kt`
+- [ ] 创建了 `stream/chat/StreamChatViewModel.kt`
+- [ ] 创建了 `stream/chat/StreamChatScreen.kt`
+- [ ] 更新了 Koin 依赖注入
+
+### 编译验证
+- [ ] 项目编译成功，没有错误
+- [ ] 没有未解析的引用
+- [ ] Koin 配置正确
+
+### 功能验证（初步）
+- [ ] StreamChatScreen 可以正常渲染（即使是空状态）
+- [ ] 没有崩溃
+- [ ] 主题颜色显示正确
+
+**注意**: 此阶段不要求功能完全正常，只需要代码编译通过、基本渲染正常即可。详细测试在 Phase 2B 进行。
+
+---
+
+## 常见问题
+
+### Q1: MessageConverter 编译错误
+
+**可能原因**: Domain Message 模型定义不一致
+
+**解决**: 根据实际的 Domain Message 模型调整转换器代码
+
+### Q2: Stream ViewModel 创建失败
+
+**可能原因**: ChatClient 未正确初始化
+
+**解决**: 确认 Phase 1 的初始化代码正确执行
+
+### Q3: Koin 依赖注入错误
+
+**可能原因**: 循环依赖或缺少定义
+
+**解决**: 检查 `appModule` 中的依赖顺序和完整性
+
+---
+
+## 提交代码
+
+```bash
+git add .
+git commit -m "feat(stream): Phase 2A 完成 - 创建 Stream 并行实现
+
+- 创建消息和会话转换器
+- 实现 StreamChatRepository
+- 实现 StreamChatViewModel
+- 实现 StreamChatScreen UI
+- 集成到 Koin
+
+状态: 代码编译通过，基本结构完成
+下一步: Phase 2B 功能验证"
+
+git push origin feature/stream-chat-ui
+```
+
+---
+
+## 下一步
+
+Phase 2A 完成！继续阅读 `03-Phase2B-验证测试.md` 进行详细的功能和性能验证。

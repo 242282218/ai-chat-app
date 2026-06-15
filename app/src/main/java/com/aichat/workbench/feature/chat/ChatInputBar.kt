@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,6 +48,7 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.statusColors
 import com.aichat.workbench.ui.component.decodeInlineImageBitmap
+import com.aichat.workbench.ui.component.workbenchInputColors
 import java.io.File
 
 @Composable
@@ -65,7 +67,9 @@ internal fun InputBar(
     onCancelEdit: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 8.dp,
     ) {
@@ -319,16 +323,3 @@ internal fun inputStatus(
         )
         else -> null
     }
-
-@Composable
-internal fun workbenchInputColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
-    cursorColor = MaterialTheme.colorScheme.primary,
-    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-)

@@ -47,6 +47,7 @@ fun MessageActionsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
         modifier = modifier
     ) {
         Column(

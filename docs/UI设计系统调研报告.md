@@ -1,0 +1,364 @@
+# UI 设计系统调研报告
+
+## 调研目标
+
+为 AI 聊天应用重构界面设计，采用成熟的开源设计系统，而不是从头构建。
+
+## 一、成熟的 Compose 设计系统库
+
+### 1. Stream Chat SDK for Compose ⭐️⭐️⭐️⭐️⭐️
+
+**推荐指数：最高**
+
+- **项目地址**: [Stream Chat Android SDK](https://github.com/getStream/stream-chat-android)
+- **官方文档**: [Stream Chat Compose UI Components](https://getstream.io/chat/docs/sdk/android/compose/overview/)
+- **特点**:
+  - ✅ 专为聊天应用设计的完整 UI 组件库
+  - ✅ v7 版本全新设计系统，现代化 Android 设计风格
+  - ✅ ChatTheme 组件提供一致的主题系统
+  - ✅ 支持 light/dark mode
+  - ✅ 包含消息列表、输入框、Channel 列表等完整组件
+  - ✅ 流式文本、Markdown 渲染、消息状态管理
+  - ✅ 生产级质量，被 [skydoves/chatgpt-android](https://github.com/skydoves/chatgpt-android) 等项目使用
+  
+- **适用场景**: 
+  - **最适合我们的项目** - 专为聊天应用打造
+  - 已有完整的消息列表、输入框、主题系统
+  - 支持 AI 流式响应场景
+
+- **参考实现**:
+  - `参考项目/chatgpt-android` 使用了 Stream Chat SDK
+  - 可以直接参考其 `core-designsystem` 模块的实现
+
+### 2. Material 3 官方设计系统 ⭐️⭐️⭐️⭐️
+
+- **文档**: [Material Design 3 in Compose](https://developer.android.com/develop/ui/compose/designsystems/material3)
+- **特点**:
+  - ✅ Google 官方支持，最新 M3 Expressive 风格
+  - ✅ 完整的组件库（Button, TextField, Card 等）
+  - ✅ 动态主题支持（Material You）
+  - ✅ 已集成在项目中（`compose.material3`）
+  
+- **适用场景**:
+  - 作为基础设计系统
+  - 与其他专用库配合使用
+  - 当前项目已使用
+
+### 3. Trendyol Komposto ⭐️⭐️⭐️⭐️
+
+- **项目地址**: [Trendyol/komposto](https://github.com/Trendyol/komposto)
+- **特点**:
+  - ✅ 20+ 可复用 UI 组件
+  - ✅ Design tokens 系统
+  - ✅ RTL（右到左）支持
+  - ✅ 无障碍特性
+  
+- **适用场景**:
+  - 需要完整 Design tokens 系统
+  - 需要 RTL 支持的国际化应用
+  - 想要预制的组件库
+
+### 4. CometChat Android Compose UI Kit ⭐️⭐️⭐️
+
+- **官网**: [CometChat Android UI Kit](https://www.cometchat.com/android-chat-ui-kit)
+- **特点**:
+  - ✅ 聊天专用 UI Kit
+  - ✅ 模块化架构
+  - ✅ 3 种预制聊天体验
+  - ✅ 内置消息逻辑
+  
+- **限制**:
+  - ⚠️ 商业产品，可能有使用限制
+  - ⚠️ 与 CometChat 服务耦合
+
+### 5. Compose Unstyled ⭐️⭐️⭐️
+
+- **项目地址**: [composablehorizons/compose-unstyled](https://github.com/composablehorizons/compose-unstyled)
+- **特点**:
+  - ✅ 无样式基础层，完全可定制
+  - ✅ 适合构建自定义设计系统
+  
+- **适用场景**:
+  - 需要完全自定义的设计系统
+  - 不想受限于现有风格
+
+## 二、AI 聊天界面设计最佳实践
+
+### 核心设计原则
+
+根据 [Intuition Labs](https://intuitionlabs.ai/articles/conversational-ai-ui-comparison-2025) 和 [SetProduct](https://www.setproduct.com/blog/ai-chat-interface-ui-design) 的研究：
+
+1. **能力透明 (Capability Transparency)**
+   - 用户应该在开始输入前了解 Bot 能做什么、不能做什么
+   - 避免期望落差和挫败感
+
+2. **流式响应 (Streaming Responses)**
+   - AI 聊天界面与传统消息不同，响应逐字符流式生成
+   - 需要特殊的 UI 处理来展示这种行为
+
+3. **恢复模式 (Recovery Patterns)**
+   - 清晰的错误状态和恢复流程
+   - AI 响应可能以独特方式失败
+
+4. **置信度显示 (Confidence Display)**
+   - 显示 AI 响应的确定性水平
+   - 帮助用户"读懂"模型的不确定性
+
+5. **一致性 (Consistency)**
+   - 语气一致性对可用性至关重要
+   - 中途改变情绪会"比 bug 更快破坏信任"
+
+### 设计效果数据
+
+- 设计良好的对话界面比设计不佳的界面**获得 3-10 倍更高的参与率**（相同 AI 能力）
+- UI 是"AI 投资和实际用户参与之间的守门员"
+
+### 关键设计属性
+
+强大的聊天机器人 UI 应该在以下方面表现出色：
+- **能力透明** - 能做什么/不能做什么
+- **恢复模式** - 处理失败
+- **置信度显示** - 显示确定性
+- **可访问性** - 跨设备支持
+
+### UI 模式建议
+
+根据 [UXPin](https://www.uxpin.com/studio/blog/chat-user-interface-design/) 和 [Lazarev Agency](https://www.lazarev.agency/articles/chatbot-ui-examples)：
+
+- 现代 AI 聊天界面应该像"自适应仪表板"而非僵化的消息应用
+- 核心挑战：创建自然的实时对话界面，同时处理附件、通知、线程、错误状态和跨设备可访问性
+
+## 三、参考项目设计分析
+
+### 1. GPT-Mobile ⭐️⭐️⭐️⭐️
+
+- **项目**: [Taewan-P/gpt_mobile](https://github.com/Taewan-P/gpt_mobile)
+- **设计特点**:
+  - ✅ Material You 风格 UI
+  - ✅ 支持深色模式和系统动态主题，**无需 Activity 重启**
+  - ✅ 100% Kotlin, Jetpack Compose
+  - ✅ 现代应用架构（MVVM）
+  - ✅ 支持多模型同时聊天
+  
+- **值得借鉴**:
+  - 动态主题切换不重启 Activity 的实现
+  - 多平台 API 支持的架构设计
+  - 本地聊天历史存储方案
+
+### 2. chatgpt-android (skydoves) ⭐️⭐️⭐️⭐️⭐️
+
+- **项目**: [skydoves/chatgpt-android](https://github.com/skydoves/chatgpt-android)
+- **设计特点**:
+  - ✅ 使用 **Stream Chat SDK for Compose**
+  - ✅ 完整的 UI 元素使用 Jetpack Compose
+  - ✅ 架构组件（Hilt, AppStartup）
+  - ✅ Kotlin Coroutines + WorkManager
+  - ✅ 实时事件处理
+  
+- **目录结构**:
+  ```
+  core-designsystem/
+    ├── theme/
+    │   ├── Background.kt
+    │   ├── Color.kt
+    │   ├── Theme.kt
+    │   └── Typography.kt
+  ```
+
+- **值得借鉴**:
+  - **最重要**: Stream Chat SDK 的集成方式
+  - core-designsystem 模块的组织结构
+  - ChatGPTStreamTheme 的主题实现
+  - BackgroundTheme 的自定义主题模式
+
+### 3. OneClaw ⭐️⭐️⭐️⭐️
+
+- **项目**: 参考项目中的 OneClaw
+- **设计特点**:
+  - ✅ 完整的 Material 3 色彩系统（light/dark scheme）
+  - ✅ 支持 Android 12+ 动态颜色
+  - ✅ 自定义 Typography
+  - ✅ Shape 系统
+  
+- **主题实现**:
+  ```kotlin
+  @Composable
+  fun OneClawTheme(
+      darkTheme: Boolean = isSystemInDarkTheme(),
+      dynamicColor: Boolean = false,
+      content: @Composable () -> Unit
+  ) {
+      val colorScheme = when {
+          dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+              if (darkTheme) dynamicDarkColorScheme(context) 
+              else dynamicLightColorScheme(context)
+          }
+          darkTheme -> darkScheme
+          else -> lightScheme
+      }
+      MaterialTheme(...)
+  }
+  ```
+
+- **值得借鉴**:
+  - 完整的 Material 3 色彩系统定义
+  - 动态颜色适配的实现
+  - 清晰的主题架构
+
+## 四、推荐方案
+
+### 方案 A：Stream Chat SDK + Material 3（推荐）⭐️⭐️⭐️⭐️⭐️
+
+**为什么选这个方案**:
+1. **专为聊天应用设计** - Stream Chat SDK 提供完整的聊天 UI 组件
+2. **生产级质量** - 被多个知名项目使用，经过充分验证
+3. **节省开发时间** - 消息列表、输入框、主题系统开箱即用
+4. **AI 友好** - 支持流式文本、Markdown 渲染
+5. **可定制** - 可以基于 Material 3 进行深度定制
+
+**实施步骤**:
+1. 添加 Stream Chat SDK 依赖
+2. 参考 `chatgpt-android` 的 `core-designsystem` 模块
+3. 创建自定义 ChatTheme
+4. 迁移现有消息列表和输入框到 Stream 组件
+5. 保持 Material 3 作为基础设计系统
+
+**优点**:
+- ✅ 快速实现聊天核心 UI
+- ✅ 专业的消息渲染
+- ✅ 完整的主题系统
+- ✅ 社区支持和文档完善
+
+**缺点**:
+- ⚠️ 引入额外依赖
+- ⚠️ 需要学习 Stream SDK API
+- ⚠️ 可能需要适配我们的数据模型
+
+### 方案 B：Material 3 + 自定义组件（当前方案优化）⭐️⭐️⭐️
+
+**为什么考虑这个方案**:
+1. **当前基础** - 项目已使用 Material 3
+2. **完全控制** - 所有组件完全自主实现
+3. **轻量级** - 无额外大型依赖
+
+**实施步骤**:
+1. 参考 OneClaw 完善色彩系统
+2. 参考 GPT-Mobile 实现动态主题不重启
+3. 提取 `chatgpt-android` 的设计模式（不用 Stream SDK）
+4. 优化现有的 `WorkbenchPanel`, `ChatMessageList` 等组件
+5. 统一 Spacing, Typography, Shape 系统
+
+**优点**:
+- ✅ 不引入大型依赖
+- ✅ 完全控制实现细节
+- ✅ 与当前代码库契合
+
+**缺点**:
+- ⚠️ 开发时间长
+- ⚠️ 需要自己实现所有聊天特性
+- ⚠️ 维护成本高
+
+### 方案 C：Trendyol Komposto + Material 3 ⭐️⭐️⭐️
+
+**为什么考虑这个方案**:
+1. **Design Tokens** - 提供完整的设计令牌系统
+2. **组件丰富** - 20+ 预制组件
+3. **现代化** - RTL、无障碍支持
+
+**实施步骤**:
+1. 添加 Komposto 依赖
+2. 集成 Design Tokens
+3. 使用预制组件替换自定义实现
+4. 保持 Material 3 作为基础
+
+**优点**:
+- ✅ Design tokens 系统化
+- ✅ 组件质量高
+- ✅ RTL 和无障碍支持
+
+**缺点**:
+- ⚠️ 不是专为聊天设计
+- ⚠️ 可能需要大量定制
+- ⚠️ 社区相对较小
+
+## 五、决策矩阵
+
+| 评估维度 | Stream Chat + M3 | M3 + 自定义 | Komposto + M3 |
+|---------|-----------------|------------|---------------|
+| **开发速度** | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️ | ⭐️⭐️⭐️⭐️ |
+| **聊天适配** | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️ | ⭐️⭐️⭐️ |
+| **可定制性** | ⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️ |
+| **维护成本** | ⭐️⭐️⭐️⭐️ | ⭐️⭐️ | ⭐️⭐️⭐️ |
+| **社区支持** | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️ |
+| **依赖大小** | ⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️ |
+| **总分** | **26/30** | **20/30** | **21/30** |
+
+## 六、最终推荐
+
+### 🎯 推荐方案：Stream Chat SDK + Material 3
+
+**推荐理由**:
+1. **ROI 最高** - 快速获得生产级聊天 UI，节省数周开发时间
+2. **专业性** - 专为聊天设计，包含我们需要的所有特性
+3. **可靠性** - 被 skydoves 等知名开发者使用，质量有保障
+4. **AI 友好** - 原生支持流式文本和 Markdown
+5. **生态完整** - 文档、示例、社区支持都很完善
+
+**实施路线图**:
+
+#### Phase 1: 基础集成（1-2 天）
+- [ ] 添加 Stream Chat SDK 依赖
+- [ ] 研究 `chatgpt-android` 的 core-designsystem 模块
+- [ ] 创建基础 ChatTheme 配置
+
+#### Phase 2: 组件迁移（3-5 天）
+- [ ] 迁移消息列表到 Stream MessageList
+- [ ] 迁移输入框到 Stream MessageComposer
+- [ ] 适配数据模型到 Stream 格式
+- [ ] 实现流式文本渲染
+
+#### Phase 3: 主题定制（2-3 天）
+- [ ] 定制颜色系统（保留当前 emerald 主题）
+- [ ] 定制 Typography
+- [ ] 实现 light/dark mode 切换
+- [ ] 优化间距和圆角
+
+#### Phase 4: 特性完善（3-5 天）
+- [ ] 实现 Markdown 渲染
+- [ ] 添加代码高亮
+- [ ] 实现消息操作（复制、删除等）
+- [ ] 优化动画和转场
+
+**总预估时间**: 9-15 天
+
+## 七、资源链接
+
+### 官方文档
+- [Material 3 in Compose](https://developer.android.com/develop/ui/compose/designsystems/material3)
+- [Stream Chat Android SDK](https://getstream.io/chat/docs/sdk/android/)
+- [Stream Chat Compose Components](https://getstream.io/chat/docs/sdk/android/compose/overview/)
+
+### 开源项目
+- [skydoves/chatgpt-android](https://github.com/skydoves/chatgpt-android)
+- [Taewan-P/gpt_mobile](https://github.com/Taewan-P/gpt_mobile)
+- [Trendyol/komposto](https://github.com/Trendyol/komposto)
+- [jetpack-compose-awesome](https://github.com/jetpack-compose/jetpack-compose-awesome)
+
+### 设计指南
+- [AI Chat Interface Design - SetProduct](https://www.setproduct.com/blog/ai-chat-interface-ui-design)
+- [Conversational AI UI Comparison 2025](https://intuitionlabs.ai/articles/conversational-ai-ui-comparison-2025)
+- [Chatbot UI Best Practices](https://www.conferbot.com/blog/chatbot-ui-design-best-practices)
+- [Chat UI Design Guide - UXPin](https://www.uxpin.com/studio/blog/chat-user-interface-design/)
+
+## 八、下一步行动
+
+1. **决策确认** - 与团队确认采用哪个方案
+2. **技术验证** - 创建 POC 验证 Stream SDK 集成
+3. **设计审查** - 确定最终的视觉风格和主题
+4. **实施计划** - 按照路线图逐步实施
+
+---
+
+**调研日期**: 2026-06-15  
+**调研人**: Claude Code  
+**文档版本**: 1.0

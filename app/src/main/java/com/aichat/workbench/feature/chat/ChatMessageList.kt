@@ -50,7 +50,7 @@ fun ChatMessageList(
 
     // Auto-scroll to bottom when new messages arrive
     val lastMessage = messages.lastOrNull()
-    val contentKey = lastMessage?.let { "${it.id.value}:${it.content.length}" }
+    val contentKey = lastMessage?.id?.value
     LaunchedEffect(contentKey) {
         if (messages.isNotEmpty() && isNearBottom) {
             listState.animateScrollToItem(messages.lastIndex)

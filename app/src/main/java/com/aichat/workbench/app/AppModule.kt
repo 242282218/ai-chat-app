@@ -29,6 +29,7 @@ import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
 import com.aichat.workbench.feature.conversations.ConversationsViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
+import com.aichat.workbench.feature.provider.ProviderSettingsViewModel
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ProviderConnectionTester
@@ -176,6 +177,7 @@ val appModule: Module = module {
     }
     viewModelOf(::ConversationsViewModel)
     viewModelOf(::ChatViewModel)
+    viewModelOf(::ProviderSettingsViewModel)
     viewModel {
         ImageGenerationViewModel(
             imageRepository = get(),

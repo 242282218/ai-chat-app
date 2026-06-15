@@ -1,4 +1,4 @@
-﻿package com.aichat.workbench.feature.conversations
+package com.aichat.workbench.feature.conversations
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.stateIn
 data class ConversationsUiState(
     val recentConversations: List<ConversationPreview> = emptyList(),
     val hasAvailableChatProvider: Boolean = false,
+    val isLoading: Boolean = true,
+    val error: String? = null,
 )
 
 class ConversationsViewModel(
@@ -30,12 +32,14 @@ class ConversationsViewModel(
             providerRepository.observeProviders(),
         ) { conversations, providers ->
             ConversationsUiState(
-                recentConversations = conversations.take(30),
+                recentConversations = conversations,
                 hasAvailableChatProvider = providers.any {
                     it.enabled &&
                         providerRegistry.isRegistered(it.type) &&
                         it.supportsTextGeneration()
                 },
+                isLoading = false,
+                error = null,
             )
         }
             .stateIn(
