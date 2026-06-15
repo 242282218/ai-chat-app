@@ -165,9 +165,7 @@ private fun NavController.navigateToNewChat(
     val routeDraft = draft.takeIf { draftRef == null }.orEmpty()
     navigate(
         "${AppDestination.Chat.route}?$CHAT_DRAFT_ARG=${Uri.encode(routeDraft)}&$CHAT_DRAFT_REF_ARG=${Uri.encode(draftRef.orEmpty())}",
-    ) {
-        launchSingleTop = true
-    }
+    )
 }
 
 private const val CHAT_CONVERSATION_ID_ARG = "conversationId"
