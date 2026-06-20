@@ -15,9 +15,10 @@ android {
         applicationId = "com.aichat.workbench"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.29.0"
+        versionCode = 32
+        versionName = "0.30.0"
 
+        buildConfigField("boolean", "ENABLE_STREAM_CHAT_EXPERIMENT", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -38,6 +39,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
