@@ -59,7 +59,7 @@ class WorkbenchHttpClientsTest {
         val longRunning = WorkbenchHttpClients.longRunning()
 
         assertEquals(45_000, json.callTimeoutMillis)
-        assertEquals(0, streaming.callTimeoutMillis)
+        assertEquals(600_000, streaming.callTimeoutMillis)
         assertEquals(300_000, streaming.readTimeoutMillis)
         assertEquals(300_000, longRunning.callTimeoutMillis)
         assertEquals(300_000, longRunning.readTimeoutMillis)

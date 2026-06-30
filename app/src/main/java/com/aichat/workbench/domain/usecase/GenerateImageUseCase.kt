@@ -48,7 +48,7 @@ class GenerateImageUseCase(
                 val base64 = generated.base64
                     ?: error("Provider 返回的是图片 URL；本地保存需要 base64 图片数据。")
                 val id = if (index == 0) pending.id else ImageGenerationId(UUID.randomUUID().toString())
-                val paths = imageStorage.savePng(id, kotlin.io.encoding.Base64.Default.decode(base64))
+                val paths = imageStorage.savePng(id, base64.decodeImageBytes())
                 val completed = pending.copy(
                     id = id,
                     count = response.images.size,
@@ -119,4 +119,20 @@ class GenerateImageUseCase(
 
     private fun Throwable.summary(): String =
         providerFailureSummary("图片生成失败。")
+
+    private fun String.decodeImageBytes(): ByteArray {
+        require(length <= MAX_BASE64_IMAGE_CHARS) {
+            "图片数据超过限制：$length chars。"
+        }
+        val bytes = kotlin.io.encoding.Base64.Default.decode(this)
+        require(bytes.size <= MAX_IMAGE_SIZE_BYTES) {
+            "图片大小超过限制：${bytes.size} bytes。"
+        }
+        return bytes
+    }
+
+    private companion object {
+        const val MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+        const val MAX_BASE64_IMAGE_CHARS = ((MAX_IMAGE_SIZE_BYTES + 2) / 3) * 4 + 128
+    }
 }

@@ -27,6 +27,7 @@ import com.aichat.workbench.feature.chat.ConversationContextBuilder
 import com.aichat.workbench.feature.chat.ConversationContextProvider
 import com.aichat.workbench.feature.chat.ConversationManager
 import com.aichat.workbench.feature.chat.GenerationController
+import com.aichat.workbench.feature.chat.SendMessageUseCaseFactory
 import com.aichat.workbench.feature.conversations.ConversationsViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
 import com.aichat.workbench.feature.provider.ProviderSettingsViewModel
@@ -111,7 +112,7 @@ val appModule: Module = module {
     }
     single<ImageStorage> { AndroidImageStorage(androidContext()) }
     single<ImageGenerationPreferencesRepository> {
-        DataStoreImageGenerationPreferencesRepository(androidContext(), dispatchers = get())
+        DataStoreImageGenerationPreferencesRepository(androidContext(), scope = get<ApplicationScope>())
     }
     single { OpenAiChatProvider(client = get(named("streamingHttpClient"))) }
     single<ChatProvider>(named("openai")) { get<OpenAiChatProvider>() }
@@ -151,6 +152,13 @@ val appModule: Module = module {
         )
     }
     factory { ConversationManager(conversationRepository = get(), clock = get()) }
+    factory<SendMessageUseCaseFactory> {
+        val conversationRepository = get<ConversationRepository>()
+        val clock = get<Clock>()
+        SendMessageUseCaseFactory { chatProvider ->
+            SendMessageUseCase(conversationRepository, chatProvider, clock)
+        }
+    }
     factory {
         GenerationController(
             conversationRepository = get(),
@@ -158,6 +166,7 @@ val appModule: Module = module {
             contextProvider = get(),
             providerRegistry = get(),
             createConversationUseCase = get(),
+            sendMessageUseCaseFactory = get(),
             clock = get(),
         )
     }
@@ -184,8 +193,6 @@ val appModule: Module = module {
             providerRepository = get(),
             preferencesRepository = get(),
             modelRolePreferenceRepository = get(),
-            imageProvider = get(),
-            imageStorage = get(),
             connectionTester = get(),
             clock = get(),
             generateImageUseCase = get(),

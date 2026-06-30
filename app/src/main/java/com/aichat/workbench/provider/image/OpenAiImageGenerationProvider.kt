@@ -5,7 +5,9 @@ import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.parseOpenAiHttpError
 import com.aichat.workbench.provider.api.providerJson
+import com.aichat.workbench.provider.api.readBodyWithLimit
 import com.aichat.workbench.provider.api.readErrorBodySafely
+import com.aichat.workbench.provider.http.awaitResponse
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
@@ -26,11 +28,11 @@ class OpenAiImageGenerationProvider(
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse =
         withContext(Dispatchers.IO) {
-            val response = client.newCall(request.toHttpRequest()).execute()
+            val response = client.newCall(request.toHttpRequest()).awaitResponse()
             response.use {
                 it.requireSuccessful()
                 val body = requireNotNull(it.body) { "Provider 未返回图片响应。" }
-                parseResponse(providerJson.decodeFromString(body.string()))
+                parseResponse(providerJson.decodeFromString(body.readBodyWithLimit(MAX_IMAGE_RESPONSE_BODY_BYTES)))
             }
         }
 
@@ -54,6 +56,8 @@ class OpenAiImageGenerationProvider(
         val JSON = "application/json; charset=utf-8".toMediaType()
         val FORBIDDEN_HEADERS = setOf("authorization", "x-api-key", "api-key")
         const val MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+        const val MAX_IMAGE_RESPONSE_BODY_BYTES = 64 * 1024 * 1024
+        const val MAX_BASE64_IMAGE_CHARS = ((MAX_IMAGE_SIZE_BYTES + 2) / 3) * 4 + 128
     }
 
     private fun ImageGenerationProviderRequest.toApiBody(): OpenAiImageRequest =
@@ -66,17 +70,21 @@ class OpenAiImageGenerationProvider(
             responseFormat = "b64_json",
         )
 
-    private fun parseResponse(response: OpenAiImageResponse): ImageGenerationProviderResponse {
+    private suspend fun parseResponse(response: OpenAiImageResponse): ImageGenerationProviderResponse {
         require(response.data.isNotEmpty()) {
             "Provider 返回空图片列表，可能是模型不支持或参数无效。"
         }
-        val images = response.data.map { item ->
-            GeneratedImage(
-                base64 = item.base64?.takeIf { it.isNotBlank() }
-                    ?: item.url?.takeIf { it.isNotBlank() }?.let(::downloadImageAsBase64),
-                url = item.url?.takeIf { it.isNotBlank() },
-                revisedPrompt = item.revisedPrompt?.takeIf { it.isNotBlank() },
-            )
+        val images = buildList {
+            response.data.forEach { item ->
+                add(
+                    GeneratedImage(
+                        base64 = item.base64?.takeIf { it.isNotBlank() }?.boundedBase64()
+                            ?: item.url?.takeIf { it.isNotBlank() }?.let { downloadImageAsBase64(it) },
+                        url = item.url?.takeIf { it.isNotBlank() },
+                        revisedPrompt = item.revisedPrompt?.takeIf { it.isNotBlank() },
+                    ),
+                )
+            }
         }
         return ImageGenerationProviderResponse(images = images)
     }
@@ -92,7 +100,7 @@ class OpenAiImageGenerationProvider(
         )
     }
 
-    private fun downloadImageAsBase64(url: String): String {
+    private suspend fun downloadImageAsBase64(url: String): String {
         // Validate URL scheme to prevent file:// or other unexpected protocols
         require(url.startsWith("https://") || url.startsWith("http://")) {
             "只支持 HTTP/HTTPS 图片 URL，拒绝: $url"
@@ -104,7 +112,7 @@ class OpenAiImageGenerationProvider(
                 .get()
                 .header("Accept", "image/*")
                 .build(),
-        ).execute()
+        ).awaitResponse()
         response.use {
             if (!it.isSuccessful) {
                 throw ProviderHttpException(
@@ -139,8 +147,15 @@ class OpenAiImageGenerationProvider(
                 "图片实际大小超过限制：${bytes.size} bytes"
             }
 
-            return kotlin.io.encoding.Base64.Default.encode(bytes)
+            return kotlin.io.encoding.Base64.Default.encode(bytes).boundedBase64()
         }
+    }
+
+    private fun String.boundedBase64(): String {
+        require(length <= MAX_BASE64_IMAGE_CHARS) {
+            "图片数据超过限制：$length chars"
+        }
+        return this
     }
 
     private fun InputStream.readAtMost(maxBytes: Int): ByteArray {

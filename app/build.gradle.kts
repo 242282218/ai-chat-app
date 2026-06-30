@@ -18,7 +18,6 @@ android {
         versionCode = 32
         versionName = "0.30.0"
 
-        buildConfigField("boolean", "ENABLE_STREAM_CHAT_EXPERIMENT", "false")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -68,6 +67,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.compose.ui.test.junit4)
 
     implementation(libs.activity.compose)
     implementation(libs.compose.foundation)
@@ -94,6 +94,7 @@ dependencies {
     baselineProfile(project(":baselineprofile"))
 
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     ksp(libs.room.compiler)
 

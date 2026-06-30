@@ -29,6 +29,7 @@ class GenerationController(
     contextProvider: ConversationContextProvider,
     providerRegistry: ProviderRegistry,
     createConversationUseCase: com.aichat.workbench.domain.usecase.CreateConversationUseCase,
+    sendMessageUseCaseFactory: SendMessageUseCaseFactory,
     private val clock: Clock,
 ) {
     private val chatTurnOrchestrator = ChatTurnOrchestrator(
@@ -37,6 +38,7 @@ class GenerationController(
         contextProvider = contextProvider,
         providerRegistry = providerRegistry,
         createConversationUseCase = createConversationUseCase,
+        sendMessageUseCaseFactory = sendMessageUseCaseFactory,
         clock = clock,
     )
     private val stateMutex = Mutex()

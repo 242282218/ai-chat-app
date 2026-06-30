@@ -5,6 +5,7 @@ import com.aichat.workbench.provider.api.ProviderHttpException
 import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.api.parseOpenAiHttpError
 import com.aichat.workbench.provider.api.readErrorBodySafely
+import com.aichat.workbench.provider.api.readJsonBodySafely
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -39,7 +40,7 @@ internal fun Response.requireSuccessfulProviderResponse() {
 }
 
 internal fun Response.bodyText(): String =
-    body?.readErrorBodySafely().orEmpty()
+    requireBody().readJsonBodySafely()
 
 internal fun Response.requireBody() =
     requireNotNull(body) { "Provider 响应 body 为空。" }

@@ -9,12 +9,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.aichat.workbench.app.AppDispatchers
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -34,10 +32,10 @@ class DataStoreImageGenerationPreferencesRepository internal constructor(
 ) : ImageGenerationPreferencesRepository {
     constructor(
         context: Context,
-        dispatchers: AppDispatchers,
+        scope: CoroutineScope,
     ) : this(
         dataStore = context.applicationContext.imageGenerationPreferencesDataStore,
-        scope = CoroutineScope(SupervisorJob() + dispatchers.io),
+        scope = scope,
     )
 
     private val preferences: StateFlow<ImageGenerationPreferences> =

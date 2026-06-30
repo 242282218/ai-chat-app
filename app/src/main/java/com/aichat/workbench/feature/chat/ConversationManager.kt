@@ -29,6 +29,7 @@ class ConversationManager(
         return state.copy(
             conversations = conversations,
             selectedConversationId = conversation.id,
+            shouldAutoSelectConversation = true,
             selectedProviderId = selectedProviderId,
             messages = if (selectionChanged) emptyList() else state.messages,
             selectedConversationMessageCount = if (selectionChanged) 0 else state.selectedConversationMessageCount,
@@ -37,9 +38,10 @@ class ConversationManager(
         )
     }
 
-    fun clearSelection(state: ChatUiState): ChatUiState =
+    fun clearSelection(state: ChatUiState, shouldAutoSelectConversation: Boolean = true): ChatUiState =
         state.copy(
             selectedConversationId = null,
+            shouldAutoSelectConversation = shouldAutoSelectConversation,
             messages = emptyList(),
             selectedConversationMessageCount = 0,
             draft = DraftState(),

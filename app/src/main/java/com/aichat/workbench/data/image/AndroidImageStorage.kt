@@ -83,7 +83,6 @@ class AndroidImageStorage(
 
     override suspend fun deleteImage(id: ImageGenerationId) {
         withContext(Dispatchers.IO) {
-            // Validate id to prevent path traversal
             if (!id.value.matches(SAFE_ID_REGEX)) return@withContext
 
             try {
@@ -97,15 +96,17 @@ class AndroidImageStorage(
                     throw StorageException("删除缩略图失败: ${id.value}")
                 }
             } catch (error: Exception) {
-                // Don't throw on delete failure - log it in production
-                // For now, silently fail to prevent UI disruption
+                if (error is StorageException) throw error
+                throw StorageException("删除图片失败: ${id.value}", error)
             }
         }
     }
 
     override suspend fun deleteAllImages() {
         withContext(Dispatchers.IO) {
-            imageRoot.deleteRecursively()
+            if (imageRoot.exists() && !imageRoot.deleteRecursively()) {
+                throw StorageException("清空图片存储目录失败")
+            }
         }
     }
 

@@ -218,6 +218,42 @@ class ChatViewModelTest : KoinTest {
     }
 
     @Test
+    fun startNewConversationDoesNotReuseAutoSelectedConversation() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAi = provider("openai", ProviderType.OpenAI)
+        val conversationRepository = FakeConversationRepository(clock)
+        val existingConversation = conversation(defaultProviderId = openAi.id)
+        conversationRepository.seed(
+            existingConversation,
+            listOf(message(existingConversation.id, MessageRole.User, "Old question", MessageStatus.Completed)),
+        )
+        val chatProvider = RecordingChatProvider(
+            flowOf(ProviderStreamEvent.TextDelta("New answer"), ProviderStreamEvent.Completed),
+        )
+        val viewModel = startViewModel(
+            conversationRepository = conversationRepository,
+            providerRepository = FakeProviderConfigRepository(listOf(openAi), mapOf(openAi.id to "key")),
+            openAiProvider = chatProvider,
+        )
+        advanceUntilIdle()
+        assertEquals(existingConversation.id, viewModel.state.value.selectedConversationId)
+
+        viewModel.startNewConversation()
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.selectedConversationId)
+        viewModel.updateInput("New question")
+        viewModel.sendMessage()
+        advanceUntilIdle()
+
+        val newConversation = viewModel.state.value.conversations.single { it.id != existingConversation.id }
+        assertEquals(newConversation.id, viewModel.state.value.selectedConversationId)
+        assertEquals(listOf(ProviderChatMessage(MessageRole.User, "New question")), chatProvider.requests.single().messages)
+        val oldConversationMessages = conversationRepository.allMessages()
+            .filter { it.conversationId == existingConversation.id }
+            .map { it.content }
+        assertEquals(listOf("Old question"), oldConversationMessages)
+    }
+
+    @Test
     fun editMessageSendsRewrittenHistory() = runTest(mainDispatcherRule.testDispatcher) {
         val openAi = provider("openai", ProviderType.OpenAI)
         val conversationRepository = FakeConversationRepository(clock)
@@ -611,6 +647,13 @@ class ChatViewModelTest : KoinTest {
                     }
                     factory { SavedStateHandle() }
                     factory { ConversationManager(conversationRepository = get(), clock = get()) }
+                    factory<SendMessageUseCaseFactory> {
+                        val repository = get<ConversationRepository>()
+                        val fixedClock = get<Clock>()
+                        SendMessageUseCaseFactory { chatProvider ->
+                            com.aichat.workbench.domain.usecase.SendMessageUseCase(repository, chatProvider, fixedClock)
+                        }
+                    }
                     factory {
                         GenerationController(
                             conversationRepository = get(),
@@ -618,6 +661,7 @@ class ChatViewModelTest : KoinTest {
                             contextProvider = ConversationContextBuilder(get(), get()),
                             providerRegistry = get(),
                             createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(get(), get()),
+                            sendMessageUseCaseFactory = get(),
                             clock = get(),
                         )
                     }

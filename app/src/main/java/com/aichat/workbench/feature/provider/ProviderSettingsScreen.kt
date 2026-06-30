@@ -48,6 +48,7 @@ import org.koin.androidx.compose.koinViewModel
 fun ProviderSettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    showBack: Boolean = true,
 ) {
     val viewModel: ProviderSettingsViewModel = koinViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -88,11 +89,13 @@ fun ProviderSettingsScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
                 navigationIcon = {
-                    WorkbenchIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = onBack,
-                    )
+                    if (showBack) {
+                        WorkbenchIconButton(
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            label = "返回",
+                            onClick = onBack,
+                        )
+                    }
                 },
             )
         },

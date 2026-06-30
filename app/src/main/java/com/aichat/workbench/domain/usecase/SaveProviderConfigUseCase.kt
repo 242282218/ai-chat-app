@@ -1,8 +1,8 @@
 package com.aichat.workbench.domain.usecase
 
 import com.aichat.workbench.domain.model.ProviderConfig
+import com.aichat.workbench.domain.model.isValidProviderBaseUrl
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
-import java.net.URI
 
 class SaveProviderConfigUseCase(
     private val repository: ProviderConfigRepository,
@@ -16,7 +16,7 @@ class SaveProviderConfigUseCase(
         val normalizedApiKey = plaintextApiKey?.trim()?.takeIf { it.isNotBlank() }
         require(normalizedProvider.name.isNotBlank()) { "Provider name must not be blank." }
         require(!normalizedProvider.enabled || normalizedProvider.baseUrl.isValidBaseUrl(allowInsecureHttp)) {
-            "Provider base URL must be HTTPS unless HTTP is explicitly allowed."
+            "Provider base URL must be HTTPS, except local HTTP when explicitly allowed."
         }
         require(normalizedProvider.models.all { it.id.isNotBlank() }) { "Model names must not be blank." }
         require(normalizedProvider.models.map { it.id }.distinct().size == normalizedProvider.models.size) {
@@ -47,12 +47,6 @@ class SaveProviderConfigUseCase(
             defaultModel = defaultModel?.trim()?.takeIf { it.isNotBlank() },
         )
 
-    private fun String.isValidBaseUrl(allowInsecureHttp: Boolean): Boolean {
-        val uri = runCatching { URI(this) }.getOrNull() ?: return false
-        return when (uri.scheme?.lowercase()) {
-            "https" -> uri.host != null
-            "http" -> allowInsecureHttp && uri.host != null
-            else -> false
-        }
-    }
+    private fun String.isValidBaseUrl(allowInsecureHttp: Boolean): Boolean =
+        isValidProviderBaseUrl(allowInsecureHttp)
 }

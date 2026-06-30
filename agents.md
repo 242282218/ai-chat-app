@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-原生 Android AI 聊天应用，本地优先存储，聚焦聊天和图片生成。详细背景看 [README.md](README.md) 和 [docs/优化路线图.md](docs/优化路线图.md)。
+原生 Android AI 聊天应用，本地优先存储，聚焦聊天和图片生成。详细背景看 [README.md](README.md)；历史流式聊天实验状态看 [docs/流式聊天实验归档说明.md](docs/流式聊天实验归档说明.md)。
 
 ## 技术栈
 

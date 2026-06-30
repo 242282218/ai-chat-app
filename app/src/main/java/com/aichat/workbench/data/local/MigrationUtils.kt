@@ -7,6 +7,7 @@ internal fun SupportSQLiteDatabase.recreateConversationsWithSchema(
     conversationSchema: String,
     conversationIndices: List<String> = emptyList(),
 ) {
+    dropConversationBackupTables()
     execSQL(
         """
         CREATE TEMP TABLE conversations_backup AS
@@ -76,4 +77,11 @@ internal fun SupportSQLiteDatabase.recreateConversationsWithSchema(
         FROM messages_backup
         """.trimIndent(),
     )
+    dropConversationBackupTables()
+}
+
+private fun SupportSQLiteDatabase.dropConversationBackupTables() {
+    execSQL("DROP TABLE IF EXISTS temp.conversations_backup")
+    execSQL("DROP TABLE IF EXISTS temp.messages_backup")
+    execSQL("DROP TABLE IF EXISTS temp.image_generations_backup")
 }

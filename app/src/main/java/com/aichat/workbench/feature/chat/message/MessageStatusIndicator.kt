@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.ui.theme.WorkbenchSpacing
+import com.aichat.workbench.ui.util.isReduceMotionEnabled
 
 /**
  * Status indicator for messages (streaming, failed, etc.)
@@ -97,6 +98,16 @@ fun MessageStatusIndicator(
  */
 @Composable
 private fun StreamingIndicator(modifier: Modifier = Modifier) {
+    if (isReduceMotionEnabled()) {
+        Text(
+            text = "生成中...",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = modifier
+        )
+        return
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "streaming")
 
     Row(

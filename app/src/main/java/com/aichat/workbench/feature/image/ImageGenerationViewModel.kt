@@ -9,7 +9,6 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.repository.ImageGenerationPreferences
 import com.aichat.workbench.domain.repository.ImageGenerationPreferencesRepository
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
-import com.aichat.workbench.domain.repository.ImageStorage
 import com.aichat.workbench.domain.repository.ModelRolePreferenceRepository
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import com.aichat.workbench.domain.usecase.GenerateImageRequest
@@ -21,7 +20,6 @@ import com.aichat.workbench.provider.requiresApiKey
 import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.provider.api.ProviderConnectionTestClient
 import com.aichat.workbench.provider.api.providerFailureSummary
-import com.aichat.workbench.provider.image.ImageGenerationProvider
 import java.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -67,8 +65,6 @@ class ImageGenerationViewModel(
     private val providerRepository: ProviderConfigRepository,
     private val preferencesRepository: ImageGenerationPreferencesRepository,
     private val modelRolePreferenceRepository: ModelRolePreferenceRepository,
-    private val imageProvider: ImageGenerationProvider,
-    private val imageStorage: ImageStorage,
     private val connectionTester: ProviderConnectionTestClient,
     private val clock: Clock,
     private val generateImageUseCase: GenerateImageUseCase,
@@ -291,7 +287,6 @@ class ImageGenerationViewModel(
         if (_state.value.isGenerating) return
         viewModelScope.launch {
             runCatching {
-                imageStorage.deleteAllImages()
                 imageRepository.deleteAllImageGenerations()
             }.onSuccess {
                 _state.update { it.copy(error = null) }

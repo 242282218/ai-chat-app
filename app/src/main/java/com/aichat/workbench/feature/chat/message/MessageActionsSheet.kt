@@ -170,8 +170,11 @@ private fun buildAvailableActions(message: Message): List<ActionItemData> {
         )
     }
 
-    // Retry (only for failed assistant messages)
-    if (message.role == MessageRole.Assistant && message.status == MessageStatus.Failed) {
+    // Retry failed or cancelled assistant messages.
+    if (
+        message.role == MessageRole.Assistant &&
+        (message.status == MessageStatus.Failed || message.status == MessageStatus.Cancelled)
+    ) {
         actions.add(
             ActionItemData(
                 action = MessageAction.Retry(message.id),

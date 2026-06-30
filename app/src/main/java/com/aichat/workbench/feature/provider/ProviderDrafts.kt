@@ -4,6 +4,8 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.model.isPersistableProviderHeader
+import com.aichat.workbench.domain.model.isLocalHttpProviderBaseUrl
+import com.aichat.workbench.domain.model.isValidProviderBaseUrl
 import com.aichat.workbench.domain.model.persistableProviderHeaderDisplayNames
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.api.modelDiscoveryBaseUrl
@@ -11,7 +13,6 @@ import com.aichat.workbench.provider.api.openAiApiBaseUrl
 import com.aichat.workbench.provider.supportsOpenAiCompatibleImageGeneration
 import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.ui.component.StatusTone
-import java.net.URI
 
 internal data class ProviderUrlStatus(
     val label: String,
@@ -197,21 +198,14 @@ internal fun String.providerUrlStatus(allowHttp: Boolean): ProviderUrlStatus =
     when {
         isBlank() -> ProviderUrlStatus("需要接口地址", StatusTone.Warning)
         isValidProviderBaseUrl(allowHttp) && trim().startsWith("http://", ignoreCase = true) ->
-            ProviderUrlStatus("已允许 HTTP", StatusTone.Warning)
+            ProviderUrlStatus("已允许本机 HTTP", StatusTone.Warning)
         isValidProviderBaseUrl(allowHttp) -> ProviderUrlStatus("接口地址有效", StatusTone.Success)
         trim().startsWith("http://", ignoreCase = true) && !allowHttp ->
             ProviderUrlStatus("HTTP 已阻止", StatusTone.Critical)
+        trim().startsWith("http://", ignoreCase = true) && allowHttp && !isLocalHttpProviderBaseUrl() ->
+            ProviderUrlStatus("仅允许本机 HTTP", StatusTone.Critical)
         else -> ProviderUrlStatus("接口地址无效", StatusTone.Critical)
     }
-
-internal fun String.isValidProviderBaseUrl(allowHttp: Boolean): Boolean {
-    val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
-    return when (uri.scheme?.lowercase()) {
-        "https" -> uri.host != null
-        "http" -> allowHttp && uri.host != null
-        else -> false
-    }
-}
 
 internal fun String.headerStatus(): HeaderStatus {
     val headerLines = lineSequence()

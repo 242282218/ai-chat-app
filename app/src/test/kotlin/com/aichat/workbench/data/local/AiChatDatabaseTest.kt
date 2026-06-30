@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.aichat.workbench.data.crypto.SecretStore
+import com.aichat.workbench.data.crypto.SecretStoreException
 import com.aichat.workbench.data.local.entity.ConversationEntity
 import com.aichat.workbench.data.local.entity.MessageEntity
 import com.aichat.workbench.data.mapper.toEntity
@@ -332,6 +333,31 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun providerConfigs_reportRecoverableSecretFailure() = runTest {
+        val secretStore = FakeSecretStore()
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            secretStore,
+            clock,
+            database.modelRolePreferenceDao(),
+        )
+        val providerId = ProviderId("provider-1")
+        val saveProvider = SaveProviderConfigUseCase(providerRepository)
+
+        saveProvider(
+            provider = providerConfig(providerId),
+            plaintextApiKey = "test-secret",
+            allowInsecureHttp = false,
+        )
+        secretStore.failOnGet = true
+
+        val error = runCatching { providerRepository.getApiKey(providerId) }.exceptionOrNull()
+
+        require(error is SecretStoreException)
+        assertEquals("API Key 解密失败，请重新保存模型连接中的 API Key。", error.message)
+    }
+
+    @Test
     fun sendMessageUseCase_streamsAndPersistsAssistantMessage() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
@@ -426,13 +452,16 @@ class AiChatDatabaseTest {
 
     private class FakeSecretStore : SecretStore {
         private val values = mutableMapOf<String, String>()
+        var failOnGet: Boolean = false
 
         override suspend fun putSecret(ref: String, value: String) {
             values[ref] = value
         }
 
-        override suspend fun getSecret(ref: String): String? =
-            values[ref]
+        override suspend fun getSecret(ref: String): String? {
+            if (failOnGet) throw SecretStoreException("corrupted")
+            return values[ref]
+        }
 
         override suspend fun deleteSecret(ref: String) {
             values.remove(ref)

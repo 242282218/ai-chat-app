@@ -1046,6 +1046,224 @@ class AiChatMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migration12To18_runsFullConversationSchemaChain() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("conversation-full-chain-12-18").absolutePath
+        migrationHelper.createDatabase(databaseName, 12).apply {
+            execSQL(
+                """
+                INSERT INTO conversations (
+                    id, title, created_at, updated_at, default_provider_id, default_model,
+                    model_parameters_json, system_prompt, is_temporary, is_sensitive, archived_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "conversation-1",
+                    "Full chain",
+                    1L,
+                    2L,
+                    "provider-1",
+                    "gpt-test",
+                    """{"temperature":0.4}""",
+                    "Be direct",
+                    1,
+                    1,
+                    9L,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO messages (
+                    id, conversation_id, role, content, content_parts_json, provider_id, model,
+                    status, error_summary, created_at, updated_at, parent_message_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "message-1",
+                    "conversation-1",
+                    "User",
+                    "full chain message",
+                    """[{"type":"text","text":"full chain message"}]""",
+                    "provider-1",
+                    "gpt-test",
+                    "Completed",
+                    null,
+                    3L,
+                    4L,
+                    null,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO image_generations (
+                    id, conversation_id, prompt, provider_id, model, size, quality, count,
+                    original_path, thumbnail_path, status, error_summary, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "image-1",
+                    "conversation-1",
+                    "draw",
+                    "provider-1",
+                    "gpt-image",
+                    "1024x1024",
+                    null,
+                    1,
+                    "/tmp/original.png",
+                    "/tmp/thumb.png",
+                    "Completed",
+                    null,
+                    5L,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            18,
+            true,
+            *migrations12To18(),
+        )
+
+        assertFalse(migrated.columnExists("conversations", "is_sensitive"))
+        assertFalse(migrated.columnExists("conversations", "is_temporary"))
+        assertFalse(migrated.columnExists("conversations", "archived_at"))
+        assertFalse(migrated.columnExists("conversations", "default_model"))
+        assertFalse(migrated.columnExists("conversations", "model_parameters_json"))
+        assertFalse(migrated.columnExists("conversations", "system_prompt"))
+        val conversationCursor = migrated.query(
+            "SELECT title, default_provider_id FROM conversations WHERE id = 'conversation-1'",
+        )
+        conversationCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("Full chain", it.getString(0))
+            assertEquals("provider-1", it.getString(1))
+        }
+        val messageCursor = migrated.query("SELECT content, model FROM messages WHERE id = 'message-1'")
+        messageCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("full chain message", it.getString(0))
+            assertEquals("gpt-test", it.getString(1))
+        }
+        val imageCursor = migrated.query("SELECT prompt, model FROM image_generations WHERE id = 'image-1'")
+        imageCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("draw", it.getString(0))
+            assertEquals("gpt-image", it.getString(1))
+        }
+        migrated.close()
+    }
+
+    @Test
+    fun migration15To18_runsFullConversationSchemaChain() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = context.getDatabasePath("conversation-full-chain-15-18").absolutePath
+        migrationHelper.createDatabase(databaseName, 15).apply {
+            execSQL(
+                """
+                INSERT INTO conversations (
+                    id, title, created_at, updated_at, default_provider_id, default_model,
+                    model_parameters_json, system_prompt, is_temporary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "conversation-1",
+                    "Full chain 15",
+                    1L,
+                    2L,
+                    "provider-1",
+                    "gpt-test",
+                    """{"maxTokens":256}""",
+                    "Be direct",
+                    1,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO messages (
+                    id, conversation_id, role, content, content_parts_json, provider_id, model,
+                    status, error_summary, created_at, updated_at, parent_message_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "message-1",
+                    "conversation-1",
+                    "Assistant",
+                    "full chain 15 message",
+                    """[{"type":"text","text":"full chain 15 message"}]""",
+                    "provider-1",
+                    "gpt-test",
+                    "Completed",
+                    null,
+                    3L,
+                    4L,
+                    null,
+                ),
+            )
+            execSQL(
+                """
+                INSERT INTO image_generations (
+                    id, conversation_id, prompt, provider_id, model, size, quality, count,
+                    original_path, thumbnail_path, status, error_summary, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    "image-1",
+                    "conversation-1",
+                    "draw",
+                    "provider-1",
+                    "gpt-image",
+                    "1024x1024",
+                    null,
+                    1,
+                    "/tmp/original.png",
+                    "/tmp/thumb.png",
+                    "Completed",
+                    null,
+                    5L,
+                ),
+            )
+            close()
+        }
+
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            18,
+            true,
+            AiChatDatabase.MIGRATION_15_16,
+            AiChatDatabase.MIGRATION_16_17,
+            AiChatDatabase.MIGRATION_17_18,
+        )
+
+        assertFalse(migrated.columnExists("conversations", "is_temporary"))
+        assertFalse(migrated.columnExists("conversations", "default_model"))
+        assertFalse(migrated.columnExists("conversations", "model_parameters_json"))
+        assertFalse(migrated.columnExists("conversations", "system_prompt"))
+        val conversationCursor = migrated.query(
+            "SELECT title, default_provider_id FROM conversations WHERE id = 'conversation-1'",
+        )
+        conversationCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("Full chain 15", it.getString(0))
+            assertEquals("provider-1", it.getString(1))
+        }
+        val messageCursor = migrated.query("SELECT content, model FROM messages WHERE id = 'message-1'")
+        messageCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("full chain 15 message", it.getString(0))
+            assertEquals("gpt-test", it.getString(1))
+        }
+        val imageCursor = migrated.query("SELECT prompt, model FROM image_generations WHERE id = 'image-1'")
+        imageCursor.use {
+            assertTrue(it.moveToFirst())
+            assertEquals("draw", it.getString(0))
+            assertEquals("gpt-image", it.getString(1))
+        }
+        migrated.close()
+    }
+
     private fun androidx.sqlite.db.SupportSQLiteDatabase.tableExists(tableName: String): Boolean =
         query(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -1059,4 +1277,13 @@ class AiChatMigrationTest {
             }
             false
         }
+
+    private fun migrations12To18() = arrayOf(
+        AiChatDatabase.MIGRATION_12_13,
+        AiChatDatabase.MIGRATION_13_14,
+        AiChatDatabase.MIGRATION_14_15,
+        AiChatDatabase.MIGRATION_15_16,
+        AiChatDatabase.MIGRATION_16_17,
+        AiChatDatabase.MIGRATION_17_18,
+    )
 }

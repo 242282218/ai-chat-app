@@ -40,7 +40,40 @@ class SaveProviderConfigUseCaseTest {
             )
             fail("Expected invalid enabled provider to be rejected.")
         } catch (error: IllegalArgumentException) {
-            assertEquals("Provider base URL must be HTTPS unless HTTP is explicitly allowed.", error.message)
+            assertEquals("Provider base URL must be HTTPS, except local HTTP when explicitly allowed.", error.message)
+        }
+
+        assertNull(repository.savedProvider)
+    }
+
+    @Test
+    fun saveProviderAllowsExplicitLocalHttpBaseUrl() = runTest {
+        val repository = RecordingProviderConfigRepository()
+        val saveProvider = SaveProviderConfigUseCase(repository)
+
+        saveProvider(
+            provider(enabled = true, baseUrl = "http://10.0.2.2:11434"),
+            plaintextApiKey = null,
+            allowInsecureHttp = true,
+        )
+
+        assertEquals("http://10.0.2.2:11434", repository.savedProvider?.baseUrl)
+    }
+
+    @Test
+    fun saveProviderRejectsNonLocalHttpEvenWhenHttpIsAllowed() = runTest {
+        val repository = RecordingProviderConfigRepository()
+        val saveProvider = SaveProviderConfigUseCase(repository)
+
+        try {
+            saveProvider(
+                provider(enabled = true, baseUrl = "http://192.168.1.20:11434"),
+                plaintextApiKey = null,
+                allowInsecureHttp = true,
+            )
+            fail("Expected non-local HTTP provider to be rejected.")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("Provider base URL must be HTTPS, except local HTTP when explicitly allowed.", error.message)
         }
 
         assertNull(repository.savedProvider)

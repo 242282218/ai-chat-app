@@ -53,6 +53,10 @@ class ChatViewModel(
         val conversation = _state.value.conversations.firstOrNull { it.id == id } ?: return
         selectConversation(conversation)
     }
+    fun startNewConversation() {
+        if (generationController.isActive) return
+        clearSelection(shouldAutoSelectConversation = false)
+    }
     fun updateInput(value: String) = updateDraft { it.copy(input = value) }
     fun updateTitleDraft(value: String) = updateDraft { it.copy(title = value) }
     fun applyInitialDraft(input: String) {
@@ -202,11 +206,11 @@ class ChatViewModel(
         }
     }
 
-    private fun clearSelection() {
+    private fun clearSelection(shouldAutoSelectConversation: Boolean = true) {
         observedConversationId = null
         messagesJob?.cancel()
         messagesJob = null
-        updateState { conversationManager.clearSelection(it) }
+        updateState { conversationManager.clearSelection(it, shouldAutoSelectConversation) }
     }
 
     private fun updateDraft(transform: (DraftState) -> DraftState) =

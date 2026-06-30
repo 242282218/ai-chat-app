@@ -26,6 +26,10 @@ import kotlinx.coroutines.CancellationException
 
 private const val CONVERSATION_TITLE_MAX_LENGTH = 40
 
+fun interface SendMessageUseCaseFactory {
+    fun create(chatProvider: ChatProvider): SendMessageUseCase
+}
+
 internal fun conversationTitlePreview(message: String): String {
     val normalized = message.replace(Regex("\\s+"), " ").trim()
     return when {
@@ -67,6 +71,7 @@ class ChatTurnOrchestrator(
     private val contextProvider: ConversationContextProvider,
     private val providerRegistry: ProviderRegistry,
     private val createConversationUseCase: CreateConversationUseCase,
+    private val sendMessageUseCaseFactory: SendMessageUseCaseFactory,
     private val clock: Clock,
 ) {
     suspend fun run(
@@ -248,7 +253,7 @@ class ChatTurnOrchestrator(
             messages = history,
             parameters = ModelParameters(),
         )
-        SendMessageUseCase(conversationRepository, chatProvider, clock)(assistant, providerRequest)
+        sendMessageUseCaseFactory.create(chatProvider)(assistant, providerRequest)
             .collect { message ->
                 current = message
                 callbacks.onActiveAssistantMessageChanged(message)

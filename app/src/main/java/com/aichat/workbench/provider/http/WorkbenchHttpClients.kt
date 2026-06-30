@@ -18,7 +18,7 @@ object WorkbenchHttpClients {
         baseBuilder()
             .readTimeout(5, TimeUnit.MINUTES)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(0, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.MINUTES)
             .build()
 
     fun longRunning(): OkHttpClient =

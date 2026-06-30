@@ -160,6 +160,7 @@ class GenerationControllerTest {
             contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
             createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
+            sendMessageUseCaseFactory = sendMessageUseCaseFactory(repository),
             clock = clock,
         )
         var state = stateFor(provider, input = "Question")
@@ -194,6 +195,7 @@ class GenerationControllerTest {
             contextProvider = ConversationContextBuilder(repository, clock),
             providerRegistry = ProviderRegistry(),
             createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
+            sendMessageUseCaseFactory = sendMessageUseCaseFactory(repository),
             clock = clock,
         )
         var state = ChatUiState(draft = DraftState(input = "Question"))
@@ -234,6 +236,7 @@ class GenerationControllerTest {
                 register(provider.type.value, chatProvider)
             },
             createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
+            sendMessageUseCaseFactory = sendMessageUseCaseFactory(repository),
             clock = clock,
         )
         var state = stateFor(provider, input = "Question")
@@ -355,8 +358,14 @@ class GenerationControllerTest {
                 register(provider.type.value, chatProvider)
             },
             createConversationUseCase = com.aichat.workbench.domain.usecase.CreateConversationUseCase(repository, clock),
+            sendMessageUseCaseFactory = sendMessageUseCaseFactory(repository),
             clock = clock,
         )
+
+    private fun sendMessageUseCaseFactory(repository: ConversationRepository): SendMessageUseCaseFactory =
+        SendMessageUseCaseFactory { chatProvider ->
+            com.aichat.workbench.domain.usecase.SendMessageUseCase(repository, chatProvider, clock)
+        }
 
     private fun stateFor(
         provider: ProviderConfig,

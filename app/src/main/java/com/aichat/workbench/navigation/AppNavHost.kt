@@ -21,13 +21,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.aichat.workbench.BuildConfig
 import com.aichat.workbench.domain.model.ConversationId
 import com.aichat.workbench.feature.chat.ChatScreen
 import com.aichat.workbench.feature.conversations.ConversationsScreen
 import com.aichat.workbench.feature.image.ImageGenerationScreen
 import com.aichat.workbench.feature.provider.ProviderSettingsScreen
-import com.aichat.workbench.stream.chat.StreamChatScreen
 
 @Composable
 fun AppNavHost() {
@@ -99,6 +97,7 @@ fun AppNavHost() {
             composable(AppDestination.Settings.route) {
                 ProviderSettingsScreen(
                     onBack = { navController.popBackStack() },
+                    showBack = false,
                 )
             }
 
@@ -110,6 +109,7 @@ fun AppNavHost() {
                     initialConversationId = entry.arguments
                         ?.getString(CHAT_CONVERSATION_ID_ARG)
                         ?.let(::ConversationId),
+                    startNewConversation = false,
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
                 )
@@ -134,6 +134,7 @@ fun AppNavHost() {
                     initialDraft = draftHandoffRepository
                         .take(entry.arguments?.getString(CHAT_DRAFT_REF_ARG))
                         ?: entry.arguments?.getString(CHAT_DRAFT_ARG).orEmpty(),
+                    startNewConversation = true,
                     onBack = { navController.popBackStack() },
                     onOpenProviders = { navController.navigateSingleTop(AppDestination.ProviderSettings) },
                 )
@@ -151,22 +152,15 @@ private fun ChatRoute(
     onBack: () -> Unit,
     onOpenProviders: () -> Unit,
     initialDraft: String = "",
+    startNewConversation: Boolean = false,
 ) {
-    if (BuildConfig.ENABLE_STREAM_CHAT_EXPERIMENT) {
-        StreamChatScreen(
-            initialConversationId = initialConversationId,
-            initialDraft = initialDraft,
-            onBack = onBack,
-            onOpenProviders = onOpenProviders,
-        )
-    } else {
-        ChatScreen(
-            initialConversationId = initialConversationId,
-            initialDraft = initialDraft,
-            onBack = onBack,
-            onOpenProviders = onOpenProviders,
-        )
-    }
+    ChatScreen(
+        initialConversationId = initialConversationId,
+        initialDraft = initialDraft,
+        startNewConversation = startNewConversation,
+        onBack = onBack,
+        onOpenProviders = onOpenProviders,
+    )
 }
 
 private fun NavController.navigateSingleTop(destination: AppDestination) {

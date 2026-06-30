@@ -262,23 +262,28 @@ internal class ProviderSettingsViewModel(
         }
         viewModelScope.launch {
             _state.update { it.copy(message = "测试中...") }
-            val storedKey = if (current.apiKey.isBlank()) {
-                providerRepository.getApiKey(provider.id)
-            } else {
-                null
-            }
-            val result = connectionTester.test(
-                provider = provider,
-                apiKey = current.apiKey.trim().ifBlank { storedKey.orEmpty() },
-            )
-            _state.update {
-                it.copy(
-                    message = if (result.ok) {
-                        "${result.message} (${result.statusCode})"
-                    } else {
-                        result.message
-                    },
+            runCatching {
+                val storedKey = if (current.apiKey.isBlank()) {
+                    providerRepository.getApiKey(provider.id)
+                } else {
+                    null
+                }
+                connectionTester.test(
+                    provider = provider,
+                    apiKey = current.apiKey.trim().ifBlank { storedKey.orEmpty() },
                 )
+            }.onSuccess { result ->
+                _state.update {
+                    it.copy(
+                        message = if (result.ok) {
+                            "${result.message} (${result.statusCode})"
+                        } else {
+                            result.message
+                        },
+                    )
+                }
+            }.onFailure { error ->
+                _state.update { it.copy(message = error.message ?: "模型连接测试失败。") }
             }
         }
     }
@@ -292,17 +297,23 @@ internal class ProviderSettingsViewModel(
         }
         viewModelScope.launch {
             _state.update { it.copy(message = "刷新模型中...") }
-            discoverModelsFor(provider)?.let { discoveredModels ->
-                _state.update { state ->
-                    state.copy(
-                        models = discoveredModels,
-                        model = if (state.model.isBlank()) {
-                            discoveredModels.preferredDiscoveredChatModel()
-                        } else {
-                            state.model
-                        },
-                    )
+            runCatching {
+                discoverModelsFor(provider)
+            }.onSuccess { discoveredModels ->
+                discoveredModels?.let {
+                    _state.update { state ->
+                        state.copy(
+                            models = it,
+                            model = if (state.model.isBlank()) {
+                                it.preferredDiscoveredChatModel()
+                            } else {
+                                state.model
+                            },
+                        )
+                    }
                 }
+            }.onFailure { error ->
+                _state.update { it.copy(message = error.message ?: "刷新模型失败。") }
             }
         }
     }

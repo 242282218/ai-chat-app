@@ -52,7 +52,7 @@ app/build/outputs/apk/debug/app-debug.apk
 .\gradlew.bat testDebugUnitTest lint assembleDebug assembleRelease --no-daemon --stacktrace
 ```
 
-当前目录、架构、核心模型和页面代码入口见 `docs/基础架构与代码索引.md`。
+当前目录、架构、核心模型和页面代码入口见 `agents.md`；历史流式聊天实验状态见 `docs/流式聊天实验归档说明.md`。
 
 ## 隐私边界
 

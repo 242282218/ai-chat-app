@@ -7,6 +7,7 @@ import com.aichat.workbench.domain.model.ProviderModelDiscoveryFormat
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.discoveredModelCapability
+import com.aichat.workbench.provider.http.awaitResponse
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,9 +56,9 @@ class ProviderModelDiscoveryClient(
                         message = "当前 Provider 暂无模型发现接口。",
                     )
 
-                client.newCall(provider.toModelsRequest(apiKey, discovery)).execute().use { response ->
+                client.newCall(provider.toModelsRequest(apiKey, discovery)).awaitResponse().use { response ->
                     if (response.isSuccessful) {
-                        val models = discovery.modelsOrNull(response.bodyText(), provider.type)
+                        val models = discovery.modelsOrNull(response.successBodyText(), provider.type)
                             ?: return@withContext ProviderModelDiscoveryResult(
                                 ok = false,
                                 statusCode = response.code,
@@ -73,7 +74,7 @@ class ProviderModelDiscoveryClient(
                         ProviderModelDiscoveryResult(
                             ok = false,
                             statusCode = response.code,
-                            message = providerHttpFailureMessage(response.code, response.bodyText()),
+                            message = providerHttpFailureMessage(response.code, response.errorBodyText()),
                         )
                     }
                 }
@@ -86,7 +87,10 @@ class ProviderModelDiscoveryClient(
             }
         }
 
-    private fun Response.bodyText(): String =
+    private fun Response.successBodyText(): String =
+        requireNotNull(body) { "Provider 响应 body 为空。" }.readJsonBodySafely()
+
+    private fun Response.errorBodyText(): String =
         body?.readErrorBodySafely().orEmpty()
 
     private fun ProviderModelDiscovery.modelsOrNull(

@@ -20,9 +20,12 @@ class AndroidSecretStore(context: Context) : SecretStore {
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
             val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
             val iv = cipher.iv
-            preferences.edit()
+            val committed = preferences.edit()
                 .putString(ref, "${iv.toBase64()}:${ciphertext.toBase64()}")
-                .apply()
+                .commit()
+            if (!committed) {
+                throw SecretStoreException("密钥写入失败")
+            }
         } catch (e: Exception) {
             throw SecretStoreException("加密存储失败：${e.message}", e)
         }
@@ -42,12 +45,14 @@ class AndroidSecretStore(context: Context) : SecretStore {
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (e: Exception) {
-            null
+            throw SecretStoreException("密钥解密失败：${e.message}", e)
         }
     }
 
     override suspend fun deleteSecret(ref: String) {
-        preferences.edit().remove(ref).apply()
+        if (!preferences.edit().remove(ref).commit()) {
+            throw SecretStoreException("密钥删除失败")
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {

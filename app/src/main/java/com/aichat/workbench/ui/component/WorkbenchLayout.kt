@@ -120,9 +120,10 @@ fun QuietListRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentEnabled: Boolean = enabled,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
-    val contentAlpha = if (enabled) 1f else 0.42f
+    val contentAlpha = if (contentEnabled) 1f else 0.42f
     Row(
         modifier = modifier
             .fillMaxWidth()

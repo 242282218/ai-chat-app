@@ -54,12 +54,16 @@ class ProviderDraftsTest {
             "HTTP://localhost:11434/v1".providerUrlStatus(allowHttp = false),
         )
         assertEquals(
-            ProviderUrlStatus(label = "已允许 HTTP", tone = StatusTone.Warning),
+            ProviderUrlStatus(label = "已允许本机 HTTP", tone = StatusTone.Warning),
             "http://localhost:11434/v1".providerUrlStatus(allowHttp = true),
         )
         assertEquals(
-            ProviderUrlStatus(label = "已允许 HTTP", tone = StatusTone.Warning),
+            ProviderUrlStatus(label = "已允许本机 HTTP", tone = StatusTone.Warning),
             "HTTP://localhost:11434/v1".providerUrlStatus(allowHttp = true),
+        )
+        assertEquals(
+            ProviderUrlStatus(label = "仅允许本机 HTTP", tone = StatusTone.Critical),
+            "http://192.168.1.20:11434/v1".providerUrlStatus(allowHttp = true),
         )
         assertEquals(
             ProviderUrlStatus(label = "接口地址无效", tone = StatusTone.Critical),

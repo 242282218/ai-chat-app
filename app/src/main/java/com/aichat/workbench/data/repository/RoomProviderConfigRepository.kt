@@ -1,6 +1,7 @@
 package com.aichat.workbench.data.repository
 
 import com.aichat.workbench.data.crypto.SecretStore
+import com.aichat.workbench.data.crypto.SecretStoreException
 import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
 import com.aichat.workbench.data.local.dao.ProviderConfigDao
 import com.aichat.workbench.data.mapper.toDomain
@@ -63,7 +64,11 @@ class RoomProviderConfigRepository(
 
     override suspend fun getApiKey(providerId: ProviderId): String? {
         val ref = providerDao.getProvider(providerId.value)?.apiKeyRef ?: return null
-        return secretStore.getSecret(ref)
+        return try {
+            secretStore.getSecret(ref)
+        } catch (error: SecretStoreException) {
+            throw SecretStoreException("API Key 解密失败，请重新保存模型连接中的 API Key。", error)
+        }
     }
 
     override suspend fun deleteApiKeyRef(ref: String) {

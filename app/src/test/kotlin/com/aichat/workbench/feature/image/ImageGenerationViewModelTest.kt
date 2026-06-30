@@ -69,15 +69,17 @@ class ImageGenerationViewModelTest {
         viewModel.clearHistory()
         advanceUntilIdle()
 
-        assertTrue(storage.deleted)
         assertEquals(emptyList<ImageGeneration>(), repository.generations.value)
         assertNull(viewModel.state.value.error)
     }
 
     @Test
     fun clearHistoryReportsStorageFailureAndKeepsRows() = runTest(mainDispatcherRule.testDispatcher) {
-        val repository = FakeImageGenerationRepository(listOf(imageGeneration()))
-        val storage = FakeImageStorage(failOnDelete = true)
+        val repository = FakeImageGenerationRepository(
+            initialGenerations = listOf(imageGeneration()),
+            failOnDeleteAll = true,
+        )
+        val storage = FakeImageStorage()
         val viewModel = viewModel(repository, storage)
         advanceUntilIdle()
 
@@ -690,8 +692,6 @@ class ImageGenerationViewModelTest {
             providerRepository = providerRepository,
             preferencesRepository = preferencesRepository,
             modelRolePreferenceRepository = modelRolePreferenceRepository,
-            imageProvider = imageProvider,
-            imageStorage = storage,
             connectionTester = connectionTester,
             clock = clock,
             generateImageUseCase = GenerateImageUseCase(repository, imageProvider, storage, clock),
@@ -774,6 +774,7 @@ class ImageMainDispatcherRule(
 
 private class FakeImageGenerationRepository(
     initialGenerations: List<ImageGeneration>,
+    private val failOnDeleteAll: Boolean = false,
 ) : ImageGenerationRepository {
     val generations = MutableStateFlow(initialGenerations)
 
@@ -791,13 +792,14 @@ private class FakeImageGenerationRepository(
     }
 
     override suspend fun deleteAllImageGenerations() {
+        if (failOnDeleteAll) {
+            throw IllegalStateException("无法删除图片文件。")
+        }
         generations.value = emptyList()
     }
 }
 
-private class FakeImageStorage(
-    private val failOnDelete: Boolean = false,
-) : ImageStorage {
+private class FakeImageStorage : ImageStorage {
     var deleted: Boolean = false
 
     override suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths =
@@ -809,9 +811,6 @@ private class FakeImageStorage(
     override suspend fun deleteImage(id: ImageGenerationId) = Unit
 
     override suspend fun deleteAllImages() {
-        if (failOnDelete) {
-            throw IllegalStateException("无法删除图片文件。")
-        }
         deleted = true
     }
 }

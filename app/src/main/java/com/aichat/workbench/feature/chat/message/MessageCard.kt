@@ -3,11 +3,16 @@ package com.aichat.workbench.feature.chat.message
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -106,20 +112,29 @@ fun MessageCard(
             pressedElevation = 2.dp
         )
     ) {
-        Column(
-            modifier = Modifier.padding(WorkbenchSpacing.m)
-        ) {
-            // Message content (will be replaced with actual MarkdownMessageContent)
-            MessageContent(
-                message = message,
-                searchQuery = searchQuery
-            )
+        Box(modifier = Modifier.padding(WorkbenchSpacing.m)) {
+            Column(
+                modifier = Modifier.padding(end = 40.dp)
+            ) {
+                MessageContent(
+                    message = message,
+                    searchQuery = searchQuery
+                )
 
-            // Status indicator for non-completed messages
-            if (message.status != MessageStatus.Completed) {
-                MessageStatusIndicator(
-                    status = message.status,
-                    errorSummary = message.errorSummary
+                if (message.status != MessageStatus.Completed) {
+                    MessageStatusIndicator(
+                        status = message.status,
+                        errorSummary = message.errorSummary
+                    )
+                }
+            }
+            IconButton(
+                onClick = { showBottomSheet = true },
+                modifier = Modifier.align(Alignment.TopEnd)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = "消息操作"
                 )
             }
         }

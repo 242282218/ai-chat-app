@@ -1,44 +1,33 @@
 package com.aichat.workbench
 
-import androidx.activity.compose.setContent
-import androidx.test.core.app.ActivityScenario
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
-import com.aichat.workbench.feature.provider.ProviderSettingsScreen
-import com.aichat.workbench.ui.theme.AiChatTheme
-import org.junit.Assert.assertNotNull
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivityDeviceTest {
+    @get:Rule
+    val composeRule = createAndroidComposeRule<MainActivity>()
+
     @Test
-    fun launchesMainActivity() {
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        try {
-            scenario.onActivity { activity ->
-                assertNotNull(activity)
-            }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        } finally {
-            scenario.close()
-        }
+    fun launchesMainNavigation() {
+        composeRule.onNodeWithText("对话").assertIsDisplayed()
+        composeRule.onNodeWithText("图片").assertIsDisplayed()
+        composeRule.onNodeWithText("模型").assertIsDisplayed()
     }
 
     @Test
-    fun rendersProviderSettingsScreen() {
-        val scenario = ActivityScenario.launch(MainActivity::class.java)
-        try {
-            scenario.onActivity { activity ->
-                activity.setContent {
-                    AiChatTheme {
-                        ProviderSettingsScreen(onBack = {})
-                    }
-                }
-            }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        } finally {
-            scenario.close()
-        }
+    fun providerSettingsBottomTabDoesNotShowBackButton() {
+        composeRule.onNodeWithText("模型").performClick()
+
+        composeRule.onNodeWithText("模型连接").assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("返回").assertCountEquals(0)
     }
 }

@@ -7,6 +7,7 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
 import com.aichat.workbench.provider.compatible.OpenAiChatCompletionsProtocol
+import com.aichat.workbench.provider.http.awaitResponse
 import com.aichat.workbench.provider.http.parseSse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -95,8 +96,8 @@ open class OpenAiChatProvider(
     private fun ChatProviderRequest.hasImageInput(): Boolean =
         messages.any { message -> message.contentParts.any { it is MessagePart.Image } }
 
-    private fun execute(request: Request): Response =
-        client.newCall(request).execute()
+    private suspend fun execute(request: Request): Response =
+        client.newCall(request).awaitResponse()
 
     private fun ProviderStreamEvent.isTerminal(): Boolean =
         this is ProviderStreamEvent.Completed || this is ProviderStreamEvent.Failed

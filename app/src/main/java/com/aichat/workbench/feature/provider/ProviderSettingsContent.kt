@@ -176,7 +176,8 @@ internal fun ProviderRow(
         description = provider.connectionSummary(modelRolePreferences),
         icon = if (provider.enabled) Icons.Filled.CheckCircle else Icons.Filled.Lock,
         onClick = onClick,
-        enabled = provider.enabled,
+        enabled = true,
+        contentEnabled = provider.enabled,
         trailing = {
             StatusPill(
                 text = if (provider.enabled) "启用" else "禁用",
@@ -209,4 +210,3 @@ private fun ProviderConfig.roleModel(
     role: ModelRole,
 ): String? =
     rolePreferenceModel(preferences, role)
-

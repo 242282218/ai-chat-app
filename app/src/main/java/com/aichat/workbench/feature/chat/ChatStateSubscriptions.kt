@@ -22,13 +22,23 @@ internal fun CoroutineScope.observeChatStateSources(
 ) {
     launch {
         conversationRepository.observeConversations().collect { conversations ->
-            val selected = conversations.firstOrNull { it.id == currentState().selectedConversationId }
-                ?: conversations.firstOrNull()
+            val current = currentState()
+            val selected = conversations.firstOrNull { it.id == current.selectedConversationId }
+                ?: conversations.firstOrNull().takeIf { current.shouldAutoSelectConversation }
             updateState { state ->
-                if (selected == null || selected.id == state.selectedConversationId) {
-                    state.copy(conversations = conversations, selectedConversationId = selected?.id)
-                } else {
-                    conversationManager.withSelectedConversation(state, conversations, selected)
+                when {
+                    selected == null -> state.copy(
+                        conversations = conversations,
+                        selectedConversationId = null,
+                        messages = if (state.selectedConversationId == null) state.messages else emptyList(),
+                        selectedConversationMessageCount = if (state.selectedConversationId == null) {
+                            state.selectedConversationMessageCount
+                        } else {
+                            0
+                        },
+                    )
+                    selected.id == state.selectedConversationId -> state.copy(conversations = conversations)
+                    else -> conversationManager.withSelectedConversation(state, conversations, selected)
                 }
             }
             selected?.id?.let(observeMessages)

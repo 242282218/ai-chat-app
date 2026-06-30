@@ -11,6 +11,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 data class ChatUiState(
     val conversations: List<Conversation> = emptyList(),
     val selectedConversationId: ConversationId? = null,
+    val shouldAutoSelectConversation: Boolean = true,
     val messages: List<Message> = emptyList(),
     val selectedConversationMessageCount: Int = 0,
     val providers: List<ProviderConfig> = emptyList(),

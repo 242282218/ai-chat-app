@@ -46,6 +46,7 @@ fun ChatScreen(
     onOpenProviders: () -> Unit,
     initialConversationId: ConversationId? = null,
     initialDraft: String = "",
+    startNewConversation: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
 ) {
@@ -61,9 +62,10 @@ fun ChatScreen(
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
 
     var initialSelectionDone by rememberSaveable(initialConversationId) { mutableStateOf(false) }
-    LaunchedEffect(initialConversationId, state.conversations) {
+    LaunchedEffect(startNewConversation, initialConversationId, state.conversations) {
         if (
             !initialSelectionDone &&
+            !startNewConversation &&
             initialConversationId != null &&
             state.selectedConversationId != initialConversationId &&
             state.conversations.any { it.id == initialConversationId }
@@ -73,7 +75,10 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(initialDraft) {
+    LaunchedEffect(startNewConversation, initialDraft) {
+        if (startNewConversation) {
+            viewModel.startNewConversation()
+        }
         viewModel.applyInitialDraft(initialDraft)
     }
 
