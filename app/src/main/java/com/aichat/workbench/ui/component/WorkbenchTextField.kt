@@ -8,8 +8,10 @@ import androidx.compose.ui.graphics.Color
 @Composable
 fun workbenchTextFieldColors(
     disabledContainerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    focusedBorderColor: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+    cursorColor: Color = MaterialTheme.colorScheme.primary,
 ) = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+    focusedBorderColor = focusedBorderColor,
     unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -19,8 +21,6 @@ fun workbenchTextFieldColors(
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
     focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
     unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-    cursorColor = MaterialTheme.colorScheme.primary,
+    cursorColor = cursorColor,
 )
 
-@Composable
-fun workbenchInputColors() = workbenchTextFieldColors()

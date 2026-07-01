@@ -3,6 +3,7 @@ package com.aichat.workbench.provider.compatible
 import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.provider.api.ChatCompletionMessage
+import com.aichat.workbench.provider.openai.toOpenAiRole
 import com.aichat.workbench.provider.api.ChatCompletionSseEvent
 import com.aichat.workbench.provider.api.ChatCompletionsRequest
 import com.aichat.workbench.provider.api.ChatCompletionsResponse
@@ -10,6 +11,7 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.providerJson
+import com.aichat.workbench.provider.api.toProviderError
 import com.aichat.workbench.provider.openai.openAiPostJson
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -52,7 +54,9 @@ internal object OpenAiChatCompletionsProtocol {
 
     fun mapSse(data: String): List<ProviderStreamEvent> {
         if (data == "[DONE]") return listOf(ProviderStreamEvent.Completed)
-        val choice = providerJson.decodeFromString<ChatCompletionSseEvent>(data).choices.firstOrNull()
+        val event = providerJson.decodeFromString<ChatCompletionSseEvent>(data)
+        event.error?.let { return listOf(ProviderStreamEvent.Failed(it.toProviderError(statusCode = null))) }
+        val choice = event.choices.firstOrNull()
             ?: return emptyList()
         val content = choice.delta?.content?.jsonPrimitive?.contentOrNull.orEmpty()
         return when {
@@ -78,11 +82,11 @@ private fun List<ProviderChatMessage>.toChatMessages(
 private fun ProviderChatMessage.toChatMessage(): ChatCompletionMessage =
     when (role) {
         MessageRole.Assistant -> ChatCompletionMessage(
-            role = role.toProviderRole(),
+            role = role.toOpenAiRole(),
             content = content.takeIf { it.isNotBlank() }?.let(::JsonPrimitive),
         )
         else -> ChatCompletionMessage(
-            role = role.toProviderRole(),
+            role = role.toOpenAiRole(),
             content = toChatContent(),
         )
     }
@@ -117,9 +121,3 @@ private fun ProviderChatMessage.toChatContent(): JsonElement =
         }
     }
 
-private fun MessageRole.toProviderRole(): String =
-    when (this) {
-        MessageRole.System -> "system"
-        MessageRole.User -> "user"
-        MessageRole.Assistant -> "assistant"
-    }

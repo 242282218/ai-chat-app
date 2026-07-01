@@ -28,7 +28,7 @@ val featureModule: Module = module {
             clock = get(),
         )
     }
-    factory { ConversationManager(conversationRepository = get(), clock = get()) }
+    factory { ConversationManager(conversationRepository = get(), createConversationUseCase = get(), clock = get()) }
     factory<SendMessageUseCaseFactory> {
         val conversationRepository = get<ConversationRepository>()
         val clock = get<Clock>()

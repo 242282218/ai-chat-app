@@ -8,10 +8,11 @@ import java.time.Clock
 
 class ConversationManager(
     private val conversationRepository: ConversationRepository,
+    private val createConversationUseCase: CreateConversationUseCase,
     private val clock: Clock,
 ) {
     suspend fun createConversation(current: ChatUiState, title: String): Conversation =
-        CreateConversationUseCase(conversationRepository, clock)(
+        createConversationUseCase(
             title = title,
             defaultProviderId = current.selectedProviderId?.let(::ProviderId),
         )

@@ -646,7 +646,8 @@ class ChatViewModelTest : KoinTest {
                         }
                     }
                     factory { SavedStateHandle() }
-                    factory { ConversationManager(conversationRepository = get(), clock = get()) }
+                    factory { com.aichat.workbench.domain.usecase.CreateConversationUseCase(get(), get()) }
+                    factory { ConversationManager(conversationRepository = get(), createConversationUseCase = get(), clock = get()) }
                     factory<SendMessageUseCaseFactory> {
                         val repository = get<ConversationRepository>()
                         val fixedClock = get<Clock>()

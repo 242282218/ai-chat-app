@@ -288,9 +288,8 @@ private fun messageContentColor(message: Message) =
 
 private fun Message.contentPadding(): androidx.compose.foundation.layout.PaddingValues =
     when (role) {
-        MessageRole.Assistant -> androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-        MessageRole.User -> androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)
         MessageRole.System -> androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        else -> androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     }
 
 private fun Message.roleTone(): StatusTone =

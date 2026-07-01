@@ -48,7 +48,7 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.statusColors
 import com.aichat.workbench.ui.component.decodeInlineImageBitmap
-import com.aichat.workbench.ui.component.workbenchInputColors
+import com.aichat.workbench.ui.component.workbenchTextFieldColors
 import java.io.File
 
 @Composable
@@ -140,7 +140,7 @@ internal fun InputBar(
                         maxLines = 5,
                         enabled = !isGenerating,
                         shape = MaterialTheme.shapes.extraLarge,
-                        colors = workbenchInputColors(),
+                        colors = workbenchTextFieldColors(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = if (input.contains('\n')) ImeAction.Default else ImeAction.Send,

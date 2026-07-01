@@ -13,6 +13,7 @@ import com.aichat.workbench.provider.api.ResponsesResponse
 import com.aichat.workbench.provider.api.ResponsesSseEvent
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.api.toProviderError
+import com.aichat.workbench.provider.openai.toOpenAiRole
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import okhttp3.Request
@@ -61,17 +62,10 @@ private fun List<ProviderChatMessage>.toResponsesInput(): List<ResponsesMessage>
     filter { it.role != MessageRole.System }
         .map { message ->
             ResponsesMessage(
-                role = message.role.toProviderRole(),
+                role = message.role.toOpenAiRole(),
                 content = message.content,
             )
         }
-
-private fun MessageRole.toProviderRole(): String =
-    when (this) {
-        MessageRole.System -> "system"
-        MessageRole.User -> "user"
-        MessageRole.Assistant -> "assistant"
-    }
 
 private fun ResponsesOutputItem.toTextParts(): List<String> =
     when (type) {

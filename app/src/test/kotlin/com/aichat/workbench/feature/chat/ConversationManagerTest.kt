@@ -7,6 +7,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderId
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.domain.repository.ConversationRepository
+import com.aichat.workbench.domain.usecase.CreateConversationUseCase
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -25,7 +26,8 @@ class ConversationManagerTest {
         val conversation = conversation(
             defaultProviderId = provider.id,
         )
-        val manager = ConversationManager(ConversationManagerRepository(clock), clock)
+        val repository = ConversationManagerRepository(clock)
+        val manager = ConversationManager(repository, CreateConversationUseCase(repository, clock), clock)
 
         val state = manager.withSelectedConversation(
             state = ChatUiState(providers = listOf(provider), selectedProviderId = provider.id.value),
@@ -44,7 +46,8 @@ class ConversationManagerTest {
         val conversation = conversation(
             defaultProviderId = conversationProvider.id,
         )
-        val manager = ConversationManager(ConversationManagerRepository(clock), clock)
+        val repository = ConversationManagerRepository(clock)
+        val manager = ConversationManager(repository, CreateConversationUseCase(repository, clock), clock)
 
         val state = manager.withSelectedConversation(
             state = ChatUiState(
@@ -61,7 +64,7 @@ class ConversationManagerTest {
     @Test
     fun createConversationUsesSelectedProviderAsDefault() = runTest {
         val repository = ConversationManagerRepository(clock)
-        val manager = ConversationManager(repository, clock)
+        val manager = ConversationManager(repository, CreateConversationUseCase(repository, clock), clock)
         val provider = provider("provider-1")
 
         val conversation = manager.createConversation(
