@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -24,8 +25,11 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.ui.theme.WorkbenchSpacing
@@ -40,37 +44,35 @@ fun MessageActionsSheet(
     message: Message,
     onAction: (MessageAction) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
-        modifier = modifier
+        modifier = modifier,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = WorkbenchSpacing.l)
+                .padding(bottom = WorkbenchSpacing.l),
         ) {
-            // Message preview header
             MessagePreviewHeader(message)
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = WorkbenchSpacing.s)
+                modifier = Modifier.padding(vertical = WorkbenchSpacing.s),
             )
 
-            // Action list
             val actions = buildAvailableActions(message)
             actions.forEach { item ->
                 ActionItem(
                     icon = item.icon,
                     label = item.label,
                     isDestructive = item.isDestructive,
-                    onClick = { onAction(item.action) }
+                    onClick = { onAction(item.action) },
                 )
             }
         }
@@ -85,7 +87,7 @@ private fun MessagePreviewHeader(message: Message) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = WorkbenchSpacing.l)
+            .padding(horizontal = WorkbenchSpacing.l),
     ) {
         Text(
             text = when (message.role) {
@@ -94,16 +96,16 @@ private fun MessagePreviewHeader(message: Message) {
                 MessageRole.System -> "系统消息"
             },
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(modifier = Modifier.height(WorkbenchSpacing.xs))
 
         Text(
-            text = message.content,
+            text = message.previewText(),
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -116,7 +118,7 @@ private fun ActionItem(
     icon: ImageVector,
     label: String,
     isDestructive: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     ListItem(
         headlineContent = {
@@ -132,7 +134,7 @@ private fun ActionItem(
         leadingContent = {
             Icon(
                 imageVector = icon,
-                contentDescription = label,
+                contentDescription = null,
                 tint = if (isDestructive) {
                     MaterialTheme.colorScheme.error
                 } else {
@@ -140,7 +142,13 @@ private fun ActionItem(
                 }
             )
         },
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .heightIn(min = 56.dp)
+            .clickable(
+                onClickLabel = label,
+                role = Role.Button,
+                onClick = onClick,
+            ),
     )
 }
 
@@ -149,15 +157,17 @@ private fun ActionItem(
  */
 private fun buildAvailableActions(message: Message): List<ActionItemData> {
     val actions = mutableListOf<ActionItemData>()
+    val hasTextContent = message.copyableText().isNotBlank()
 
-    // Copy (always available)
-    actions.add(
-        ActionItemData(
-            action = MessageAction.Copy(message),
-            icon = Icons.Filled.ContentCopy,
-            label = "复制"
+    if (hasTextContent) {
+        actions.add(
+            ActionItemData(
+                action = MessageAction.Copy(message),
+                icon = Icons.Filled.ContentCopy,
+                label = "复制",
+            )
         )
-    )
+    }
 
     // Edit (only for user messages)
     if (message.role == MessageRole.User) {
@@ -165,7 +175,7 @@ private fun buildAvailableActions(message: Message): List<ActionItemData> {
             ActionItemData(
                 action = MessageAction.Edit(message.id),
                 icon = Icons.Filled.Edit,
-                label = "编辑"
+                label = "编辑",
             )
         )
     }
@@ -179,19 +189,20 @@ private fun buildAvailableActions(message: Message): List<ActionItemData> {
             ActionItemData(
                 action = MessageAction.Retry(message.id),
                 icon = Icons.Filled.Refresh,
-                label = "重新生成"
+                label = "重新生成",
             )
         )
     }
 
-    // Share
-    actions.add(
-        ActionItemData(
-            action = MessageAction.Share(message),
-            icon = Icons.Filled.Share,
-            label = "分享"
+    if (hasTextContent) {
+        actions.add(
+            ActionItemData(
+                action = MessageAction.Share(message),
+                icon = Icons.Filled.Share,
+                label = "分享",
+            )
         )
-    )
+    }
 
     // Delete (always available, destructive)
     actions.add(
@@ -199,7 +210,7 @@ private fun buildAvailableActions(message: Message): List<ActionItemData> {
             action = MessageAction.Delete(message.id),
             icon = Icons.Filled.Delete,
             label = "删除",
-            isDestructive = true
+            isDestructive = true,
         )
     )
 
@@ -213,5 +224,12 @@ private data class ActionItemData(
     val action: MessageAction,
     val icon: ImageVector,
     val label: String,
-    val isDestructive: Boolean = false
+    val isDestructive: Boolean = false,
 )
+
+private fun Message.previewText(): String =
+    copyableText().takeIf { it.isNotBlank() }
+        ?: when {
+            contentParts.any { it is MessagePart.Image } -> "图片内容"
+            else -> "暂无文本内容"
+        }

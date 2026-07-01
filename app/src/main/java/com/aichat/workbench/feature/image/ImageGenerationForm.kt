@@ -5,7 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,7 +21,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -73,7 +74,10 @@ internal fun ImageGenerationForm(
                 icon = Icons.Filled.Image,
                 tone = StatusTone.Warning,
             ) {
-                TextButton(onClick = onOpenProviders) {
+                TextButton(
+                    onClick = onOpenProviders,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text(text = "配置")
                 }
             }
@@ -84,9 +88,10 @@ internal fun ImageGenerationForm(
             onValueChange = viewModel::updatePrompt,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(128.dp),
+                .heightIn(min = 128.dp),
             label = { Text(text = "提示词 *") },
             placeholder = { Text(text = "描述主体、风格、构图和约束") },
+            maxLines = 8,
             colors = workbenchTextFieldColors(),
             shape = MaterialTheme.shapes.medium,
         )
@@ -125,6 +130,11 @@ internal fun ImageGenerationForm(
                             selected = state.size == preset,
                             onClick = { viewModel.updateSize(preset) },
                             label = { Text(text = preset) },
+                            leadingIcon = {
+                                if (state.size == preset) {
+                                    Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                                }
+                            },
                         )
                     }
                 }
@@ -132,7 +142,9 @@ internal fun ImageGenerationForm(
                     value = state.size,
                     onValueChange = viewModel::updateSize,
                     modifier = Modifier.fillMaxWidth(),
+                    label = { Text(text = "自定义尺寸") },
                     placeholder = { Text(text = "自定义尺寸，如 1024x1024") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                     singleLine = true,
                     colors = workbenchTextFieldColors(),
                     shape = MaterialTheme.shapes.medium,
@@ -146,6 +158,11 @@ internal fun ImageGenerationForm(
                             selected = state.quality == preset,
                             onClick = { viewModel.updateQuality(preset) },
                             label = { Text(text = preset) },
+                            leadingIcon = {
+                                if (state.quality == preset) {
+                                    Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                                }
+                            },
                         )
                     }
                 }
@@ -158,6 +175,11 @@ internal fun ImageGenerationForm(
                             selected = state.count == preset,
                             onClick = { viewModel.updateCount(preset) },
                             label = { Text(text = "${preset}张") },
+                            leadingIcon = {
+                                if (state.count == preset) {
+                                    Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                                }
+                            },
                         )
                     }
                 }
@@ -179,7 +201,9 @@ internal fun ImageGenerationForm(
                 }
             },
             enabled = state.isGenerating || state.canGenerateImages(),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
             shape = MaterialTheme.shapes.medium,
         ) {
             Icon(
@@ -192,10 +216,20 @@ internal fun ImageGenerationForm(
         OutlinedButton(
             onClick = viewModel::testConnection,
             enabled = state.selectedProvider != null && !state.isGenerating && !state.isTestingConnection,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
             shape = MaterialTheme.shapes.medium,
         ) {
-            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+            if (state.isTestingConnection) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+            }
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = if (state.isTestingConnection) "测试中" else "测试模型连接")
         }
@@ -213,7 +247,7 @@ internal fun ImageGenerationForm(
                     WorkbenchIconButton(
                         icon = Icons.Filled.ContentCopy,
                         label = "复制测试诊断",
-                    onClick = { clipboard.setText(AnnotatedString(diagnostic)) },
+                        onClick = { clipboard.setText(AnnotatedString(diagnostic)) },
                     )
                     WorkbenchIconButton(
                         icon = Icons.AutoMirrored.Filled.Chat,

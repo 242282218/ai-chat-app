@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -24,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,7 +69,12 @@ fun WorkbenchPanel(
                     )
                 }
             }
-            trailing()
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                trailing()
+            }
         }
         content()
     }
@@ -95,7 +100,7 @@ fun QuietSectionHeader(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             if (description != null) {
@@ -108,7 +113,12 @@ fun QuietSectionHeader(
                 )
             }
         }
-        trailing()
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            trailing()
+        }
     }
 }
 
@@ -121,14 +131,20 @@ fun QuietListRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentEnabled: Boolean = enabled,
+    onClickLabel: String = title,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val contentAlpha = if (contentEnabled) 1f else 0.42f
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clickable(enabled = enabled, onClick = onClick)
+            .heightIn(min = 56.dp)
+            .clickable(
+                enabled = enabled,
+                onClickLabel = onClickLabel,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -148,18 +164,23 @@ fun QuietListRow(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        trailing()
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            trailing()
+        }
     }
 }
 
@@ -195,14 +216,17 @@ fun EmptyStatePanel(
     description: String,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
+    actionIcon: ImageVector = icon,
     onAction: (() -> Unit)? = null,
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 320.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.padding(40.dp),
+            modifier = Modifier.padding(horizontal = 32.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -238,10 +262,11 @@ fun EmptyStatePanel(
                 Spacer(modifier = Modifier.size(24.dp))
                 Button(
                     onClick = onAction,
+                    modifier = Modifier.heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.medium,
                 ) {
                     Icon(
-                        imageVector = icon,
+                        imageVector = actionIcon,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                     )

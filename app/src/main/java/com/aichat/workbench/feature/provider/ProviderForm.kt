@@ -5,8 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -25,8 +26,10 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -86,6 +89,9 @@ internal fun ProviderForm(
     onAllowHttpChange: (Boolean) -> Unit,
     formKey: String,
     message: String?,
+    isSaving: Boolean,
+    isTestingConnection: Boolean,
+    isRefreshingModels: Boolean,
     canSave: Boolean,
     canTest: Boolean,
     onSave: () -> Unit,
@@ -96,6 +102,7 @@ internal fun ProviderForm(
     var showApiKey by remember { mutableStateOf(false) }
     val hasAdvancedDraft = headers.isNotBlank() || allowHttp
     var advancedExpanded by rememberSaveable(formKey) { mutableStateOf(hasAdvancedDraft) }
+    val isBusy = isSaving || isTestingConnection || isRefreshingModels
 
     WorkbenchPanel(
         title = if (editing) "编辑模型连接" else "新建模型连接",
@@ -125,6 +132,11 @@ internal fun ProviderForm(
                     selected = type == providerType,
                     onClick = { onTypeChange(providerType) },
                     label = { Text(text = providerType.providerTypeLabel()) },
+                    leadingIcon = {
+                        if (type == providerType) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = null)
+                        }
+                    },
                 )
             }
         }
@@ -140,6 +152,7 @@ internal fun ProviderForm(
             label = { Text(text = "名称 *") },
             singleLine = true,
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
         )
         OutlinedTextField(
             value = baseUrl,
@@ -149,6 +162,7 @@ internal fun ProviderForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             singleLine = true,
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
         )
         ProviderEndpointPreviewRows(
             preview = providerEndpointPreview(
@@ -165,11 +179,13 @@ internal fun ProviderForm(
             supportingText = { Text(text = "默认聊天模型。") },
             singleLine = true,
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
         )
         ProviderModelPicker(
             models = models.availableChatModels(),
             selectedModel = model,
-            canRefresh = canTest,
+            canRefresh = canTest && !isBusy,
+            isRefreshing = isRefreshingModels,
             onSelectModel = onSelectModel,
             onRefreshModels = onRefreshModels,
         )
@@ -181,6 +197,7 @@ internal fun ProviderForm(
             supportingText = { Text(text = "单独用于图片生成，不覆盖聊天默认模型。") },
             singleLine = true,
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
         )
         ProviderImageModelPicker(
             models = models,
@@ -192,9 +209,11 @@ internal fun ProviderForm(
             onValueChange = onApiKeyChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text(text = "API Key") },
+            supportingText = { Text(text = apiKeySupportingText(apiKey, hasStoredKey)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
             colors = workbenchTextFieldColors(),
+            shape = MaterialTheme.shapes.medium,
             visualTransformation = if (showApiKey) {
                 VisualTransformation.None
             } else {
@@ -212,6 +231,7 @@ internal fun ProviderForm(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .toggleable(
                     value = enabled,
                     role = Role.Switch,
@@ -240,21 +260,35 @@ internal fun ProviderForm(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onSave,
-                enabled = canSave,
-                modifier = Modifier.fillMaxWidth(),
+                enabled = canSave && !isBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium,
             ) {
-                Icon(imageVector = Icons.Filled.Save, contentDescription = null)
+                if (isSaving) {
+                    ButtonProgressIndicator()
+                } else {
+                    Icon(imageVector = Icons.Filled.Save, contentDescription = null)
+                }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "保存")
+                Text(text = if (isSaving) "保存中" else "保存")
             }
             OutlinedButton(
                 onClick = onTest,
-                enabled = canTest,
-                modifier = Modifier.fillMaxWidth(),
+                enabled = canTest && !isBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium,
             ) {
-                Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
+                if (isTestingConnection) {
+                    ButtonProgressIndicator()
+                } else {
+                    Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
+                }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "测试")
+                Text(text = if (isTestingConnection) "测试中" else "测试")
             }
         }
 
@@ -269,28 +303,32 @@ private fun ProviderModelPicker(
     models: List<ModelConfig>,
     selectedModel: String,
     canRefresh: Boolean,
+    isRefreshing: Boolean,
     onSelectModel: (String) -> Unit,
     onRefreshModels: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
+        Text(
+            text = if (models.isEmpty()) "未同步模型" else "已同步 ${models.size} 个模型",
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = onRefreshModels,
+            enabled = canRefresh && !isRefreshing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            shape = MaterialTheme.shapes.medium,
         ) {
-            Text(
-                text = if (models.isEmpty()) "未同步模型" else "已同步 ${models.size} 个模型",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = onRefreshModels,
-                enabled = canRefresh,
-            ) {
+            if (isRefreshing) {
+                ButtonProgressIndicator()
+            } else {
                 Icon(imageVector = Icons.Filled.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "刷新模型")
             }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(text = if (isRefreshing) "刷新中" else "刷新模型")
         }
         if (models.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,6 +400,15 @@ private fun ProviderImageModelPicker(
 }
 
 @Composable
+private fun ButtonProgressIndicator() {
+    CircularProgressIndicator(
+        modifier = Modifier.size(18.dp),
+        strokeWidth = 2.dp,
+        color = LocalContentColor.current,
+    )
+}
+
+@Composable
 private fun ProviderAdvancedFields(
     expanded: Boolean,
     headers: String,
@@ -374,7 +421,9 @@ private fun ProviderAdvancedFields(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = onToggleExpanded,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
         ) {
             Icon(
                 imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
@@ -398,16 +447,19 @@ private fun ProviderAdvancedFields(
                 onValueChange = onHeadersChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(112.dp),
+                    .heightIn(min = 112.dp),
                 label = { Text(text = "请求头") },
                 supportingText = { Text(text = providerHeaderPolicyText) },
                 isError = headerStatus.tone == StatusTone.Critical,
+                maxLines = 8,
                 textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 colors = workbenchTextFieldColors(),
+                shape = MaterialTheme.shapes.medium,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .toggleable(
                         value = allowHttp,
                         role = Role.Checkbox,
@@ -572,6 +624,7 @@ private fun providerMessageLabel(message: String): String =
     when {
         message == "已保存" -> "已保存"
         message == "测试中..." -> "测试中"
+        message == "刷新模型中..." -> "刷新中"
         providerMessageTone(message) == StatusTone.Critical -> "需要处理"
         else -> "连接"
     }
@@ -583,5 +636,9 @@ private fun providerMessageTone(message: String): StatusTone {
     return StatusTone.Critical
 }
 
-
-
+private fun apiKeySupportingText(apiKey: String, hasStoredKey: Boolean): String =
+    when {
+        hasStoredKey && apiKey.isBlank() -> "已保存 API Key；留空会继续使用本机保存值。"
+        apiKey.isNotBlank() -> "保存后会替换本机保存的 API Key。"
+        else -> "API Key 只保存在本机安全存储中。"
+    }

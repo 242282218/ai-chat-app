@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,9 +17,6 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -37,6 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,7 +84,7 @@ fun ConversationsScreen(
                         fontWeight = FontWeight.Bold,
                     )
                 },
-                colors = TopAppBarDefaults.largeTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
@@ -97,18 +99,6 @@ fun ConversationsScreen(
                 },
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onNewChat(draft) },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.Send,
-                    contentDescription = "发送",
-                )
-            }
-        },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
@@ -122,6 +112,7 @@ fun ConversationsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
                 },
+                label = { Text(text = "新对话") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -139,18 +130,15 @@ fun ConversationsScreen(
                 ),
                 trailingIcon = {
                     if (draft.isNotBlank()) {
-                        IconButton(
+                        WorkbenchIconButton(
+                            icon = Icons.AutoMirrored.Outlined.Send,
+                            label = "发送并开始新对话",
                             onClick = {
                                 onNewChat(draft)
                                 draft = ""
                             },
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.Send,
-                                contentDescription = "发送",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 },
             )
@@ -162,7 +150,10 @@ fun ConversationsScreen(
                     tone = StatusTone.Warning,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    androidx.compose.material3.TextButton(onClick = onOpenProviders) {
+                    TextButton(
+                        onClick = onOpenProviders,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
                         Text(text = "配置")
                     }
                 }
@@ -178,6 +169,7 @@ fun ConversationsScreen(
                         "添加模型连接后\n就可以开始聊天和生成图片"
                     },
                     actionLabel = if (state.hasAvailableChatProvider) null else "配置模型连接",
+                    actionIcon = Icons.Outlined.Tune,
                     onAction = if (state.hasAvailableChatProvider) null else onOpenProviders,
                 )
             } else {
@@ -197,17 +189,24 @@ fun ConversationsScreen(
                             state = dismissState,
                             enableDismissFromStartToEnd = false,
                             backgroundContent = {
-                                // Use new SwipeDeleteBackground component
                                 com.aichat.workbench.feature.conversations.SwipeDeleteBackground(
-                                    dismissProgress = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) 1f else 0f
+                                    dismissProgress = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) 1f else 0f,
                                 )
                             },
                             content = {
-                                // Use new ConversationCard component
                                 com.aichat.workbench.feature.conversations.ConversationCard(
                                     conversation = conversation,
                                     onClick = { onConversationClick(conversation.id) },
-                                    modifier = Modifier.animateItem()
+                                    modifier = Modifier
+                                        .animateItem()
+                                        .semantics {
+                                            customActions = listOf(
+                                                CustomAccessibilityAction(label = "删除对话") {
+                                                    pendingDeleteId = conversation.id.value
+                                                    true
+                                                },
+                                            )
+                                        },
                                 )
                             },
                         )

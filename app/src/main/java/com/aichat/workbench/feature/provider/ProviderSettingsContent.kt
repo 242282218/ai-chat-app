@@ -4,21 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ModelRole
 import com.aichat.workbench.domain.model.ModelRolePreference
@@ -26,6 +22,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.provider.defaultImageModel
 import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.supportsImageGeneration
+import com.aichat.workbench.ui.component.EmptyStatePanel
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
 import com.aichat.workbench.ui.component.QuietListRow
@@ -39,33 +36,17 @@ internal fun EmptyProviderState(
     onCreate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    EmptyStatePanel(
+        icon = Icons.Filled.Tune,
+        title = "还没有模型连接",
+        description = "添加连接后即可用于聊天和图片生成",
+        actionLabel = "添加模型连接",
+        actionIcon = Icons.Filled.Add,
+        onAction = onCreate,
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Tune,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-            modifier = Modifier.size(40.dp),
-        )
-        Text(
-            text = "还没有模型连接",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = "添加连接后即可用于聊天和图片生成",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TextButton(onClick = onCreate) {
-            Text(text = "添加模型连接")
-        }
-    }
+    )
 }
 
 internal fun providerTopBarSubtitle(providers: List<ProviderConfig>): String {
@@ -176,6 +157,7 @@ internal fun ProviderRow(
         description = provider.connectionSummary(modelRolePreferences),
         icon = if (provider.enabled) Icons.Filled.CheckCircle else Icons.Filled.Lock,
         onClick = onClick,
+        onClickLabel = "编辑模型连接 ${provider.name}",
         enabled = true,
         contentEnabled = provider.enabled,
         trailing = {
@@ -187,7 +169,7 @@ internal fun ProviderRow(
                 icon = Icons.Filled.Delete,
                 label = "删除模型连接 ${provider.name}",
                 onClick = onDelete,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.72f),
             )
         },
     )

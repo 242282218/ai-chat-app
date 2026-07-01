@@ -104,7 +104,7 @@ private val AppTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 57.sp,
         lineHeight = 64.sp,
-        letterSpacing = (-0.25).sp,
+        letterSpacing = 0.sp,
     ),
     displayMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
@@ -122,7 +122,7 @@ private val AppTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
-        letterSpacing = (-0.5).sp,
+        letterSpacing = 0.sp,
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
@@ -146,13 +146,13 @@ private val AppTypography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.01.sp,
+        letterSpacing = 0.sp,
     ),
     titleSmall = TextStyle(
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.01.sp,
+        letterSpacing = 0.sp,
     ),
     bodyLarge = TextStyle(
         fontWeight = FontWeight.Normal,
@@ -176,19 +176,19 @@ private val AppTypography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.01.sp,
+        letterSpacing = 0.sp,
     ),
     labelMedium = TextStyle(
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.02.sp,
+        letterSpacing = 0.sp,
     ),
     labelSmall = TextStyle(
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.02.sp,
+        letterSpacing = 0.sp,
     ),
 )
 

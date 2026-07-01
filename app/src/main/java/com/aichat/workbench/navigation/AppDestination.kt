@@ -1,9 +1,11 @@
 package com.aichat.workbench.navigation
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.automirrored.filled.Chat as FilledChat
+import androidx.compose.material.icons.automirrored.outlined.Chat as OutlinedChat
+import androidx.compose.material.icons.filled.Image as FilledImage
+import androidx.compose.material.icons.filled.Tune as FilledTune
+import androidx.compose.material.icons.outlined.Image as OutlinedImage
+import androidx.compose.material.icons.outlined.Tune as OutlinedTune
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class AppDestination(
@@ -25,10 +27,26 @@ data class BottomTabItem(
     val destination: AppDestination,
     val label: String,
     val icon: ImageVector,
+    val selectedIcon: ImageVector,
 )
 
 val bottomTabItems = listOf(
-    BottomTabItem(AppDestination.Conversations, "对话", Icons.AutoMirrored.Outlined.Chat),
-    BottomTabItem(AppDestination.ImageGen, "图片", Icons.Outlined.Image),
-    BottomTabItem(AppDestination.Settings, "模型", Icons.Outlined.Tune),
+    BottomTabItem(
+        AppDestination.Conversations,
+        "对话",
+        OutlinedChat,
+        FilledChat,
+    ),
+    BottomTabItem(
+        AppDestination.ImageGen,
+        "图片",
+        OutlinedImage,
+        FilledImage,
+    ),
+    BottomTabItem(
+        AppDestination.Settings,
+        "模型",
+        OutlinedTune,
+        FilledTune,
+    ),
 )

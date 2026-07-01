@@ -1,6 +1,7 @@
 package com.aichat.workbench.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -32,12 +35,16 @@ fun InlineNotice(
     action: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = statusColors(tone)
+    val shape = MaterialTheme.shapes.medium
     val noticeModifier = modifier
         .fillMaxWidth()
-        .background(colors.container, MaterialTheme.shapes.medium)
+        .background(colors.container, shape)
+        .border(1.dp, colors.border, shape)
         .semantics {
-            if (tone == StatusTone.Critical) {
+            if (tone != StatusTone.Neutral) {
                 liveRegion = LiveRegionMode.Polite
+            }
+            if (tone == StatusTone.Critical) {
                 error(text)
             }
         }
@@ -71,10 +78,16 @@ fun StatusPill(
     tone: StatusTone = StatusTone.Neutral,
 ) {
     val colors = statusColors(tone)
+    val shape = MaterialTheme.shapes.small
     Text(
         text = text,
         modifier = modifier
-            .background(colors.container, MaterialTheme.shapes.small)
+            .widthIn(max = 240.dp)
+            .background(colors.container, shape)
+            .border(1.dp, colors.border, shape)
+            .semantics {
+                contentDescription = text
+            }
             .padding(horizontal = 8.dp, vertical = 3.dp),
         color = colors.content,
         style = MaterialTheme.typography.labelSmall,
@@ -91,10 +104,12 @@ fun IconTile(
     tone: StatusTone = StatusTone.Neutral,
 ) {
     val colors = statusColors(tone)
+    val shape = MaterialTheme.shapes.small
     Box(
         modifier = modifier
             .size(36.dp)
-            .background(colors.container, MaterialTheme.shapes.small),
+            .background(colors.container, shape)
+            .border(1.dp, colors.border, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

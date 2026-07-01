@@ -22,9 +22,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.Message
+import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.feature.chat.message.MessageAction
 import com.aichat.workbench.feature.chat.message.MessageCard
+import com.aichat.workbench.feature.chat.message.copyableText
 import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 
 @Composable
@@ -40,43 +42,60 @@ internal fun MessageItem(
     val context = LocalContext.current
 
     if (message.status == MessageStatus.Compressed) {
-        CompressedMessagesCard(message = message, highlightQuery = highlightQuery)
+        CompressedMessagesCard(
+            message = message,
+            highlightQuery = highlightQuery,
+            modifier = modifier,
+        )
         return
     }
 
-    MessageCard(
-        message = message,
-        onAction = { action ->
-            when (action) {
-                is MessageAction.Copy -> {
-                    runCatching {
-                        clipboardManager.setText(AnnotatedString(action.message.content))
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = when (message.role) {
+            MessageRole.User -> Arrangement.End
+            MessageRole.Assistant -> Arrangement.Start
+            MessageRole.System -> Arrangement.Center
+        },
+        verticalAlignment = Alignment.Top,
+    ) {
+        MessageCard(
+            message = message,
+            onAction = { action ->
+                when (action) {
+                    is MessageAction.Copy -> {
+                        runCatching {
+                            clipboardManager.setText(AnnotatedString(action.message.copyableText()))
+                        }
+                    }
+                    is MessageAction.Edit -> onEdit()
+                    is MessageAction.Retry -> onRetry()
+                    is MessageAction.Delete -> onDelete()
+                    is MessageAction.Share -> {
+                        val shareIntent = Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, action.message.copyableText())
+                            },
+                            "分享消息",
+                        )
+                        context.startActivity(shareIntent)
                     }
                 }
-                is MessageAction.Edit -> onEdit()
-                is MessageAction.Retry -> onRetry()
-                is MessageAction.Delete -> onDelete()
-                is MessageAction.Share -> {
-                    val shareIntent = Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, action.message.content)
-                        },
-                        "分享消息",
-                    )
-                    context.startActivity(shareIntent)
-                }
-            }
-        },
-        searchQuery = highlightQuery,
-        modifier = modifier,
-    )
+            },
+            searchQuery = highlightQuery,
+        )
+    }
 }
 
 @Composable
-internal fun CompressedMessagesCard(message: Message, highlightQuery: String = "") {
+internal fun CompressedMessagesCard(
+    message: Message,
+    modifier: Modifier = Modifier,
+    highlightQuery: String = "",
+) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         shape = MaterialTheme.shapes.medium,

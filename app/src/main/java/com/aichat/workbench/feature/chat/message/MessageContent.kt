@@ -1,9 +1,10 @@
 package com.aichat.workbench.feature.chat.message
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -22,41 +23,45 @@ import com.aichat.workbench.ui.markdown.MarkdownMessageContent
 fun MessageContent(
     message: Message,
     searchQuery: String = "",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val images = message.contentParts.filterIsInstance<MessagePart.Image>()
 
-    if (images.isNotEmpty()) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(
-                items = images,
-                key = { image -> image.uri.take(48) },
-            ) { image ->
-                ChatImagePreview(
-                    image = image,
-                    modifier = Modifier.size(96.dp),
-                )
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (images.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                itemsIndexed(
+                    items = images,
+                    key = { index, image -> "${image.uri.take(48)}-$index" },
+                ) { index, image ->
+                    ChatImagePreview(
+                        image = image,
+                        modifier = Modifier.size(96.dp),
+                        contentDescription = "消息图片 ${index + 1}",
+                    )
+                }
             }
         }
-    }
 
-    if (message.content.isNotBlank()) {
-        MarkdownMessageContent(
-            text = message.content,
-            modifier = modifier,
-            highlightQuery = searchQuery
-        )
-    } else if (message.contentParts.isNotEmpty()) {
-        val textPart = message.contentParts.firstOrNull {
-            it is MessagePart.Text
-        }
-        if (textPart is MessagePart.Text) {
-            Text(
-                text = textPart.text,
-                modifier = modifier,
-                maxLines = 100,
-                overflow = TextOverflow.Ellipsis
+        if (message.content.isNotBlank()) {
+            MarkdownMessageContent(
+                text = message.content,
+                highlightQuery = searchQuery,
             )
+        } else if (message.contentParts.isNotEmpty()) {
+            val textPart = message.contentParts.firstOrNull {
+                it is MessagePart.Text
+            }
+            if (textPart is MessagePart.Text) {
+                Text(
+                    text = textPart.text,
+                    maxLines = 100,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

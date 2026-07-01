@@ -2,10 +2,12 @@ package com.aichat.workbench.feature.chat.message
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -31,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.Message
 import com.aichat.workbench.domain.model.MessageRole
 import com.aichat.workbench.domain.model.MessageStatus
-import com.aichat.workbench.ui.theme.WorkbenchSpacing
+import com.aichat.workbench.ui.util.isReduceMotionEnabled
 
 /**
  * Modern message card with Material 3 design and fluid interactions.
@@ -48,26 +50,31 @@ fun MessageCard(
     message: Message,
     onAction: (MessageAction) -> Unit,
     modifier: Modifier = Modifier,
-    searchQuery: String = ""
+    searchQuery: String = "",
 ) {
     var showBottomSheet by remember { mutableStateOf(false) }
     var isPressed by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
+    val reduceMotion = isReduceMotionEnabled()
+    val maxWidth = when (message.role) {
+        MessageRole.User -> 312.dp
+        MessageRole.Assistant -> 640.dp
+        MessageRole.System -> 520.dp
+    }
 
-    // iOS-style press animation
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
+        targetValue = if (!reduceMotion && isPressed) 0.98f else 1f,
         animationSpec = spring(
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+            stiffness = androidx.compose.animation.core.Spring.StiffnessHigh,
         ),
-        label = "press_scale"
+        label = "press_scale",
     )
 
     Card(
         modifier = modifier
-            .widthIn(max = if (message.role == MessageRole.User) 300.dp else 600.dp)
+            .widthIn(min = 72.dp, max = maxWidth)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -84,24 +91,20 @@ fun MessageCard(
                         showBottomSheet = true
                     },
                     onDoubleTap = {
-                        // Quick copy on double tap
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        clipboardManager.setText(AnnotatedString(message.content))
-                        onAction(MessageAction.Copy(message))
-                    }
+                        val copyableText = message.copyableText()
+                        if (copyableText.isNotBlank()) {
+                            clipboardManager.setText(AnnotatedString(copyableText))
+                            onAction(MessageAction.Copy(message))
+                        } else {
+                            showBottomSheet = true
+                        }
+                    },
                 )
             },
         colors = CardDefaults.cardColors(
-            containerColor = when (message.role) {
-                MessageRole.User -> MaterialTheme.colorScheme.primaryContainer
-                MessageRole.Assistant -> MaterialTheme.colorScheme.secondaryContainer
-                MessageRole.System -> MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.6f)
-            },
-            contentColor = when (message.role) {
-                MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer
-                MessageRole.Assistant -> MaterialTheme.colorScheme.onSecondaryContainer
-                MessageRole.System -> MaterialTheme.colorScheme.onSurface
-            }
+            containerColor = messageContainerColor(message),
+            contentColor = messageContentColor(message),
         ),
         shape = when (message.role) {
             MessageRole.User -> MaterialTheme.shapes.extraLarge
@@ -109,38 +112,42 @@ fun MessageCard(
         },
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp,
-            pressedElevation = 2.dp
-        )
+            pressedElevation = 2.dp,
+        ),
+        border = messageBorder(message),
     ) {
-        Box(modifier = Modifier.padding(WorkbenchSpacing.m)) {
+        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Column(
-                modifier = Modifier.padding(end = 40.dp)
+                modifier = Modifier.padding(end = 44.dp),
             ) {
                 MessageContent(
                     message = message,
-                    searchQuery = searchQuery
+                    searchQuery = searchQuery,
                 )
 
                 if (message.status != MessageStatus.Completed) {
                     MessageStatusIndicator(
                         status = message.status,
-                        errorSummary = message.errorSummary
+                        errorSummary = message.errorSummary,
                     )
                 }
             }
             IconButton(
                 onClick = { showBottomSheet = true },
-                modifier = Modifier.align(Alignment.TopEnd)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "消息操作"
+                    contentDescription = "消息操作",
+                    modifier = Modifier.size(18.dp),
+                    tint = messageActionTint(message),
                 )
             }
         }
     }
 
-    // Long press action menu
     if (showBottomSheet) {
         MessageActionsSheet(
             message = message,
@@ -148,7 +155,35 @@ fun MessageCard(
                 onAction(action)
                 showBottomSheet = false
             },
-            onDismiss = { showBottomSheet = false }
+            onDismiss = { showBottomSheet = false },
         )
     }
+}
+
+@Composable
+private fun messageContainerColor(message: Message) = when (message.role) {
+    MessageRole.User -> MaterialTheme.colorScheme.primaryContainer
+    MessageRole.Assistant -> MaterialTheme.colorScheme.surfaceContainerLow
+    MessageRole.System -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+}
+
+@Composable
+private fun messageContentColor(message: Message) = when (message.role) {
+    MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer
+    MessageRole.Assistant -> MaterialTheme.colorScheme.onSurface
+    MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun messageBorder(message: Message): BorderStroke = when (message.role) {
+    MessageRole.User -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+    MessageRole.Assistant -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.56f))
+    MessageRole.System -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+}
+
+@Composable
+private fun messageActionTint(message: Message) = when (message.role) {
+    MessageRole.User -> MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.58f)
+    MessageRole.Assistant -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    MessageRole.System -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.52f)
 }

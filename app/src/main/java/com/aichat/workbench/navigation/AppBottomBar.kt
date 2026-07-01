@@ -2,7 +2,7 @@ package com.aichat.workbench.navigation
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -21,9 +21,9 @@ fun AppBottomBar(
     onTabSelected: (AppDestination) -> Unit,
 ) {
     NavigationBar(
-        tonalElevation = 0.dp,
+        tonalElevation = 2.dp,
         containerColor = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.height(60.dp),
+        modifier = Modifier.heightIn(min = 64.dp),
     ) {
         bottomTabItems.forEach { tab ->
             val selected = currentRoute == tab.destination.route
@@ -41,8 +41,8 @@ fun AppBottomBar(
                 onClick = { onTabSelected(tab.destination) },
                 icon = {
                     Icon(
-                        tab.icon,
-                        contentDescription = tab.label,
+                        imageVector = if (selected) tab.selectedIcon else tab.icon,
+                        contentDescription = null,
                         tint = tint,
                     )
                 },

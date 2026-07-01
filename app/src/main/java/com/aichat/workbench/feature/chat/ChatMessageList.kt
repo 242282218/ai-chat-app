@@ -74,8 +74,13 @@ fun ChatMessageList(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 14.dp,
+            end = 16.dp,
+            bottom = 18.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (messages.isEmpty()) {
             item {
@@ -89,7 +94,6 @@ fun ChatMessageList(
                 messages,
                 key = { it.id.value },
             ) { message ->
-                // Use new MessageCard with single action callback (performance optimization)
                 MessageItem(
                     message = message,
                     onEdit = { onEdit(message.id) },

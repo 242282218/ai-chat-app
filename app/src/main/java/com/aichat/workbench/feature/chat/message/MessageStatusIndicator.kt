@@ -22,6 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.MessageStatus
 import com.aichat.workbench.ui.theme.WorkbenchSpacing
@@ -44,8 +50,12 @@ fun MessageStatusIndicator(
             StreamingIndicator(modifier = modifier)
         }
         MessageStatus.Failed -> {
+            val failureText = errorSummary ?: "生成失败"
             Row(
-                modifier = modifier,
+                modifier = modifier.semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    error(failureText)
+                },
                 horizontalArrangement = Arrangement.spacedBy(WorkbenchSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -56,7 +66,7 @@ fun MessageStatusIndicator(
                     tint = MaterialTheme.colorScheme.error
                 )
                 Text(
-                    text = errorSummary ?: "生成失败",
+                    text = failureText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -111,7 +121,10 @@ private fun StreamingIndicator(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "streaming")
 
     Row(
-        modifier = modifier,
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = "生成中"
+            liveRegion = LiveRegionMode.Polite
+        },
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

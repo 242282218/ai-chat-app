@@ -3,11 +3,13 @@ package com.aichat.workbench.feature.chat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -23,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,14 +80,14 @@ fun ChatTopBar(
         actions = {
             WorkbenchIconButton(
                 icon = Icons.Filled.Search,
-                label = "搜索消息",
+                label = if (state.isSearchActive) "关闭搜索" else "搜索消息",
                 onClick = onToggleSearch,
             )
             // Quick model switch dropdown
             val enabledProviders = state.providers.filter { it.enabled }
             if (enabledProviders.size > 1) {
                 WorkbenchIconButton(
-                    icon = Icons.Filled.MoreVert,
+                    icon = Icons.Filled.Tune,
                     label = "切换模型",
                     onClick = { showModelMenu = true },
                 )
@@ -92,14 +96,25 @@ fun ChatTopBar(
                     onDismissRequest = { showModelMenu = false },
                 ) {
                     enabledProviders.forEach { provider ->
+                        val isSelected = state.selectedProviderId == provider.id.value
                         DropdownMenuItem(
-                            text = { Text(text = provider.name) },
+                            modifier = Modifier.semantics {
+                                selected = isSelected
+                            },
+                            text = {
+                                Text(
+                                    text = provider.name,
+                                    modifier = Modifier.widthIn(max = 240.dp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
                             onClick = {
                                 onSelectProvider(provider.id.value)
                                 showModelMenu = false
                             },
                             trailingIcon = {
-                                if (state.selectedProviderId == provider.id.value) {
+                                if (isSelected) {
                                     Icon(
                                         imageVector = Icons.Filled.Check,
                                         contentDescription = null,
@@ -114,11 +129,11 @@ fun ChatTopBar(
             }
             WorkbenchIconButton(
                 icon = Icons.Filled.MoreVert,
-                label = "更多",
+                label = "对话设置",
                 onClick = onOpenControls,
             )
         },
-        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+        colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
     )

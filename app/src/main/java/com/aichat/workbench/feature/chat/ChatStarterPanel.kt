@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,7 @@ internal fun EmptyConversationPanel(
             "添加模型连接后\n请求会从本机直接发送到你的接口"
         },
         actionLabel = if (hasEnabledProvider) null else "配置模型连接",
+        actionIcon = Icons.Outlined.Tune,
         onAction = if (hasEnabledProvider) null else onOpenProviders,
         modifier = Modifier
             .fillMaxWidth()

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.feature.chat.CopyState
 import com.aichat.workbench.feature.chat.rememberCopyState
@@ -173,6 +175,7 @@ private fun BulletListContent(block: MarkdownBlock.BulletList, highlightQuery: S
                     Text(
                         text = annotated,
                         style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -197,6 +200,7 @@ private fun OrderedListContent(block: MarkdownBlock.OrderedList, highlightQuery:
                     Text(
                         text = annotated,
                         style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -264,6 +268,9 @@ private fun LatexBlockContent(block: MarkdownBlock.LatexBlock, highlightQuery: S
 
 @Composable
 private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
+    val columnWidths = remember(block) {
+        tableColumnWidths(block.headers, block.rows)
+    }
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
         shape = MaterialTheme.shapes.small,
@@ -277,7 +284,12 @@ private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
                 .padding(8.dp),
         ) {
             if (block.headers.isNotEmpty()) {
-                TableRow(block.headers, header = true, highlightQuery = highlightQuery)
+                TableRow(
+                    cells = block.headers,
+                    columnWidths = columnWidths,
+                    header = true,
+                    highlightQuery = highlightQuery,
+                )
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
                     color = MaterialTheme.colorScheme.outlineVariant,
@@ -285,22 +297,34 @@ private fun TableContent(block: MarkdownBlock.Table, highlightQuery: String) {
                 )
             }
             block.rows.forEach { row ->
-                TableRow(row, header = false, highlightQuery = highlightQuery)
+                TableRow(
+                    cells = row,
+                    columnWidths = columnWidths,
+                    header = false,
+                    highlightQuery = highlightQuery,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TableRow(cells: List<String>, header: Boolean, highlightQuery: String) {
+private fun TableRow(
+    cells: List<String>,
+    columnWidths: List<Dp>,
+    header: Boolean,
+    highlightQuery: String,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        cells.forEach { cell ->
+        cells.forEachIndexed { index, cell ->
             val annotated = rememberHighlightedText(cell, highlightQuery)
+            val cellWidth = columnWidths.getOrElse(index) { 120.dp }
             Text(
                 text = annotated,
-                modifier = Modifier.width(120.dp),
+                modifier = Modifier.widthIn(min = cellWidth, max = cellWidth),
                 style = if (header) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
                 fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -346,4 +370,21 @@ private fun copyContentDescription(label: String): String =
         "latex" -> "复制 LaTeX"
         "mermaid" -> "复制 Mermaid 源码"
         else -> "复制 $label 代码"
+    }
+
+private fun tableColumnWidths(headers: List<String>, rows: List<List<String>>): List<Dp> {
+    val maxColumns = maxOf(headers.size, rows.maxOfOrNull { it.size } ?: 0)
+    return (0 until maxColumns).map { column ->
+        val maxLength = listOf(headers.getOrNull(column).orEmpty())
+            .plus(rows.map { row -> row.getOrNull(column).orEmpty() })
+            .maxOf { it.length }
+        tableCellWidth(maxLength)
+    }
+}
+
+private fun tableCellWidth(length: Int) =
+    when {
+        length <= 8 -> 96.dp
+        length <= 16 -> 136.dp
+        else -> 180.dp
     }

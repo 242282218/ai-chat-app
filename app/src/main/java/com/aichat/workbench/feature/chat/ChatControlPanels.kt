@@ -6,9 +6,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -130,7 +131,10 @@ private fun ModelSelectorSection(
                 icon = Icons.Filled.Tune,
                 tone = StatusTone.Warning,
             ) {
-                TextButton(onClick = onOpenProviders) {
+                TextButton(
+                    onClick = onOpenProviders,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text(text = "配置")
                 }
             }
@@ -146,7 +150,7 @@ private fun ModelSelectorSection(
                         label = {
                             Text(
                                 text = provider.name,
-                                modifier = Modifier.width(120.dp),
+                                modifier = Modifier.widthIn(max = 160.dp),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -202,7 +206,9 @@ private fun DangerActions(
 private fun NewConversationButton(onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
         Icon(imageVector = Icons.Filled.Add, contentDescription = null)

@@ -5,10 +5,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -106,12 +109,18 @@ private fun ChatErrorPanel(
             },
         )
         if (onRetry != null) {
-            androidx.compose.material3.TextButton(onClick = onRetry) {
-                androidx.compose.material3.Text(text = "重试")
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(text = "重试")
             }
         } else {
-            androidx.compose.material3.TextButton(onClick = onOpenProviders) {
-                androidx.compose.material3.Text(text = "配置")
+            TextButton(
+                onClick = onOpenProviders,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(text = "配置")
             }
         }
     }

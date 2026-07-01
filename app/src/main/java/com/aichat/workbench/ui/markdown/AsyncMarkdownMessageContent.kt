@@ -3,7 +3,12 @@ package com.aichat.workbench.ui.markdown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -48,11 +53,23 @@ fun AsyncMarkdownMessageContent(
         is ParseResult.Loading -> {
             // Show minimal loading indicator for very long text
             if (text.length > 5000) {
-                Column(
+                Surface(
                     modifier = modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
+                    shape = MaterialTheme.shapes.medium,
                 ) {
-                    CircularProgressIndicator()
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text(
+                            text = "正在整理长回复",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             } else {
                 // For short text, show as-is (parsing is fast)

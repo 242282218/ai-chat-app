@@ -4,7 +4,9 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,20 +26,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ConversationPreview
 import com.aichat.workbench.ui.theme.WorkbenchSpacing
+import com.aichat.workbench.ui.util.isReduceMotionEnabled
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -58,100 +58,86 @@ import java.util.Locale
 fun ConversationCard(
     conversation: ConversationPreview,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val reduceMotion = isReduceMotionEnabled()
 
-    // iOS-style press animation
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
+        targetValue = if (!reduceMotion && isPressed) 0.97f else 1f,
         animationSpec = spring(
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
         ),
-        label = "card_press_scale"
+        label = "card_press_scale",
     )
 
     Card(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .padding(horizontal = WorkbenchSpacing.l, vertical = WorkbenchSpacing.xs)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        isPressed = true
-                        val released = tryAwaitRelease()
-                        isPressed = false
-                        if (released) onClick()
-                    }
-                )
-            },
+            .padding(horizontal = WorkbenchSpacing.l, vertical = WorkbenchSpacing.xs),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 1.dp,
-            pressedElevation = 4.dp
+            defaultElevation = 0.dp,
+            pressedElevation = 2.dp,
         ),
-        shape = MaterialTheme.shapes.large
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        shape = MaterialTheme.shapes.large,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(WorkbenchSpacing.l),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Avatar
             ConversationAvatar(
                 title = conversation.title,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(52.dp),
             )
 
-            // Content
             Column(modifier = Modifier.weight(1f)) {
-                // Title
-                Text(
-                    text = conversation.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(WorkbenchSpacing.xs))
-
-                // Preview + Time
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(WorkbenchSpacing.s),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    conversation.lastMessagePreview()?.let { lastMessagePreview ->
-                        Text(
-                            text = lastMessagePreview.take(50),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
+                    Text(
+                        text = conversation.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
 
-                        Text(
-                            text = "·",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                    }
-
-                    // Relative time
                     Text(
                         text = formatRelativeTime(conversation.updatedAt),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                conversation.lastMessagePreview()?.let { lastMessagePreview ->
+                    Spacer(modifier = Modifier.height(WorkbenchSpacing.xs))
+
+                    Text(
+                        text = lastMessagePreview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -184,7 +170,7 @@ private fun formatRelativeTime(instant: Instant): String {
 @Composable
 fun SwipeDeleteBackground(
     dismissProgress: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val color by animateColorAsState(
         targetValue = when {
@@ -193,7 +179,7 @@ fun SwipeDeleteBackground(
             else -> MaterialTheme.colorScheme.error.copy(alpha = 0.3f)
         },
         animationSpec = spring(),
-        label = "delete_background_color"
+        label = "delete_background_color",
     )
 
     Box(
@@ -203,20 +189,20 @@ fun SwipeDeleteBackground(
                 Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        color
+                        color,
                     ),
                     startX = 0f,
-                    endX = Float.POSITIVE_INFINITY
-                )
+                    endX = Float.POSITIVE_INFINITY,
+                ),
             )
             .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.CenterEnd
+        contentAlignment = Alignment.CenterEnd,
     ) {
         Icon(
             imageVector = Icons.Filled.Delete,
-            contentDescription = "删除",
+            contentDescription = "删除对话",
             tint = MaterialTheme.colorScheme.onError,
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(28.dp),
         )
     }
 }

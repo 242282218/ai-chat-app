@@ -41,6 +41,8 @@ internal data class ProviderSettingsUiState(
     val allowHttp: Boolean = false,
     val message: String? = null,
     val isSaving: Boolean = false,
+    val isTestingConnection: Boolean = false,
+    val isRefreshingModels: Boolean = false,
     val showProviderEditor: Boolean = false,
     val pendingResetForm: Boolean = false,
     val pendingLoadProviderId: String? = null,
@@ -77,6 +79,8 @@ internal data class ProviderSettingsUiState(
         headers = headers,
         allowHttp = allowHttp,
     )
+
+    val hasActiveProviderOperation: Boolean get() = isSaving || isTestingConnection || isRefreshingModels
 }
 
 internal class ProviderSettingsViewModel(
@@ -219,7 +223,7 @@ internal class ProviderSettingsViewModel(
 
     fun saveProvider() {
         val current = _state.value
-        if (current.isSaving) return
+        if (current.hasActiveProviderOperation) return
         val provider = currentProvider()
         _state.update { it.copy(isSaving = true) }
         viewModelScope.launch {
@@ -255,65 +259,75 @@ internal class ProviderSettingsViewModel(
 
     fun testConnection() {
         val current = _state.value
+        if (current.hasActiveProviderOperation) return
         val provider = currentProvider()
         if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !current.allowHttp) {
             _state.update { it.copy(message = "测试此 URL 前请先允许 HTTP。") }
             return
         }
+        _state.update { it.copy(isTestingConnection = true, message = "测试中...") }
         viewModelScope.launch {
-            _state.update { it.copy(message = "测试中...") }
-            runCatching {
-                val storedKey = if (current.apiKey.isBlank()) {
-                    providerRepository.getApiKey(provider.id)
-                } else {
-                    null
-                }
-                connectionTester.test(
-                    provider = provider,
-                    apiKey = current.apiKey.trim().ifBlank { storedKey.orEmpty() },
-                )
-            }.onSuccess { result ->
-                _state.update {
-                    it.copy(
-                        message = if (result.ok) {
-                            "${result.message} (${result.statusCode})"
-                        } else {
-                            result.message
-                        },
+            try {
+                runCatching {
+                    val storedKey = if (current.apiKey.isBlank()) {
+                        providerRepository.getApiKey(provider.id)
+                    } else {
+                        null
+                    }
+                    connectionTester.test(
+                        provider = provider,
+                        apiKey = current.apiKey.trim().ifBlank { storedKey.orEmpty() },
                     )
+                }.onSuccess { result ->
+                    _state.update {
+                        it.copy(
+                            message = if (result.ok) {
+                                "${result.message} (${result.statusCode})"
+                            } else {
+                                result.message
+                            },
+                        )
+                    }
+                }.onFailure { error ->
+                    _state.update { it.copy(message = error.message ?: "模型连接测试失败。") }
                 }
-            }.onFailure { error ->
-                _state.update { it.copy(message = error.message ?: "模型连接测试失败。") }
+            } finally {
+                _state.update { it.copy(isTestingConnection = false) }
             }
         }
     }
 
     fun refreshModels() {
         val current = _state.value
+        if (current.hasActiveProviderOperation) return
         val provider = currentProvider()
         if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !current.allowHttp) {
             _state.update { it.copy(message = "刷新模型前请先允许 HTTP。") }
             return
         }
+        _state.update { it.copy(isRefreshingModels = true, message = "刷新模型中...") }
         viewModelScope.launch {
-            _state.update { it.copy(message = "刷新模型中...") }
-            runCatching {
-                discoverModelsFor(provider)
-            }.onSuccess { discoveredModels ->
-                discoveredModels?.let {
-                    _state.update { state ->
-                        state.copy(
-                            models = it,
-                            model = if (state.model.isBlank()) {
-                                it.preferredDiscoveredChatModel()
-                            } else {
-                                state.model
-                            },
-                        )
+            try {
+                runCatching {
+                    discoverModelsFor(provider)
+                }.onSuccess { discoveredModels ->
+                    discoveredModels?.let {
+                        _state.update { state ->
+                            state.copy(
+                                models = it,
+                                model = if (state.model.isBlank()) {
+                                    it.preferredDiscoveredChatModel()
+                                } else {
+                                    state.model
+                                },
+                            )
+                        }
                     }
+                }.onFailure { error ->
+                    _state.update { it.copy(message = error.message ?: "刷新模型失败。") }
                 }
-            }.onFailure { error ->
-                _state.update { it.copy(message = error.message ?: "刷新模型失败。") }
+            } finally {
+                _state.update { it.copy(isRefreshingModels = false) }
             }
         }
     }
@@ -338,6 +352,9 @@ internal class ProviderSettingsViewModel(
                 enabled = provider.enabled,
                 allowHttp = provider.baseUrl.startsWith("http://", ignoreCase = true),
                 message = null,
+                isSaving = false,
+                isTestingConnection = false,
+                isRefreshingModels = false,
             )
         }
     }
@@ -358,6 +375,9 @@ internal class ProviderSettingsViewModel(
                 enabled = true,
                 allowHttp = false,
                 message = null,
+                isSaving = false,
+                isTestingConnection = false,
+                isRefreshingModels = false,
             )
         }
     }

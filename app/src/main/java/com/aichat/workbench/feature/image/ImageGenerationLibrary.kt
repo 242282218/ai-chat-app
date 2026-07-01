@@ -2,15 +2,14 @@ package com.aichat.workbench.feature.image
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -38,6 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,21 +73,27 @@ internal fun ImageLibraryHeader(
                     label = "清空图片历史",
                     onClick = onClearHistory,
                     enabled = state.generations.isNotEmpty() && !state.isGenerating,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.72f),
                 )
             },
         )
-        Row(
+        LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StatusPill(text = state.imageLibrarySummaryLabel(), tone = StatusTone.Neutral)
+            item {
+                StatusPill(text = state.imageLibrarySummaryLabel(), tone = StatusTone.Neutral)
+            }
             if (failedCount > 0) {
-                StatusPill(text = "$failedCount 个失败", tone = StatusTone.Critical)
+                item {
+                    StatusPill(text = "$failedCount 个失败", tone = StatusTone.Critical)
+                }
             }
             if (state.isGenerating) {
-                StatusPill(text = "生成中", tone = StatusTone.Accent)
+                item {
+                    StatusPill(text = "生成中", tone = StatusTone.Accent)
+                }
             }
         }
     }
@@ -99,17 +108,22 @@ internal fun ImageGenerationRow(
     onShare: () -> Unit,
     onSendToChat: () -> Unit,
 ) {
+    val thumbnailDescription = generation.thumbnailContentDescription()
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
-        tonalElevation = 2.dp,
+        tonalElevation = 0.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Box {
                 generation.thumbnailPath?.let { path ->
-                    LocalThumbnail(path = path)
-                } ?: MissingThumbnail()
+                    LocalThumbnail(
+                        path = path,
+                        contentDescription = thumbnailDescription,
+                    )
+                } ?: MissingThumbnail(contentDescription = thumbnailDescription)
                 StatusPill(
                     text = generation.status.displayLabel(),
                     tone = generation.statusTone(),
@@ -146,12 +160,13 @@ internal fun ImageGenerationRow(
             }
             LazyRow(
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 item {
                     OutlinedButton(
                         onClick = onReusePrompt,
+                        modifier = Modifier.heightIn(min = 48.dp),
                         shape = MaterialTheme.shapes.medium,
                     ) {
                         Text(text = "复用提示词")
@@ -197,11 +212,14 @@ internal fun ImageGenerationRow(
 }
 
 @Composable
-private fun MissingThumbnail() {
+private fun MissingThumbnail(contentDescription: String) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(16f / 9f),
+            .aspectRatio(1f)
+            .semantics {
+                this.contentDescription = "$contentDescription，预览不可用"
+            },
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
         shape = MaterialTheme.shapes.medium,
     ) {
@@ -251,6 +269,11 @@ private fun ImageGeneration.metadataLabel(): String {
     return "$model · $size · $quality"
 }
 
+private fun ImageGeneration.thumbnailContentDescription(): String {
+    val promptLabel = prompt.preview(48).ifBlank { "无提示词" }
+    return "生成图片，状态${status.displayLabel()}，提示词：$promptLabel"
+}
+
 private fun ImageGenerationUiState.imageLibrarySummaryLabel(): String {
     if (generations.isEmpty()) return "暂无作品"
     val completedCount = generations.count { it.status == ImageGenerationStatus.Completed }
@@ -258,55 +281,76 @@ private fun ImageGenerationUiState.imageLibrarySummaryLabel(): String {
 }
 
 @Composable
-private fun LocalThumbnail(path: String) {
+private fun LocalThumbnail(
+    path: String,
+    contentDescription: String,
+) {
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(path) {
+        isLoading = true
         bitmap = withContext(Dispatchers.IO) {
             try {
                 BitmapFactory.decodeFile(path)?.asImageBitmap()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
-            } finally {
-                isLoading = false
             }
         }
         isLoading = false
     }
 
     if (isLoading) {
-        Box(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
+                .aspectRatio(1f)
+                .semantics {
+                    this.contentDescription = "$contentDescription，加载中"
+                    liveRegion = LiveRegionMode.Polite
+                },
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Text(
+                        text = "加载预览",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
         return
     }
 
     if (bitmap == null) {
-        MissingThumbnail()
+        MissingThumbnail(contentDescription = contentDescription)
         return
     }
 
-    // Cache the loaded bitmap to avoid re-decoding on recomposition
     val cachedBitmap = remember(bitmap) { bitmap }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp),
+            .aspectRatio(1f),
         shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
     ) {
         Image(
             bitmap = cachedBitmap!!,
-            contentDescription = "生成图片预览",
-            modifier = Modifier.fillMaxWidth(),
-            contentScale = ContentScale.Crop,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
         )
     }
 }

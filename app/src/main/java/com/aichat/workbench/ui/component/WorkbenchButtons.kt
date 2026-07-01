@@ -25,15 +25,20 @@ fun WorkbenchIconButton(
     enabled: Boolean = true,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    val effectiveTint = if (enabled) {
+        tint
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    }
     IconButton(
         onClick = onClick,
-        modifier = modifier.sizeIn(minWidth = 40.dp, minHeight = 40.dp),
+        modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp),
         enabled = enabled,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = tint,
+            tint = effectiveTint,
         )
     }
 }
@@ -68,6 +73,7 @@ fun WorkbenchConfirmDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
+                modifier = Modifier.sizeIn(minHeight = 48.dp),
                 colors = if (destructive) {
                     ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
@@ -85,7 +91,10 @@ fun WorkbenchConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.sizeIn(minHeight = 48.dp),
+            ) {
                 Text(text = dismissLabel)
             }
         },

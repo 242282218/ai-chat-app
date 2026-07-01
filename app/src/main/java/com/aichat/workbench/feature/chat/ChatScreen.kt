@@ -1,5 +1,6 @@
 package com.aichat.workbench.feature.chat
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -28,6 +31,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.aichat.workbench.domain.model.ConversationId
@@ -224,26 +230,58 @@ private fun SearchBar(
     onNavigateMatch: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        placeholder = { Text(text = "搜索消息...") },
-        singleLine = true,
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = workbenchTextFieldColors(),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        trailingIcon = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (query.isNotBlank() && matchCount > 0) {
-                    Text(
-                        text = "${currentMatchIndex + 1}/$matchCount",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 2.dp),
-                    )
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(text = "搜索消息") },
+            placeholder = { Text(text = "搜索消息...") },
+            singleLine = true,
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = workbenchTextFieldColors(),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            trailingIcon = {
+                WorkbenchIconButton(
+                    icon = Icons.Filled.Close,
+                    label = "关闭搜索",
+                    onClick = onClose,
+                )
+            },
+        )
+        if (query.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (matchCount > 0) {
+                        "${currentMatchIndex + 1}/$matchCount 个匹配"
+                    } else {
+                        "无匹配"
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                        },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (matchCount > 0) {
                     WorkbenchIconButton(
                         icon = Icons.Filled.KeyboardArrowUp,
                         label = "上一个匹配",
@@ -254,20 +292,8 @@ private fun SearchBar(
                         label = "下一个匹配",
                         onClick = { onNavigateMatch(1) },
                     )
-                } else if (query.isNotBlank()) {
-                    Text(
-                        text = "无匹配",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
                 }
-                WorkbenchIconButton(
-                    icon = Icons.Filled.Close,
-                    label = "关闭搜索",
-                    onClick = onClose,
-                )
             }
-        },
-    )
+        }
+    }
 }
