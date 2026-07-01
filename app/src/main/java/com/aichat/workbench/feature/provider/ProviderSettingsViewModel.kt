@@ -246,7 +246,13 @@ internal class ProviderSettingsViewModel(
                         defaultModel = defaultModel.ifBlank { null },
                     )
                 }
-                saveProviderConfigUseCase(providerToSave, current.apiKey.trim(), current.allowHttp)
+                saveProviderConfigUseCase(
+                    provider = providerToSave,
+                    plaintextApiKey = current.apiKey.trim(),
+                    allowInsecureHttp = current.allowHttp,
+                    // Preserve existing key when the user leaves the field blank
+                    preserveExistingApiKey = !current.hasStoredKey || current.apiKey.trim().isNotBlank(),
+                )
                 saveRolePreferences(providerToSave.id)
             }.onSuccess {
                 resetForm()

@@ -11,6 +11,7 @@ class SaveProviderConfigUseCase(
         provider: ProviderConfig,
         plaintextApiKey: String?,
         allowInsecureHttp: Boolean,
+        preserveExistingApiKey: Boolean = true,
     ) {
         val normalizedProvider = provider.normalizedForSave()
         val normalizedApiKey = plaintextApiKey?.trim()?.takeIf { it.isNotBlank() }
@@ -28,7 +29,12 @@ class SaveProviderConfigUseCase(
         ) {
             "Default model must exist in model list."
         }
-        repository.saveProvider(normalizedProvider, normalizedApiKey)
+        repository.saveProvider(
+            provider = normalizedProvider,
+            plaintextApiKey = normalizedApiKey,
+            preserveExistingApiKey = preserveExistingApiKey,
+            deleteReplacedApiKey = normalizedApiKey != null,
+        )
     }
 
     private fun ProviderConfig.normalizedForSave(): ProviderConfig =

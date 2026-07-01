@@ -13,8 +13,8 @@ const val DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 const val DEFAULT_OLLAMA_BASE_URL = "http://10.0.2.2:11434"
 
 class ProviderRegistry {
-    private val providers = mutableMapOf<String, ChatProvider>()
-    private val descriptors = mutableMapOf<String, ProviderDescriptor>()
+    private val providers = java.util.concurrent.ConcurrentHashMap<String, ChatProvider>()
+    private val descriptors = java.util.concurrent.ConcurrentHashMap<String, ProviderDescriptor>()
 
     fun register(type: String, provider: ChatProvider) {
         val providerType = ProviderType.fromStorage(type)

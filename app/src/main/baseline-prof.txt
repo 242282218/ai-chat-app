@@ -1,6 +1,6 @@
 HSPLcom/aichat/workbench/MainActivity;->**(**)**
 HSPLcom/aichat/workbench/app/AiChatApplication;->**(**)**
-HSPLcom/aichat/workbench/app/AppModuleKt;->**(**)**
+HSPLcom/aichat/workbench/app/di/AppModuleKt;->**(**)**
 HSPLcom/aichat/workbench/navigation/AppDestination;->**(**)**
 HSPLcom/aichat/workbench/navigation/AppNavHostKt;->**(**)**
 HSPLcom/aichat/workbench/ui/component/StatusToneKt;->**(**)**

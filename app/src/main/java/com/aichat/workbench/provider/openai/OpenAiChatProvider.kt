@@ -18,8 +18,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
+// DI always provides a configured client; no default to avoid losing interceptors and connection pooling.
 open class OpenAiChatProvider(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient,
     private val useResponsesApi: Boolean = true,
 ) : ChatProvider {
     override suspend fun complete(request: ChatProviderRequest): ProviderTextResponse {

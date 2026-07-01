@@ -13,18 +13,23 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -48,21 +53,37 @@ import org.koin.androidx.compose.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onOpenProviders: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenImageGeneration: () -> Unit,
     initialConversationId: ConversationId? = null,
     initialDraft: String = "",
     startNewConversation: Boolean = false,
+    showConversationDrawer: Boolean = false,
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Memoize search-derived collections to avoid recomputing on every recomposition
+    val filteredMessages by remember {
+        derivedStateOf {
+            if (state.searchQuery.isBlank()) state.messages
+            else state.messages.filter { it.content.contains(state.searchQuery, ignoreCase = true) }
+        }
+    }
+    val matchingMessageIds by remember {
+        derivedStateOf { filteredMessages.map { it.id } }
+    }
+
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }
     var confirmSendImages by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     val controlSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
@@ -88,60 +109,100 @@ fun ChatScreen(
         viewModel.applyInitialDraft(initialDraft)
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            ChatTopBar(
-                state = state,
-                onBack = onBack,
-                onOpenControls = androidx.compose.runtime.remember { { showControls = true } },
-                onToggleSearch = { viewModel.toggleSearch() },
-                onSelectProvider = viewModel::selectProvider,
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            if (state.isSearchActive) {
-                SearchBar(
-                    query = state.searchQuery,
-                    matchCount = state.searchMatchCount,
+    val chatContent: @Composable () -> Unit = {
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                ChatTopBar(
+                    state = state,
+                    onBack = onBack,
+                    onOpenDrawer = if (showConversationDrawer) {
+                        { scope.launch { drawerState.open() } }
+                    } else {
+                        null
+                    },
+                    onOpenControls = { showControls = true },
+                    onToggleSearch = { viewModel.toggleSearch() },
+                    onOpenSettings = onOpenSettings,
+                    onOpenImageGeneration = onOpenImageGeneration,
+                    onSelectProvider = viewModel::selectProvider,
+                )
+            },
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                if (state.isSearchActive) {
+                    SearchBar(
+                        query = state.searchQuery,
+                        matchCount = if (state.searchQuery.isBlank()) 0 else filteredMessages.size,
+                        currentMatchIndex = state.currentMatchIndex,
+                        onQueryChange = viewModel::updateSearchQuery,
+                        onNavigateMatch = viewModel::navigateMatch,
+                        onClose = { viewModel.toggleSearch() },
+                    )
+                }
+                ChatMessageList(
+                    messages = filteredMessages,
+                    hasEnabledProvider = state.providers.any { it.enabled },
+                    onOpenProviders = onOpenProviders,
+                    onEdit = viewModel::editMessage,
+                    onRetry = viewModel::retryMessage,
+                    onDelete = { pendingDeleteMessageId = it.value },
+                    highlightQuery = state.searchQuery,
+                    matchingMessageIds = matchingMessageIds,
                     currentMatchIndex = state.currentMatchIndex,
-                    onQueryChange = viewModel::updateSearchQuery,
-                    onNavigateMatch = viewModel::navigateMatch,
-                    onClose = { viewModel.toggleSearch() },
+                    modifier = Modifier.weight(1f),
+                )
+                ChatInputArea(
+                    state = state,
+                    viewModel = viewModel,
+                    onOpenProviders = onOpenProviders,
+                    onImagePicked = { uri ->
+                        scope.launch {
+                            runCatching { encodeChatImage(context, uri) }
+                                .onSuccess(viewModel::addImageDraft)
+                                .onFailure { viewModel.reportImageInputError(it.message ?: "图片读取失败。") }
+                        }
+                    },
+                    onConfirmSendImages = { confirmSendImages = true },
                 )
             }
-            ChatMessageList(
-                messages = state.filteredMessages,
-                hasEnabledProvider = state.providers.any { it.enabled },
-                onOpenProviders = onOpenProviders,
-                onEdit = viewModel::editMessage,
-                onRetry = viewModel::retryMessage,
-                onDelete = { pendingDeleteMessageId = it.value },
-                highlightQuery = state.searchQuery,
-                matchingMessageIds = state.matchingMessageIds,
-                currentMatchIndex = state.currentMatchIndex,
-                modifier = Modifier.weight(1f),
-            )
-            ChatInputArea(
-                state = state,
-                viewModel = viewModel,
-                onOpenProviders = onOpenProviders,
-                onImagePicked = { uri ->
-                    scope.launch {
-                        runCatching { encodeChatImage(context, uri) }
-                            .onSuccess(viewModel::addImageDraft)
-                            .onFailure { viewModel.reportImageInputError(it.message ?: "图片读取失败。") }
-                    }
-                },
-                onConfirmSendImages = { confirmSendImages = true },
-            )
         }
+    }
+
+    if (showConversationDrawer) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ChatSessionDrawer(
+                    state = state,
+                    onNewConversation = {
+                        viewModel.startNewConversation()
+                        scope.launch { drawerState.close() }
+                    },
+                    onConversationSelected = { id ->
+                        viewModel.selectConversation(id)
+                        scope.launch { drawerState.close() }
+                    },
+                    onOpenSettings = {
+                        scope.launch { drawerState.close() }
+                        onOpenSettings()
+                    },
+                    onOpenImageGeneration = {
+                        scope.launch { drawerState.close() }
+                        onOpenImageGeneration()
+                    },
+                )
+            },
+        ) {
+            chatContent()
+        }
+    } else {
+        chatContent()
     }
 
     if (showControls) {

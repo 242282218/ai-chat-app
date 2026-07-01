@@ -217,7 +217,13 @@ class ChatViewModel(
         updateState { it.copy(draft = transform(it.draft)) }
 
     private fun updateState(transform: (ChatUiState) -> ChatUiState) {
-        _state.update { current -> transform(current) }
-        _state.value.draft.toSavedState(savedStateHandle)
+        _state.update { current ->
+            val next = transform(current)
+            // Persist draft whenever it changes to survive process death
+            if (next.draft !== current.draft) {
+                next.draft.toSavedState(savedStateHandle)
+            }
+            next
+        }
     }
 }

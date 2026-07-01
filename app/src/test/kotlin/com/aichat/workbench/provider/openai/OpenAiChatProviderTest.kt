@@ -13,6 +13,7 @@ import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.compatible.OpenAiCompatibleChatProvider
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -24,6 +25,7 @@ import org.junit.Test
 
 class OpenAiChatProviderTest {
     private lateinit var server: MockWebServer
+    private val httpClient = OkHttpClient()
 
     @Before
     fun setUp() {
@@ -43,7 +45,7 @@ class OpenAiChatProviderTest {
                 .setResponseCode(200)
                 .setBody("""{"output_text":"Hello"}"""),
         )
-        val provider = OpenAiChatProvider()
+        val provider = OpenAiChatProvider(httpClient)
 
         val response = provider.complete(openAiRequest())
         val recorded = server.takeRequest()
@@ -76,7 +78,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiChatProvider()
+        val provider = OpenAiChatProvider(httpClient)
 
         val events = provider.stream(openAiRequest()).toList()
 
@@ -105,7 +107,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiCompatibleChatProvider()
+        val provider = OpenAiCompatibleChatProvider(httpClient)
 
         val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
         val recorded = server.takeRequest()
@@ -127,7 +129,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiCompatibleChatProvider()
+        val provider = OpenAiCompatibleChatProvider(httpClient)
 
         val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
 
@@ -141,7 +143,7 @@ class OpenAiChatProviderTest {
                 .setResponseCode(200)
                 .setBody("""{"choices":[{"message":{"content":"Hello"}}]}"""),
         )
-        val provider = OpenAiCompatibleChatProvider()
+        val provider = OpenAiCompatibleChatProvider(httpClient)
 
         val response = provider.complete(
             openAiRequest(
@@ -172,7 +174,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiCompatibleChatProvider()
+        val provider = OpenAiCompatibleChatProvider(httpClient)
 
         val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
         val recorded = server.takeRequest()
@@ -203,7 +205,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiChatProvider()
+        val provider = OpenAiChatProvider(httpClient)
 
         val events = provider.stream(openAiRequest()).toList()
 
@@ -231,7 +233,7 @@ class OpenAiChatProviderTest {
                     """.trimIndent(),
                 ),
         )
-        val provider = OpenAiChatProvider()
+        val provider = OpenAiChatProvider(httpClient)
         val image = MessagePart.Image("data:image/jpeg;base64,abc", "image/jpeg")
 
         val events = provider.stream(
@@ -261,7 +263,7 @@ class OpenAiChatProviderTest {
                 .setResponseCode(401)
                 .setBody("""{"error":{"message":"bad key"}}"""),
         )
-        val provider = OpenAiChatProvider()
+        val provider = OpenAiChatProvider(httpClient)
 
         val error = runCatching {
             provider.complete(openAiRequest())

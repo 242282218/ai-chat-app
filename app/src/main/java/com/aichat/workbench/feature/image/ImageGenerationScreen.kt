@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aichat.workbench.ui.component.EmptyStatePanel
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
+import com.aichat.workbench.ui.component.WorkbenchIconButton
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +61,13 @@ fun ImageGenerationScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
+                navigationIcon = {
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
+                },
             )
         },
     ) { innerPadding ->

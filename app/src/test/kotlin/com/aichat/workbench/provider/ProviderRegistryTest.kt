@@ -80,6 +80,22 @@ class ProviderRegistryTest {
     }
 
     @Test
+    fun createsBuiltInProviderRegistryWithExpectedProviderBindings() {
+        val openAi = ProviderRegistryTestChatProvider()
+        val compatible = ProviderRegistryTestChatProvider()
+
+        val registry = createBuiltInProviderRegistry(openAi, compatible)
+
+        assertSame(openAi, registry.get(ProviderType.OpenAI.value))
+        assertSame(compatible, registry.get(ProviderType.OpenAICompatible.value))
+        assertSame(compatible, registry.get(ProviderType.NewApi.value))
+        assertSame(compatible, registry.get(ProviderType.Sub2Api.value))
+        assertSame(compatible, registry.get(ProviderType.Custom.value))
+        assertSame(compatible, registry.get(ProviderType.OpenRouter.value))
+        assertSame(compatible, registry.get(ProviderType.Ollama.value))
+    }
+
+    @Test
     fun fallsBackToCustomDescriptorForUnknownType() {
         val descriptor = ProviderRegistry().descriptor(ProviderType("custom_vendor"))
 

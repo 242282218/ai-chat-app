@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
@@ -36,13 +39,17 @@ import com.aichat.workbench.ui.component.WorkbenchIconButton
 @Composable
 fun ChatTopBar(
     state: ChatUiState,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
+    onOpenDrawer: (() -> Unit)?,
     onOpenControls: () -> Unit,
     onToggleSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenImageGeneration: () -> Unit,
     onSelectProvider: (String) -> Unit,
 ) {
     val selectedConversation = state.conversations.firstOrNull { it.id == state.selectedConversationId }
     var showModelMenu by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
 
     CenterAlignedTopAppBar(
         title = {
@@ -71,11 +78,22 @@ fun ChatTopBar(
             }
         },
         navigationIcon = {
-            WorkbenchIconButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                label = "返回",
-                onClick = onBack,
-            )
+            when {
+                onOpenDrawer != null -> {
+                    WorkbenchIconButton(
+                        icon = Icons.Filled.Menu,
+                        label = "打开会话",
+                        onClick = onOpenDrawer,
+                    )
+                }
+                onBack != null -> {
+                    WorkbenchIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack,
+                    )
+                }
+            }
         },
         actions = {
             WorkbenchIconButton(
@@ -129,9 +147,53 @@ fun ChatTopBar(
             }
             WorkbenchIconButton(
                 icon = Icons.Filled.MoreVert,
-                label = "对话设置",
-                onClick = onOpenControls,
+                label = "更多",
+                onClick = { showMoreMenu = true },
             )
+            DropdownMenu(
+                expanded = showMoreMenu,
+                onDismissRequest = { showMoreMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = "图片生成") },
+                    onClick = {
+                        showMoreMenu = false
+                        onOpenImageGeneration()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Image,
+                            contentDescription = null,
+                        )
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "设置") },
+                    onClick = {
+                        showMoreMenu = false
+                        onOpenSettings()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = null,
+                        )
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "对话设置") },
+                    onClick = {
+                        showMoreMenu = false
+                        onOpenControls()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = null,
+                        )
+                    },
+                )
+            }
         },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,

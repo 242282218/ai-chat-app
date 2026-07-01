@@ -3,6 +3,7 @@ package com.aichat.workbench.app
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
+import com.aichat.workbench.app.di.appModules
 import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.conversations.ConversationsViewModel
@@ -58,8 +59,7 @@ class AppModuleSmokeTest : KoinTest {
         startKoin {
             androidContext(context)
             modules(
-                appModule,
-                module {
+                appModules + module {
                     factory { SavedStateHandle() }
                 },
             )
