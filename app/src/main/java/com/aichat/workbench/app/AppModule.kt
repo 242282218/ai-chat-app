@@ -184,6 +184,11 @@ val appModule: Module = module {
             clock = get(),
         )
     }
+    factory {
+        SaveProviderConfigUseCase(
+            repository = get(),
+        )
+    }
     viewModelOf(::ConversationsViewModel)
     viewModelOf(::ChatViewModel)
     viewModelOf(::ProviderSettingsViewModel)

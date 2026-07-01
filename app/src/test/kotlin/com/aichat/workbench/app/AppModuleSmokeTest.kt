@@ -7,6 +7,7 @@ import com.aichat.workbench.data.local.AiChatDatabase
 import com.aichat.workbench.feature.chat.ChatViewModel
 import com.aichat.workbench.feature.conversations.ConversationsViewModel
 import com.aichat.workbench.feature.image.ImageGenerationViewModel
+import com.aichat.workbench.feature.provider.ProviderSettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -68,6 +69,7 @@ class AppModuleSmokeTest : KoinTest {
         assertNotNull(get<ConversationsViewModel>())
         assertNotNull(get<ChatViewModel>())
         assertNotNull(get<ImageGenerationViewModel>())
+        assertNotNull(get<ProviderSettingsViewModel>())
         dispatcher.scheduler.advanceUntilIdle()
     }
 
