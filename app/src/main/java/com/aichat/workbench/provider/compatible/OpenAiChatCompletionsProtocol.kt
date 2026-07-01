@@ -11,7 +11,6 @@ import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderChatMessage
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.providerJson
-import com.aichat.workbench.provider.api.toProviderError
 import com.aichat.workbench.provider.openai.openAiPostJson
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -54,9 +53,7 @@ internal object OpenAiChatCompletionsProtocol {
 
     fun mapSse(data: String): List<ProviderStreamEvent> {
         if (data == "[DONE]") return listOf(ProviderStreamEvent.Completed)
-        val event = providerJson.decodeFromString<ChatCompletionSseEvent>(data)
-        event.error?.let { return listOf(ProviderStreamEvent.Failed(it.toProviderError(statusCode = null))) }
-        val choice = event.choices.firstOrNull()
+        val choice = providerJson.decodeFromString<ChatCompletionSseEvent>(data).choices.firstOrNull()
             ?: return emptyList()
         val content = choice.delta?.content?.jsonPrimitive?.contentOrNull.orEmpty()
         return when {
