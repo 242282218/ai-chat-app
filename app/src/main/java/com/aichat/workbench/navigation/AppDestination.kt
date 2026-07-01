@@ -1,5 +1,6 @@
 package com.aichat.workbench.navigation
 
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat as FilledChat
 import androidx.compose.material.icons.automirrored.outlined.Chat as OutlinedChat
 import androidx.compose.material.icons.filled.Image as FilledImage
@@ -34,19 +35,19 @@ val bottomTabItems = listOf(
     BottomTabItem(
         AppDestination.Conversations,
         "对话",
-        OutlinedChat,
-        FilledChat,
+        Icons.AutoMirrored.Outlined.OutlinedChat,
+        Icons.AutoMirrored.Filled.FilledChat,
     ),
     BottomTabItem(
         AppDestination.ImageGen,
         "图片",
-        OutlinedImage,
-        FilledImage,
+        Icons.Outlined.OutlinedImage,
+        Icons.Filled.FilledImage,
     ),
     BottomTabItem(
         AppDestination.Settings,
         "模型",
-        OutlinedTune,
-        FilledTune,
+        Icons.Outlined.OutlinedTune,
+        Icons.Filled.FilledTune,
     ),
 )
