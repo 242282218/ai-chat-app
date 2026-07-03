@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aichat.workbench.ui.brand.WorkbenchArtworkKind
+import com.aichat.workbench.ui.brand.WorkbenchBrandArtwork
 import com.aichat.workbench.ui.component.EmptyStatePanel
 import com.aichat.workbench.ui.component.WorkbenchConfirmDialog
 import com.aichat.workbench.ui.component.WorkbenchIconButton
@@ -131,8 +133,11 @@ fun ImageGenerationScreen(
 private fun EmptyImageState() {
     EmptyStatePanel(
         icon = Icons.Outlined.AutoAwesome,
-        title = "暂无图片",
-        description = "在上方输入提示词生成图片",
+        title = "暂无作品",
+        description = "输入提示词生成第一张图片。",
+        artwork = {
+            WorkbenchBrandArtwork(kind = WorkbenchArtworkKind.ImageCanvas)
+        },
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 48.dp),

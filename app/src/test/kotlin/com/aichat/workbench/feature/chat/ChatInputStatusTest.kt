@@ -60,8 +60,8 @@ class ChatInputStatusTest {
 
         assertEquals(
             InputStatus(
-                label = "需要先配置模型连接",
-                tone = StatusTone.Critical,
+                label = "需要模型连接",
+                tone = StatusTone.Warning,
             ),
             status,
         )

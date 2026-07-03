@@ -22,6 +22,8 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.provider.defaultImageModel
 import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.supportsImageGeneration
+import com.aichat.workbench.ui.brand.WorkbenchArtworkKind
+import com.aichat.workbench.ui.brand.WorkbenchBrandArtwork
 import com.aichat.workbench.ui.component.EmptyStatePanel
 import com.aichat.workbench.ui.component.InlineNotice
 import com.aichat.workbench.ui.component.MetadataRow
@@ -38,11 +40,15 @@ internal fun EmptyProviderState(
 ) {
     EmptyStatePanel(
         icon = Icons.Filled.Tune,
-        title = "还没有模型连接",
-        description = "添加连接后即可用于聊天和图片生成",
+        title = "添加模型连接",
+        description = "支持 OpenAI 和兼容接口，请求会从本机发送到你的接口。",
         actionLabel = "添加模型连接",
         actionIcon = Icons.Filled.Add,
         onAction = onCreate,
+        artwork = {
+            WorkbenchBrandArtwork(kind = WorkbenchArtworkKind.ProviderControls)
+        },
+        tone = StatusTone.Warning,
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 32.dp),

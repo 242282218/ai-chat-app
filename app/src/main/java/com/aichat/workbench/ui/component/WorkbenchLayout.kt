@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ fun WorkbenchPanel(
     modifier: Modifier = Modifier,
     description: String? = null,
     icon: ImageVector? = null,
+    iconTone: StatusTone = StatusTone.Neutral,
     trailing: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit,
 ) {
@@ -49,7 +51,7 @@ fun WorkbenchPanel(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (icon != null) {
-                IconTile(icon = icon)
+                IconTile(icon = icon, tone = iconTone)
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -218,6 +220,8 @@ fun EmptyStatePanel(
     actionLabel: String? = null,
     actionIcon: ImageVector = icon,
     onAction: (() -> Unit)? = null,
+    artwork: (@Composable () -> Unit)? = null,
+    tone: StatusTone = StatusTone.Accent,
 ) {
     Box(
         modifier = modifier
@@ -226,28 +230,35 @@ fun EmptyStatePanel(
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 40.dp),
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .padding(horizontal = 32.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+            if (artwork != null) {
+                artwork()
+            } else {
+                val colors = statusColors(tone)
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(colors.container),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = colors.content,
+                    )
+                }
             }
             Spacer(modifier = Modifier.size(24.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
             )

@@ -26,10 +26,8 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -66,16 +64,8 @@ fun ChatScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    // Memoize search-derived collections to avoid recomputing on every recomposition
-    val filteredMessages by remember {
-        derivedStateOf {
-            if (state.searchQuery.isBlank()) state.messages
-            else state.messages.filter { it.content.contains(state.searchQuery, ignoreCase = true) }
-        }
-    }
-    val matchingMessageIds by remember {
-        derivedStateOf { filteredMessages.map { it.id } }
-    }
+    val filteredMessages = state.filteredMessages
+    val matchingMessageIds = state.matchingMessageIds
 
     var confirmDeleteConversation by rememberSaveable { mutableStateOf(false) }
     var confirmClearContext by rememberSaveable { mutableStateOf(false) }

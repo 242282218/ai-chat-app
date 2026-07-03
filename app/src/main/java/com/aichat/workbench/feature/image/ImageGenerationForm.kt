@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ import com.aichat.workbench.ui.component.StatusTone
 import com.aichat.workbench.ui.component.WorkbenchIconButton
 import com.aichat.workbench.ui.component.workbenchTextFieldColors
 import com.aichat.workbench.ui.component.WorkbenchPanel
+import com.aichat.workbench.ui.theme.workbenchColors
 
 @Composable
 internal fun ImageGenerationForm(
@@ -57,10 +59,12 @@ internal fun ImageGenerationForm(
 ) {
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
+    val semantic = MaterialTheme.workbenchColors
     WorkbenchPanel(
         title = "图像创作台",
         description = "先描述画面，模型和尺寸按需展开。",
         icon = Icons.Filled.Image,
+        iconTone = StatusTone.Accent,
         trailing = {
             StatusPill(
                 text = state.imageGenerationReadiness().label,
@@ -92,7 +96,10 @@ internal fun ImageGenerationForm(
             label = { Text(text = "提示词 *") },
             placeholder = { Text(text = "描述主体、风格、构图和约束") },
             maxLines = 8,
-            colors = workbenchTextFieldColors(),
+            colors = workbenchTextFieldColors(
+                focusedBorderColor = semantic.imageAccent.copy(alpha = 0.45f),
+                cursorColor = semantic.imageAccent,
+            ),
             shape = MaterialTheme.shapes.medium,
         )
         ImageGenerationReadiness(state)
@@ -205,6 +212,17 @@ internal fun ImageGenerationForm(
                 .fillMaxWidth()
                 .heightIn(min = 48.dp),
             shape = MaterialTheme.shapes.medium,
+            colors = if (state.isGenerating) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = semantic.imageAccent,
+                    contentColor = semantic.onImageAccent,
+                )
+            },
         ) {
             Icon(
                 imageVector = if (state.isGenerating) Icons.Filled.Stop else Icons.Filled.Image,

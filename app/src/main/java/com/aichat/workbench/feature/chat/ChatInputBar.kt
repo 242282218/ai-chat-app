@@ -348,8 +348,8 @@ internal fun inputStatus(
             tone = StatusTone.Warning,
         )
         !canSend -> InputStatus(
-            label = "需要先配置模型连接",
-            tone = StatusTone.Critical,
+            label = "需要模型连接",
+            tone = StatusTone.Warning,
         )
         else -> null
     }

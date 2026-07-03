@@ -251,7 +251,7 @@ internal class ProviderSettingsViewModel(
                     plaintextApiKey = current.apiKey.trim(),
                     allowInsecureHttp = current.allowHttp,
                     // Preserve existing key when the user leaves the field blank
-                    preserveExistingApiKey = !current.hasStoredKey || current.apiKey.trim().isNotBlank(),
+                    preserveExistingApiKey = current.apiKey.trim().isBlank(),
                 )
                 saveRolePreferences(providerToSave.id)
             }.onSuccess {

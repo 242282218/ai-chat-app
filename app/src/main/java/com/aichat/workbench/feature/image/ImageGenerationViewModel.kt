@@ -21,8 +21,10 @@ import com.aichat.workbench.provider.supportsImageGeneration
 import com.aichat.workbench.provider.api.ProviderConnectionTestClient
 import com.aichat.workbench.provider.api.providerFailureSummary
 import java.time.Clock
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -174,48 +176,56 @@ class ImageGenerationViewModel(
     }
 
     fun generate() {
-        if (_state.value.isGenerating) return
-        generationJob = viewModelScope.launch {
-            generationMutex.withLock {
-                if (_state.value.isGenerating) return@launch
-                val current = _state.value
-                val provider = current.selectedProvider
-                val imageCount = current.count.trim().toIntOrNull() ?: 1
-                runCatching {
-                    requireNotNull(provider) { "模型服务未配置。" }
-                    require(current.prompt.isNotBlank()) { "图片提示词不能为空。" }
-                    require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
-                    require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
-                    require(imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
-                    val apiKey = providerRepository.getApiKey(provider.id)
-                    if (provider.requiresApiKey()) {
-                        require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
-                    }
+        if (_state.value.isGenerating || generationJob?.isActive == true) return
+        _state.update { it.copy(isGenerating = true, error = null) }
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val currentJob = currentCoroutineContext()[Job]
+            try {
+                generationMutex.withLock {
+                    val current = _state.value
+                    val provider = current.selectedProvider
+                    val imageCount = current.count.trim().toIntOrNull() ?: 1
+                    runCatching {
+                        requireNotNull(provider) { "模型服务未配置。" }
+                        require(current.prompt.isNotBlank()) { "图片提示词不能为空。" }
+                        require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
+                        require(!current.selectedModelUnsupported) { "所选模型不支持图片生成。" }
+                        require(imageCount in 1..4) { "图片数量必须在 1 到 4 之间。" }
+                        val apiKey = providerRepository.getApiKey(provider.id)
+                        if (provider.requiresApiKey()) {
+                            require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
+                        }
 
-                    _state.update { it.copy(isGenerating = true, error = null) }
-                    generateImageUseCase(
-                        GenerateImageRequest(
-                            conversationId = null,
-                            provider = provider,
-                            apiKey = apiKey,
-                            model = current.model.trim(),
-                            prompt = current.prompt.trim(),
-                            size = current.size.trim().ifBlank { null },
-                            quality = current.quality.trim().ifBlank { null },
-                            count = imageCount,
-                        ),
-                    )
-                }.onFailure { error ->
-                    if (error is CancellationException) {
-                        _state.update { it.copy(error = "已停止，提示词和参数已保留，可修改后重新生成。") }
-                        throw error
-                    } else {
-                        _state.update { it.copy(error = error.providerFailureSummary("图片生成失败。")) }
+                        generateImageUseCase(
+                            GenerateImageRequest(
+                                conversationId = null,
+                                provider = provider,
+                                apiKey = apiKey,
+                                model = current.model.trim(),
+                                prompt = current.prompt.trim(),
+                                size = current.size.trim().ifBlank { null },
+                                quality = current.quality.trim().ifBlank { null },
+                                count = imageCount,
+                            ),
+                        )
+                    }.onFailure { error ->
+                        if (error is CancellationException) {
+                            _state.update { it.copy(error = "已停止，提示词和参数已保留，可修改后重新生成。") }
+                            throw error
+                        } else {
+                            _state.update { it.copy(error = error.providerFailureSummary("图片生成失败。")) }
+                        }
                     }
                 }
-                _state.update { it.copy(isGenerating = false) }
+            } finally {
+                if (generationJob === currentJob) {
+                    generationJob = null
+                    _state.update { it.copy(isGenerating = false) }
+                }
             }
         }
+        generationJob = job
+        job.start()
     }
 
     fun testConnection() {

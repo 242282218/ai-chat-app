@@ -33,6 +33,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Base64
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -364,6 +365,42 @@ class ImageGenerationViewModelTest {
         )
         assertEquals(ImageGenerationStatus.Failed, repository.generations.value.single().status)
         assertEquals(viewModel.state.value.error, repository.generations.value.single().errorSummary)
+    }
+
+    @Test
+    fun repeatedGenerateThenStopCancelsActiveImageGeneration() = runTest(mainDispatcherRule.testDispatcher) {
+        val repository = FakeImageGenerationRepository(emptyList())
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val imageProvider = SuspendingImageProvider(
+            response = ImageGenerationProviderResponse(
+                images = listOf(base64Image(byteArrayOf(1, 2, 3))),
+            ),
+        )
+        val viewModel = viewModel(
+            repository = repository,
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            imageProvider = imageProvider,
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePrompt("Draw a test scene")
+        viewModel.generate()
+        viewModel.generate()
+        advanceUntilIdle()
+        assertEquals(1, imageProvider.requests.size)
+        assertTrue(viewModel.state.value.isGenerating)
+
+        viewModel.stopGeneration()
+        imageProvider.release()
+        advanceUntilIdle()
+
+        assertEquals(1, imageProvider.requests.size)
+        assertFalse(repository.generations.value.any { it.status == ImageGenerationStatus.Completed })
+        assertTrue(repository.generations.value.any { it.status == ImageGenerationStatus.Cancelled })
     }
 
     @Test
@@ -906,6 +943,25 @@ private class RecordingImageProvider(
         requests += request
         error?.let { throw it }
         return response
+    }
+}
+
+private class SuspendingImageProvider(
+    private val response: ImageGenerationProviderResponse,
+) : ImageGenerationProvider {
+    val requests = mutableListOf<ImageGenerationProviderRequest>()
+    private val released = CompletableDeferred<Unit>()
+
+    override suspend fun generate(
+        request: ImageGenerationProviderRequest,
+    ): ImageGenerationProviderResponse {
+        requests += request
+        released.await()
+        return response
+    }
+
+    fun release() {
+        released.complete(Unit)
     }
 }
 
