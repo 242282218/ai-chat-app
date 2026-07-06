@@ -23,4 +23,3 @@ fun workbenchTextFieldColors(
     unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
     cursorColor = cursorColor,
 )
-

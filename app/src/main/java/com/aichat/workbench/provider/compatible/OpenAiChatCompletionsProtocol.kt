@@ -122,4 +122,3 @@ private fun ProviderChatMessage.toChatContent(): JsonElement =
             }
         }
     }
-
