@@ -3,6 +3,7 @@ package com.aichat.workbench.data.repository
 import com.aichat.workbench.data.local.dao.ImageGenerationDao
 import com.aichat.workbench.data.mapper.toDomain
 import com.aichat.workbench.data.mapper.toEntity
+import com.aichat.workbench.domain.exception.StorageException
 import com.aichat.workbench.domain.model.ImageGeneration
 import com.aichat.workbench.domain.model.ImageGenerationId
 import com.aichat.workbench.domain.repository.ImageGenerationRepository
@@ -26,14 +27,14 @@ class RoomImageGenerationRepository(
     }
 
     override suspend fun deleteImageGeneration(id: ImageGenerationId) {
-        // First delete the image files from storage
-        imageStorage.deleteImage(id)
-        // Then delete the database record
+        runCatching { imageStorage.deleteImage(id) }
+            .getOrElse { error -> throw StorageException("图片文件清理失败，请重试。", error) }
         dao.deleteImageGeneration(id.value)
     }
 
     override suspend fun deleteAllImageGenerations() {
-        imageStorage.deleteAllImages()
+        runCatching { imageStorage.deleteAllImages() }
+            .getOrElse { error -> throw StorageException("图片文件清理失败，请重试。", error) }
         dao.deleteAllImageGenerations()
     }
 }

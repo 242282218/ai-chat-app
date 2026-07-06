@@ -5,6 +5,7 @@ import com.aichat.workbench.domain.model.ProviderConfig
 import com.aichat.workbench.domain.model.ProviderModelDiscovery
 import com.aichat.workbench.domain.model.ProviderModelDiscoveryFormat
 import com.aichat.workbench.domain.model.ProviderType
+import com.aichat.workbench.domain.model.providerRequestHeaders
 import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.discoveredModelCapability
 import com.aichat.workbench.provider.http.awaitResponse
@@ -24,11 +25,15 @@ data class ProviderModelDiscoveryResult(
     val models: List<ModelConfig> = emptyList(),
 )
 
+interface ProviderModelDiscoveryService {
+    suspend fun discover(provider: ProviderConfig, apiKey: String?): ProviderModelDiscoveryResult
+}
+
 class ProviderModelDiscoveryClient(
     private val client: OkHttpClient = OkHttpClient(),
     private val providerRegistry: ProviderRegistry,
-) {
-    suspend fun discover(
+) : ProviderModelDiscoveryService {
+    override suspend fun discover(
         provider: ProviderConfig,
         apiKey: String?,
     ): ProviderModelDiscoveryResult =
@@ -133,14 +138,12 @@ class ProviderModelDiscoveryClient(
         discovery: ProviderModelDiscovery,
     ): Request {
         val builder = Request.Builder()
-            .url("${modelDiscoveryBaseUrl()}/${discovery.path.trimStart('/')}")
+            .url(modelDiscoveryBaseHttpUrl().newBuilder().addPathSegments(discovery.path.trim('/')).build())
             .get()
             .header("Accept", "application/json")
 
-        headers.forEach { (name, value) ->
-            if (name.isNotBlank() && value.isNotBlank()) {
-                builder.header(name, value)
-            }
+        headers.providerRequestHeaders().forEach { (name, value) ->
+            builder.header(name, value)
         }
         apiKey?.takeIf { it.isNotBlank() }?.let { key ->
             builder.header("Authorization", "Bearer $key")

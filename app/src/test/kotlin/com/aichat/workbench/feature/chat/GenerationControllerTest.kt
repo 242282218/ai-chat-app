@@ -345,6 +345,44 @@ class GenerationControllerTest {
         assertEquals(0, chatProvider.requests.size)
     }
 
+    @Test
+    fun startEditingMessageDeletesOldBranchBeforeSavingReplacement() = runTest(mainDispatcherRule.testDispatcher) {
+        val provider = provider("openai", ProviderType.OpenAI)
+        val conversation = conversation(provider)
+        val edited = historyMessage(conversation, "old-user", "Old question", createdAtOffset = 1)
+        val oldAssistant = historyMessage(conversation, "old-assistant", "Old answer", createdAtOffset = 2)
+            .copy(role = MessageRole.Assistant)
+        val repository = GenerationControllerConversationRepository(clock).apply {
+            seed(conversation, listOf(edited, oldAssistant))
+        }
+        val chatProvider = GenerationControllerChatProvider(
+            streamEvents = listOf(flowOf(ProviderStreamEvent.TextDelta("New answer"), ProviderStreamEvent.Completed)),
+        )
+        val controller = controller(provider, repository, chatProvider)
+        var state = stateFor(provider, input = "New question").copy(
+            conversations = listOf(conversation),
+            selectedConversationId = conversation.id,
+            messages = listOf(edited, oldAssistant),
+        )
+
+        controller.start(
+            scope = this,
+            current = state,
+            userText = "New question",
+            editedMessage = edited,
+            retryFailedMessage = null,
+            onConversationReady = { updated -> state = state.copy(selectedConversationId = updated.id) },
+            onStateChanged = { transform -> state = transform(state) },
+        )
+        advanceUntilIdle()
+
+        val contents = repository.allMessages().map { it.content }
+        assertFalse(contents.contains("Old question"))
+        assertFalse(contents.contains("Old answer"))
+        assertTrue(contents.contains("New question"))
+        assertEquals(listOf(ProviderChatMessage(MessageRole.User, "New question")), chatProvider.requests.single().messages)
+    }
+
     private fun controller(
         provider: ProviderConfig,
         repository: GenerationControllerConversationRepository,
@@ -541,7 +579,18 @@ private class GenerationControllerConversationRepository(
         flow.value = flow.value.filterNot { it.id == message.id } + message
     }
 
-    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) = Unit
+    override suspend fun deleteMessage(messageId: com.aichat.workbench.domain.model.MessageId) {
+        messages.values.forEach { flow ->
+            flow.value = flow.value.filterNot { it.id == messageId }
+        }
+    }
+
+    override suspend fun deleteMessageAndFollowing(message: Message) {
+        val flow = messages.getOrPut(message.conversationId) { MutableStateFlow(emptyList()) }
+        flow.value = flow.value.filterNot {
+            it.createdAt > message.createdAt || (it.createdAt == message.createdAt && it.id.value >= message.id.value)
+        }
+    }
 
     override fun observeConversationsWithPreview(): kotlinx.coroutines.flow.Flow<List<com.aichat.workbench.domain.model.ConversationPreview>> = kotlinx.coroutines.flow.flowOf(emptyList())
 

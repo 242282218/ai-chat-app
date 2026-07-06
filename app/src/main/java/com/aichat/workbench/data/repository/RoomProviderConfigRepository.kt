@@ -2,7 +2,6 @@ package com.aichat.workbench.data.repository
 
 import com.aichat.workbench.data.crypto.SecretStore
 import com.aichat.workbench.data.crypto.SecretStoreException
-import com.aichat.workbench.data.local.dao.ModelRolePreferenceDao
 import com.aichat.workbench.data.local.dao.ProviderConfigDao
 import com.aichat.workbench.data.mapper.toDomain
 import com.aichat.workbench.data.mapper.toEntity
@@ -12,6 +11,7 @@ import com.aichat.workbench.domain.model.persistableProviderHeaders
 import com.aichat.workbench.domain.repository.ProviderConfigRepository
 import java.time.Clock
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -19,7 +19,6 @@ class RoomProviderConfigRepository(
     private val providerDao: ProviderConfigDao,
     private val secretStore: SecretStore,
     private val clock: Clock,
-    private val modelRolePreferenceDao: ModelRolePreferenceDao,
 ) : ProviderConfigRepository {
     override fun observeProviders(): Flow<List<ProviderConfig>> =
         providerDao.observeProviders().map { entities -> entities.map { it.toDomain() } }
@@ -35,7 +34,7 @@ class RoomProviderConfigRepository(
     ) {
         val existing = providerDao.getProvider(provider.id.value)
         val secretRef = when {
-            plaintextApiKey != null -> apiKeyRef(provider.id)
+            plaintextApiKey != null -> nextApiKeyRef(provider.id, existing?.apiKeyRef)
             preserveExistingApiKey && existing?.apiKeyRef != null -> existing.apiKeyRef
             preserveExistingApiKey -> provider.apiKeyRef
             else -> null
@@ -50,15 +49,22 @@ class RoomProviderConfigRepository(
             apiKeyRef = secretRef,
             headers = provider.headers.persistableProviderHeaders(),
         )
-        providerDao.upsertProvider(
-            sanitizedProvider.toEntity(
-                createdAt = existing?.createdAt?.let(Instant::ofEpochMilli) ?: now,
-                updatedAt = now,
-            ),
-        )
+        try {
+            providerDao.upsertProvider(
+                sanitizedProvider.toEntity(
+                    createdAt = existing?.createdAt?.let(Instant::ofEpochMilli) ?: now,
+                    updatedAt = now,
+                ),
+            )
+        } catch (error: Throwable) {
+            if (plaintextApiKey != null && secretRef != null) {
+                runCatching { secretStore.deleteSecret(secretRef) }
+            }
+            throw error
+        }
 
         if (deleteReplacedApiKey && existing?.apiKeyRef != null && existing.apiKeyRef != secretRef) {
-            secretStore.deleteSecret(existing.apiKeyRef)
+            runCatching { secretStore.deleteSecret(existing.apiKeyRef) }
         }
     }
 
@@ -78,11 +84,13 @@ class RoomProviderConfigRepository(
     override suspend fun deleteProvider(id: ProviderId) {
         val existing = providerDao.getProvider(id.value)
         providerDao.deleteProvider(id.value)
-        modelRolePreferenceDao.deleteForProvider(id.value)
-        existing?.apiKeyRef?.let { secretStore.deleteSecret(it) }
+        existing?.apiKeyRef?.let { ref -> runCatching { secretStore.deleteSecret(ref) } }
     }
 
-    private fun apiKeyRef(providerId: ProviderId): String =
-        "provider:${providerId.value}:api-key"
+    private fun nextApiKeyRef(providerId: ProviderId, existingRef: String?): String {
+        val stableRef = "provider:${providerId.value}:api-key"
+        if (existingRef == null) return stableRef
+        return "provider:${providerId.value}:api-key:${UUID.randomUUID()}"
+    }
 
 }

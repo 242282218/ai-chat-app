@@ -229,24 +229,24 @@ class ImageGenerationViewModel(
     }
 
     fun testConnection() {
+        val provider = _state.value.selectedProvider
         if (_state.value.isTestingConnection) return
+        _state.update {
+            it.copy(
+                isTestingConnection = true,
+                connectionTestMessage = "测试中...",
+                connectionTestDiagnostic = null,
+                connectionTestOk = null,
+                error = null,
+            )
+        }
         viewModelScope.launch {
-            val provider = _state.value.selectedProvider
             runCatching {
                 requireNotNull(provider) { "模型服务未配置。" }
                 require(provider.supportsImageGeneration()) { "当前模型服务不支持图片生成。" }
                 val apiKey = providerRepository.getApiKey(provider.id)
                 if (provider.requiresApiKey()) {
                     require(!apiKey.isNullOrBlank()) { "API Key 缺失。" }
-                }
-                _state.update {
-                    it.copy(
-                        isTestingConnection = true,
-                        connectionTestMessage = "测试中...",
-                        connectionTestDiagnostic = null,
-                        connectionTestOk = null,
-                        error = null,
-                    )
                 }
                 provider to connectionTester.test(provider, apiKey)
             }.onSuccess { (testedProvider, result) ->

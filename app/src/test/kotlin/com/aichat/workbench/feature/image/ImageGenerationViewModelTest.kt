@@ -647,6 +647,35 @@ class ImageGenerationViewModelTest {
     }
 
     @Test
+    fun testConnectionIgnoresSecondTapWhileFirstIsRunning() = runTest(mainDispatcherRule.testDispatcher) {
+        val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "key-ref")
+        val connectionTester = RecordingProviderConnectionTestClient(
+            result = ProviderConnectionResult(ok = true, statusCode = 200, message = "连接成功"),
+            gate = CompletableDeferred(),
+        )
+        val viewModel = viewModel(
+            repository = FakeImageGenerationRepository(emptyList()),
+            storage = FakeImageStorage(),
+            providerRepository = FakeProviderConfigRepository(
+                initialProviders = listOf(openAiProvider),
+                apiKeys = mapOf(openAiProvider.id to "test-key"),
+            ),
+            connectionTester = connectionTester,
+        )
+        advanceUntilIdle()
+
+        viewModel.testConnection()
+        advanceUntilIdle()
+        viewModel.testConnection()
+        advanceUntilIdle()
+        connectionTester.release()
+        advanceUntilIdle()
+
+        assertEquals(1, connectionTester.requests.size)
+        assertEquals("连接成功", viewModel.state.value.connectionTestMessage)
+    }
+
+    @Test
     fun testConnectionWithoutSavedApiKeyDoesNotCallTester() = runTest(mainDispatcherRule.testDispatcher) {
         val openAiProvider = provider("openai", ProviderType.OpenAI, apiKeyRef = "missing-key-ref")
         val connectionTester = RecordingProviderConnectionTestClient()
@@ -977,12 +1006,18 @@ private class RecordingProviderConnectionTestClient(
         message = "测试失败",
     ),
     private val error: Throwable? = null,
+    private val gate: CompletableDeferred<Unit>? = null,
 ) : ProviderConnectionTestClient {
     val requests = mutableListOf<ProviderConnectionRequest>()
 
     override suspend fun test(provider: ProviderConfig, apiKey: String?): ProviderConnectionResult {
         requests += ProviderConnectionRequest(provider, apiKey)
+        gate?.await()
         error?.let { throw it }
         return result
+    }
+
+    fun release() {
+        gate?.complete(Unit)
     }
 }

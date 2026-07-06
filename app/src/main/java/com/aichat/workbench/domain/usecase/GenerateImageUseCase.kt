@@ -57,8 +57,8 @@ class GenerateImageUseCase(
                     status = ImageGenerationStatus.Completed,
                     errorSummary = null,
                 )
-                repository.saveImageGeneration(completed)
                 savedImages.add(completed)
+                repository.saveImageGeneration(completed)
                 completed
             }
         } catch (error: CancellationException) {

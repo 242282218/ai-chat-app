@@ -22,12 +22,7 @@ fun parseSse(input: InputStream): Sequence<SseEvent> =
             var eventCount = 0
 
             while (true) {
-                val line = reader.readLine() ?: break
-
-                // Guard against excessively long lines
-                if (line.length > MAX_LINE_LENGTH) {
-                    throw SseParseException("SSE line exceeds maximum length: ${line.length} bytes")
-                }
+                val line = reader.readBoundedLine() ?: break
 
                 when {
                     line.isEmpty() -> {
@@ -64,5 +59,23 @@ fun parseSse(input: InputStream): Sequence<SseEvent> =
             }
         }
     }
+
+private fun BufferedReader.readBoundedLine(): String? {
+    val line = StringBuilder()
+    while (true) {
+        val char = read()
+        when {
+            char == -1 -> return line.takeIf { it.isNotEmpty() }?.toString()
+            char == '\n'.code -> return line.toString()
+            char == '\r'.code -> Unit
+            else -> {
+                line.append(char.toChar())
+                if (line.length > MAX_LINE_LENGTH) {
+                    throw SseParseException("SSE line exceeds maximum length: ${line.length} bytes")
+                }
+            }
+        }
+    }
+}
 
 class SseParseException(message: String) : RuntimeException(message)

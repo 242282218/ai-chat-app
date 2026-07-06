@@ -1,8 +1,9 @@
 package com.aichat.workbench.provider.openai
 
+import com.aichat.workbench.domain.model.providerRequestHeaders
 import com.aichat.workbench.provider.api.ChatProviderRequest
 import com.aichat.workbench.provider.api.ProviderHttpException
-import com.aichat.workbench.provider.api.openAiApiBaseUrl
+import com.aichat.workbench.provider.api.openAiApiHttpUrl
 import com.aichat.workbench.provider.api.parseOpenAiHttpError
 import com.aichat.workbench.provider.api.readErrorBodySafely
 import com.aichat.workbench.provider.api.readJsonBodySafely
@@ -19,15 +20,13 @@ internal fun ChatProviderRequest.openAiPostJson(
     stream: Boolean,
 ): Request {
     val builder = Request.Builder()
-        .url("${provider.openAiApiBaseUrl()}/$path")
+        .url(provider.openAiApiHttpUrl().newBuilder().addPathSegments(path.trim('/')).build())
         .post(body.toRequestBody(OPEN_AI_JSON))
         .header("Accept", if (stream) "text/event-stream" else "application/json")
         .header("Content-Type", "application/json")
 
-    provider.headers.forEach { (name, value) ->
-        if (name.lowercase() !in FORBIDDEN_HEADERS) {
-            builder.header(name, value)
-        }
+    provider.headers.providerRequestHeaders().forEach { (name, value) ->
+        builder.header(name, value)
     }
     apiKey?.takeIf { it.isNotBlank() }?.let { builder.header("Authorization", "Bearer $it") }
     return builder.build()
@@ -44,5 +43,3 @@ internal fun Response.bodyText(): String =
 
 internal fun Response.requireBody() =
     requireNotNull(body) { "Provider 响应 body 为空。" }
-
-private val FORBIDDEN_HEADERS = setOf("authorization", "x-api-key", "api-key")

@@ -192,6 +192,32 @@ class SendMessageUseCaseTest {
         assertEquals(states.last().errorSummary, repository.savedMessages.last().errorSummary)
     }
 
+    @Test
+    fun providerStreamFailedIgnoresLaterCompletedEvent() = runTest {
+        val clock = MutableClock(Instant.parse("2026-06-01T00:00:00Z"))
+        val repository = CountingConversationRepository()
+        val provider = FlowChatProvider(
+            flowOf(
+                ProviderStreamEvent.Failed(
+                    ProviderError(
+                        code = "provider_unavailable",
+                        message = "upstream exploded",
+                        statusCode = 500,
+                        retryable = true,
+                    ),
+                ),
+                ProviderStreamEvent.Completed,
+            ),
+        )
+        val useCase = SendMessageUseCase(repository, provider, clock)
+
+        val states = useCase(assistantMessage(clock), request()).toList()
+
+        assertEquals(MessageStatus.Failed, states.last().status)
+        assertEquals(MessageStatus.Failed, repository.savedMessages.last().status)
+        assertEquals(2, states.size)
+    }
+
     private fun assistantMessage(clock: Clock): Message =
         Message(
             id = MessageId("assistant-1"),

@@ -34,7 +34,6 @@ val repositoryModule: Module = module {
             providerDao = get<AiChatDatabase>().providerConfigDao(),
             secretStore = get(),
             clock = get(),
-            modelRolePreferenceDao = get<AiChatDatabase>().modelRolePreferenceDao(),
         )
     }
     single<ModelRolePreferenceRepository> {

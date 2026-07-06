@@ -102,6 +102,19 @@ class RoomConversationRepository(
         }
     }
 
+    override suspend fun deleteMessageAndFollowing(message: Message) {
+        try {
+            dao.deleteMessageAndFollowing(
+                conversationId = message.conversationId.value,
+                createdAt = message.createdAt.toEpochMilli(),
+                id = message.id.value,
+            )
+            dao.touchConversation(message.conversationId.value, clock.millis())
+        } catch (error: Exception) {
+            throw DatabaseException("删除消息分支失败", error)
+        }
+    }
+
     override fun observeConversationsWithPreview(): Flow<List<ConversationPreview>> =
         dao.observeConversationsWithPreview()
             .map { entities -> entities.map { it.toPreview() } }

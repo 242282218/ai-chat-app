@@ -227,6 +227,26 @@ class GenerateImageUseCaseTest {
     }
 
     @Test
+    fun generateImage_deletesSavedFileWhenCompletedHistorySaveFails() = runTest {
+        val repository = FakeImageGenerationRepository(
+            failOnCompletedSave = IllegalStateException("database unavailable"),
+        )
+        val storage = FakeImageStorage()
+        val useCase = createUseCase(
+            repository = repository,
+            imageProvider = FakeImageProvider(images = listOf(base64Image(byteArrayOf(1, 2, 3)))),
+            imageStorage = storage,
+        )
+
+        assertFailsWith<IllegalStateException> {
+            useCase(validRequest())
+        }
+
+        assertEquals(1, storage.deletedIds.size)
+        assertEquals(ImageGenerationStatus.Failed, repository.saved.value.single().status)
+    }
+
+    @Test
     fun generateImage_savesCancelledHistoryWhenProviderIsCancelled() = runTest {
         val repository = FakeImageGenerationRepository()
         val useCase = createUseCase(repository, CancellingImageProvider())
@@ -298,7 +318,9 @@ class GenerateImageUseCaseTest {
             enabled = true,
         )
 
-    private class FakeImageGenerationRepository : ImageGenerationRepository {
+    private class FakeImageGenerationRepository(
+        private val failOnCompletedSave: Throwable? = null,
+    ) : ImageGenerationRepository {
         val saved = MutableStateFlow<List<ImageGeneration>>(emptyList())
 
         override fun observeImageGenerations(): Flow<List<ImageGeneration>> = saved
@@ -307,6 +329,9 @@ class GenerateImageUseCaseTest {
             saved.value.firstOrNull { it.id == id }
 
         override suspend fun saveImageGeneration(imageGeneration: ImageGeneration) {
+            if (imageGeneration.status == ImageGenerationStatus.Completed) {
+                failOnCompletedSave?.let { throw it }
+            }
             saved.value = saved.value.filterNot { it.id == imageGeneration.id } + imageGeneration
         }
 
@@ -334,6 +359,7 @@ class GenerateImageUseCaseTest {
 
     private class FakeImageStorage : ImageStorage {
         val savedBytes = mutableListOf<ByteArray>()
+        val deletedIds = mutableListOf<ImageGenerationId>()
 
         override suspend fun savePng(id: ImageGenerationId, bytes: ByteArray): StoredImagePaths {
             savedBytes += bytes
@@ -343,7 +369,9 @@ class GenerateImageUseCaseTest {
             )
         }
 
-        override suspend fun deleteImage(id: ImageGenerationId) = Unit
+        override suspend fun deleteImage(id: ImageGenerationId) {
+            deletedIds += id
+        }
 
         override suspend fun deleteAllImages() = Unit
     }

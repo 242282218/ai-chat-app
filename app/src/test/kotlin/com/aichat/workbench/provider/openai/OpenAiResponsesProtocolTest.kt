@@ -24,6 +24,8 @@ class OpenAiResponsesProtocolTest {
         assertEquals("/v1/responses", request.url.encodedPath)
         assertEquals("Bearer test-key", request.header("Authorization"))
         assertEquals("application/json", request.header("Accept"))
+        assertEquals("trace-1", request.header("X-Trace"))
+        assertEquals(null, request.header("x-api-key"))
         assertTrue(body.contains(""""store":false"""))
         assertTrue(body.contains(""""instructions":"Be concise.""""))
         assertFalse(body.contains(""""tools""""))
@@ -65,7 +67,10 @@ class OpenAiResponsesProtocolTest {
                 type = ProviderType.OpenAI,
                 baseUrl = "https://zzshu.cc",
                 apiKeyRef = null,
-                headers = mapOf("X-Test" to "1"),
+                headers = mapOf(
+                    "X-Trace" to "trace-1",
+                    "x-api-key" to "stale-secret",
+                ),
                 models = emptyList(),
                 defaultModel = null,
                 enabled = true,

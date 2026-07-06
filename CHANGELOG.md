@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.32.0
+
+- Bumped Android application version to `0.32.0` / version code `34`.
+- Hardened provider URL handling, request header filtering, and model discovery failures.
+- Improved streaming error handling so failed provider events stop the turn instead of being overwritten by later completion events.
+- Added safer generated-image URL download validation and cleanup rollback coverage.
+- Fixed edited-message regeneration to remove the old message branch before saving the replacement.
+- Expanded repository, provider, SSE, and image generation regression tests.
+
 ## v0.27.0
 
 - Bumped Android application version to `0.27.0` / version code `29`.

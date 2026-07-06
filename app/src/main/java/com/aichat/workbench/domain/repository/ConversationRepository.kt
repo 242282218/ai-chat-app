@@ -35,5 +35,9 @@ interface ConversationRepository {
 
     suspend fun deleteMessage(messageId: MessageId)
 
+    suspend fun deleteMessageAndFollowing(message: Message) {
+        deleteMessage(message.id)
+    }
+
     fun observeConversationsWithPreview(): Flow<List<ConversationPreview>>
 }

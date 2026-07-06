@@ -35,6 +35,7 @@ class SendMessageUseCase(
             var dirty = false
             var deltaCount = 0
             var lastFlushAt = clock.millis()
+            var terminalSeen = false
 
             suspend fun flush(force: Boolean = false) {
                 if (!dirty) return
@@ -49,6 +50,7 @@ class SendMessageUseCase(
 
             try {
                 chatProvider.stream(request).collect { event ->
+                    if (terminalSeen) return@collect
                     val isDelta = event is ProviderStreamEvent.TextDelta ||
                         event is ProviderStreamEvent.ImageDelta
                     current = when (event) {
@@ -75,7 +77,8 @@ class SendMessageUseCase(
                     }
                     dirty = true
                     if (isDelta) deltaCount += 1
-                    flush(force = current.status.isTerminal())
+                    terminalSeen = current.status.isTerminal()
+                    flush(force = terminalSeen)
                     emit(current)
                 }
                 flush(force = true)

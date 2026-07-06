@@ -80,6 +80,33 @@ class SaveProviderConfigUseCaseTest {
     }
 
     @Test
+    fun saveProviderRejectsDecoratedBaseUrls() = runTest {
+        val invalidUrls = listOf(
+            "https://api.example.com/v1?token=leak",
+            "https://api.example.com/v1#fragment",
+            "https://user:pass@api.example.com/v1",
+        )
+
+        invalidUrls.forEach { baseUrl ->
+            val repository = RecordingProviderConfigRepository()
+            val saveProvider = SaveProviderConfigUseCase(repository)
+
+            try {
+                saveProvider(
+                    provider(enabled = true, baseUrl = baseUrl),
+                    plaintextApiKey = null,
+                    allowInsecureHttp = false,
+                )
+                fail("Expected decorated provider URL to be rejected: $baseUrl")
+            } catch (error: IllegalArgumentException) {
+                assertEquals("Provider base URL must be HTTPS, except local HTTP when explicitly allowed.", error.message)
+            }
+
+            assertNull(repository.savedProvider)
+        }
+    }
+
+    @Test
     fun saveProviderNormalizesModelsAndApiKey() = runTest {
         val repository = RecordingProviderConfigRepository()
         val saveProvider = SaveProviderConfigUseCase(repository)

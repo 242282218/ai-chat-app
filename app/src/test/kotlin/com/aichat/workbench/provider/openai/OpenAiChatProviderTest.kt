@@ -137,6 +137,108 @@ class OpenAiChatProviderTest {
     }
 
     @Test
+    fun stream_stopsAfterResponsesFailedEvent() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"type":"response.failed","error":{"code":"provider_error","message":"bad request"}}
+
+                    data: {"type":"response.completed"}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider(httpClient)
+
+        val events = provider.stream(openAiRequest()).toList()
+
+        val failed = events.single() as ProviderStreamEvent.Failed
+        assertEquals("provider_error", failed.error.code)
+        assertEquals("bad request", failed.error.message)
+    }
+
+    @Test
+    fun stream_mapsMalformedResponsesSseToFailedEvent() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"type":"response.output_text.delta","delta":"Hi"}
+
+                    data: not-json
+
+                    data: {"type":"response.completed"}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiChatProvider(httpClient)
+
+        val events = provider.stream(openAiRequest()).toList()
+
+        assertEquals(ProviderStreamEvent.TextDelta("Hi"), events.first())
+        val failed = events.last() as ProviderStreamEvent.Failed
+        assertEquals("invalid_stream_event", failed.error.code)
+        assertTrue(failed.error.message.contains("Provider 返回无效流式响应"))
+    }
+
+    @Test
+    fun compatibleProvider_mapsSseErrorAndDoesNotAppendCompleted() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"error":{"code":"bad_key","message":"bad key"}}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiCompatibleChatProvider(httpClient)
+
+        val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
+
+        val failed = events.single() as ProviderStreamEvent.Failed
+        assertEquals("bad_key", failed.error.code)
+        assertEquals("bad key", failed.error.message)
+    }
+
+    @Test
+    fun compatibleProvider_mapsMalformedSseToFailedEvent() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}
+
+                    data: not-json
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                    """.trimIndent(),
+                ),
+        )
+        val provider = OpenAiCompatibleChatProvider(httpClient)
+
+        val events = provider.stream(openAiRequest(type = ProviderType.OpenAICompatible)).toList()
+
+        assertEquals(ProviderStreamEvent.TextDelta("Hi"), events.first())
+        val failed = events.last() as ProviderStreamEvent.Failed
+        assertEquals("invalid_stream_event", failed.error.code)
+        assertTrue(failed.error.message.contains("Provider 返回无效流式响应"))
+    }
+
+    @Test
     fun compatibleProvider_appendsV1ForRootBaseUrl() = runTest {
         server.enqueue(
             MockResponse()

@@ -75,19 +75,25 @@ interface ConversationDao {
 
     @Query(
         """
+        DELETE FROM messages
+        WHERE conversation_id = :conversationId
+          AND (created_at > :createdAt OR (created_at = :createdAt AND id >= :id))
+        """,
+    )
+    suspend fun deleteMessageAndFollowing(conversationId: String, createdAt: Long, id: String)
+
+    @Query(
+        """
         SELECT c.id, c.title, c.created_at, c.updated_at, c.default_provider_id,
                m.content AS last_message_content, m.role AS last_message_role
         FROM conversations c
-        LEFT JOIN (
-            SELECT conversation_id, content, role
-            FROM messages
-            WHERE id IN (
-                SELECT id FROM messages AS m2
-                WHERE m2.conversation_id = messages.conversation_id
-                ORDER BY m2.created_at DESC, m2.id DESC
-                LIMIT 1
-            )
-        ) m ON m.conversation_id = c.id
+        LEFT JOIN messages m ON m.id = (
+            SELECT latest.id
+            FROM messages AS latest
+            WHERE latest.conversation_id = c.id
+            ORDER BY latest.created_at DESC, latest.id DESC
+            LIMIT 1
+        )
         ORDER BY c.updated_at DESC
         """,
     )

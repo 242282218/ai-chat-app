@@ -91,6 +91,47 @@ class ProviderModelDiscoveryClientTest {
     }
 
     @Test
+    fun discover_filtersSensitiveStoredHeaders() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"id":"model-a"}]}"""),
+        )
+        val client = ProviderModelDiscoveryClient(providerRegistry = registeredRegistry())
+
+        val result = client.discover(
+            provider(
+                headers = mapOf(
+                    "Authorization" to "Bearer stale-key",
+                    "x-api-key" to "stale-secret",
+                    "X-Trace" to "trace-1",
+                ),
+            ),
+            "fresh-key",
+        )
+        val recorded = server.takeRequest()
+
+        assertTrue(result.ok)
+        assertEquals("Bearer fresh-key", recorded.getHeader("Authorization"))
+        assertEquals(null, recorded.getHeader("x-api-key"))
+        assertEquals("trace-1", recorded.getHeader("X-Trace"))
+    }
+
+    @Test
+    fun discover_rejectsDecoratedBaseUrlBeforeRequest() = runTest {
+        val client = ProviderModelDiscoveryClient(providerRegistry = registeredRegistry())
+
+        val result = client.discover(
+            provider(baseUrl = "${server.url("/v1").toString().trimEnd('/')}?q=1"),
+            "test-key",
+        )
+
+        assertEquals(false, result.ok)
+        assertEquals("Provider URL 无效。", result.message)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun discover_keepsCodeAndLongContextHintsAsChatModels() = runTest {
         server.enqueue(
             MockResponse()
@@ -113,6 +154,7 @@ class ProviderModelDiscoveryClientTest {
     private fun provider(
         type: ProviderType = ProviderType.OpenAICompatible,
         baseUrl: String = server.url("/v1").toString().trimEnd('/'),
+        headers: Map<String, String> = emptyMap(),
     ): ProviderConfig =
         ProviderConfig(
             id = ProviderId("provider-1"),
@@ -120,7 +162,7 @@ class ProviderModelDiscoveryClientTest {
             type = type,
             baseUrl = baseUrl,
             apiKeyRef = null,
-            headers = emptyMap(),
+            headers = headers,
             models = emptyList(),
             defaultModel = null,
             enabled = true,

@@ -4,6 +4,7 @@ import com.aichat.workbench.domain.model.MessagePart
 import com.aichat.workbench.domain.model.ProviderType
 import com.aichat.workbench.provider.api.ChatProvider
 import com.aichat.workbench.provider.api.ChatProviderRequest
+import com.aichat.workbench.provider.api.ProviderError
 import com.aichat.workbench.provider.api.ProviderStreamEvent
 import com.aichat.workbench.provider.api.ProviderTextResponse
 import com.aichat.workbench.provider.compatible.OpenAiChatCompletionsProtocol
@@ -53,9 +54,10 @@ open class OpenAiChatProvider(
                 var terminalEventReceived = false
                 for (event in parseSse(it.requireBody().byteStream())) {
                     kotlin.coroutines.coroutineContext.ensureActive()
-                    OpenAiResponsesProtocol.mapSse(event.data)?.let { mapped ->
+                    mapResponsesSse(event.data)?.let { mapped ->
                         terminalEventReceived = terminalEventReceived || mapped.isTerminal()
                         emit(mapped)
+                        if (mapped.isTerminal()) return@use
                     }
                 }
                 if (!terminalEventReceived) {
@@ -82,12 +84,14 @@ open class OpenAiChatProvider(
         response.use {
             it.requireSuccessfulProviderResponse()
             var terminalEventReceived = false
-            for (event in parseSse(it.requireBody().byteStream())) {
-                for (mapped in OpenAiChatCompletionsProtocol.mapSse(event.data)) {
-                    terminalEventReceived = terminalEventReceived || mapped.isTerminal()
-                    emit(mapped)
+                for (event in parseSse(it.requireBody().byteStream())) {
+                    for (mapped in mapChatCompletionSse(event.data)) {
+                        terminalEventReceived = terminalEventReceived || mapped.isTerminal()
+                        emit(mapped)
+                        if (mapped.isTerminal()) return@use
+                    }
                 }
-            }
+
             if (!terminalEventReceived) {
                 emit(ProviderStreamEvent.Completed)
             }
@@ -100,6 +104,29 @@ open class OpenAiChatProvider(
     private suspend fun execute(request: Request): Response =
         client.newCall(request).awaitResponse()
 
+    private fun mapResponsesSse(data: String): ProviderStreamEvent? =
+        runCatching { OpenAiResponsesProtocol.mapSse(data) }
+            .getOrElse { error -> ProviderStreamEvent.Failed(error.toInvalidStreamEventError()) }
+
+    private fun mapChatCompletionSse(data: String): List<ProviderStreamEvent> =
+        runCatching { OpenAiChatCompletionsProtocol.mapSse(data) }
+            .getOrElse { error -> listOf(ProviderStreamEvent.Failed(error.toInvalidStreamEventError())) }
+
     private fun ProviderStreamEvent.isTerminal(): Boolean =
         this is ProviderStreamEvent.Completed || this is ProviderStreamEvent.Failed
+
+    private fun Throwable.toInvalidStreamEventError(): ProviderError =
+        ProviderError(
+            code = "invalid_stream_event",
+            message = message
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "Provider 返回无效流式响应：${it.take(MAX_STREAM_ERROR_PREVIEW_LENGTH)}" }
+                ?: "Provider 返回无效流式响应。",
+            statusCode = null,
+            retryable = false,
+        )
+
+    private companion object {
+        const val MAX_STREAM_ERROR_PREVIEW_LENGTH = 160
+    }
 }

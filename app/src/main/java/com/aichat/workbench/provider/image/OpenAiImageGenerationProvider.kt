@@ -1,8 +1,9 @@
 package com.aichat.workbench.provider.image
 
+import com.aichat.workbench.domain.model.providerRequestHeaders
 import com.aichat.workbench.provider.api.ProviderError
 import com.aichat.workbench.provider.api.ProviderHttpException
-import com.aichat.workbench.provider.api.openAiApiBaseUrl
+import com.aichat.workbench.provider.api.openAiApiHttpUrl
 import com.aichat.workbench.provider.api.parseOpenAiHttpError
 import com.aichat.workbench.provider.api.providerJson
 import com.aichat.workbench.provider.api.readBodyWithLimit
@@ -10,6 +11,8 @@ import com.aichat.workbench.provider.api.readErrorBodySafely
 import com.aichat.workbench.provider.http.awaitResponse
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.net.Inet6Address
+import java.net.InetAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -17,6 +20,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -24,6 +29,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class OpenAiImageGenerationProvider(
     private val client: OkHttpClient,
 ) : ImageGenerationProvider {
+    private val imageDownloadClient: OkHttpClient = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
     override suspend fun generate(
         request: ImageGenerationProviderRequest,
     ): ImageGenerationProviderResponse =
@@ -38,15 +48,13 @@ class OpenAiImageGenerationProvider(
 
     private fun ImageGenerationProviderRequest.toHttpRequest(): Request {
         val builder = Request.Builder()
-            .url("${provider.openAiApiBaseUrl()}/images/generations")
+            .url(provider.openAiApiHttpUrl().newBuilder().addPathSegments("images/generations").build())
             .post(providerJson.encodeToString(toApiBody()).toRequestBody(JSON))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
 
-        provider.headers.forEach { (name, value) ->
-            if (name.lowercase() !in FORBIDDEN_HEADERS) {
-                builder.header(name, value)
-            }
+        provider.headers.providerRequestHeaders().forEach { (name, value) ->
+            builder.header(name, value)
         }
         apiKey?.takeIf { it.isNotBlank() }?.let { builder.header("Authorization", "Bearer $it") }
         return builder.build()
@@ -54,7 +62,6 @@ class OpenAiImageGenerationProvider(
 
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
-        val FORBIDDEN_HEADERS = setOf("authorization", "x-api-key", "api-key")
         const val MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
         const val MAX_IMAGE_RESPONSE_BODY_BYTES = 64 * 1024 * 1024
         const val MAX_BASE64_IMAGE_CHARS = ((MAX_IMAGE_SIZE_BYTES + 2) / 3) * 4 + 128
@@ -101,14 +108,11 @@ class OpenAiImageGenerationProvider(
     }
 
     private suspend fun downloadImageAsBase64(url: String): String {
-        // Validate URL scheme to prevent file:// or other unexpected protocols
-        require(url.startsWith("https://") || url.startsWith("http://")) {
-            "只支持 HTTP/HTTPS 图片 URL，拒绝: $url"
-        }
+        val imageUrl = url.toTrustedProviderImageUrl()
 
-        val response = client.newCall(
+        val response = imageDownloadClient.newCall(
             Request.Builder()
-                .url(url)
+                .url(imageUrl)
                 .get()
                 .header("Accept", "image/*")
                 .build(),
@@ -149,6 +153,34 @@ class OpenAiImageGenerationProvider(
 
             return kotlin.io.encoding.Base64.Default.encode(bytes).boundedBase64()
         }
+    }
+
+    private fun String.toTrustedProviderImageUrl(): HttpUrl {
+        val parsed = runCatching { toHttpUrl() }.getOrElse {
+            throw IllegalArgumentException("图片 URL 无效。")
+        }
+        require(parsed.scheme == "https") { "只支持 HTTPS 图片 URL。" }
+        require(parsed.username.isEmpty() && parsed.password.isEmpty()) {
+            "图片 URL 不支持用户信息。"
+        }
+        val addresses = InetAddress.getAllByName(parsed.host)
+        require(addresses.none { it.isBlockedProviderImageAddress() }) {
+            "不支持下载本地或内网图片 URL。"
+        }
+        return parsed
+    }
+
+    private fun InetAddress.isBlockedProviderImageAddress(): Boolean =
+        isAnyLocalAddress ||
+            isLoopbackAddress ||
+            isLinkLocalAddress ||
+            isSiteLocalAddress ||
+            isMulticastAddress ||
+            isUniqueLocalIpv6()
+
+    private fun InetAddress.isUniqueLocalIpv6(): Boolean {
+        if (this !is Inet6Address) return false
+        return address.firstOrNull()?.toInt()?.and(0xfe) == 0xfc
     }
 
     private fun String.boundedBase64(): String {

@@ -6,6 +6,9 @@ fun isPersistableProviderHeader(name: String): Boolean =
 fun Map<String, String>.persistableProviderHeaders(): Map<String, String> =
     filter { (name, value) -> isPersistableProviderHeader(name) && value.isNotBlank() }
 
+fun Map<String, String>.providerRequestHeaders(): Map<String, String> =
+    persistableProviderHeaders()
+
 val persistableProviderHeaderDisplayNames: List<String> =
     listOf(
         "X-Request-Id",

@@ -5,6 +5,7 @@ import java.net.URI
 fun String.isValidProviderBaseUrl(allowLocalHttp: Boolean): Boolean {
     val uri = runCatching { URI(trim()) }.getOrNull() ?: return false
     val host = uri.host?.lowercase() ?: return false
+    if (uri.rawQuery != null || uri.rawFragment != null || uri.rawUserInfo != null) return false
     return when (uri.scheme?.lowercase()) {
         "https" -> true
         "http" -> allowLocalHttp && host.isAllowedLocalHttpHost()

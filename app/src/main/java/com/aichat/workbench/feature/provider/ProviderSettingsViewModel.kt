@@ -16,6 +16,7 @@ import com.aichat.workbench.provider.ProviderRegistry
 import com.aichat.workbench.provider.rolePreferenceModel
 import com.aichat.workbench.provider.api.ProviderConnectionTester
 import com.aichat.workbench.provider.api.ProviderModelDiscoveryClient
+import com.aichat.workbench.provider.api.ProviderModelDiscoveryResult
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +24,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private data class ProviderFormFingerprint(
+    val editingId: String?,
+    val type: ProviderType,
+    val baseUrl: String,
+    val model: String,
+    val imageModel: String,
+    val apiKey: String,
+    val headers: String,
+    val allowHttp: Boolean,
+)
 
 internal data class ProviderSettingsUiState(
     val providers: List<ProviderConfig> = emptyList(),
@@ -229,7 +241,7 @@ internal class ProviderSettingsViewModel(
         viewModelScope.launch {
             runCatching {
                 val discoveredModels = if (current.testStatus.isReady) {
-                    discoverModelsFor(provider)
+                    discoverModelsFor(provider).let { result -> result.models.takeIf { result.ok } }
                 } else {
                     null
                 }
@@ -266,6 +278,7 @@ internal class ProviderSettingsViewModel(
     fun testConnection() {
         val current = _state.value
         if (current.hasActiveProviderOperation) return
+        val fingerprint = current.formFingerprint()
         val provider = currentProvider()
         if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !current.allowHttp) {
             _state.update { it.copy(message = "测试此 URL 前请先允许 HTTP。") }
@@ -286,6 +299,7 @@ internal class ProviderSettingsViewModel(
                     )
                 }.onSuccess { result ->
                     _state.update {
+                        if (it.formFingerprint() != fingerprint) return@update it
                         it.copy(
                             message = if (result.ok) {
                                 "${result.message} (${result.statusCode})"
@@ -295,7 +309,9 @@ internal class ProviderSettingsViewModel(
                         )
                     }
                 }.onFailure { error ->
-                    _state.update { it.copy(message = error.message ?: "模型连接测试失败。") }
+                    _state.update {
+                        if (it.formFingerprint() != fingerprint) it else it.copy(message = error.message ?: "模型连接测试失败。")
+                    }
                 }
             } finally {
                 _state.update { it.copy(isTestingConnection = false) }
@@ -306,6 +322,7 @@ internal class ProviderSettingsViewModel(
     fun refreshModels() {
         val current = _state.value
         if (current.hasActiveProviderOperation) return
+        val fingerprint = current.formFingerprint()
         val provider = currentProvider()
         if (provider.baseUrl.startsWith("http://", ignoreCase = true) && !current.allowHttp) {
             _state.update { it.copy(message = "刷新模型前请先允许 HTTP。") }
@@ -315,22 +332,29 @@ internal class ProviderSettingsViewModel(
         viewModelScope.launch {
             try {
                 runCatching {
-                    discoverModelsFor(provider)
-                }.onSuccess { discoveredModels ->
-                    discoveredModels?.let {
-                        _state.update { state ->
-                            state.copy(
-                                models = it,
-                                model = if (state.model.isBlank()) {
-                                    it.preferredDiscoveredChatModel()
-                                } else {
-                                    state.model
-                                },
-                            )
-                        }
+                    discoverModelsFor(provider, updateMessage = false)
+                }.onSuccess { result ->
+                    _state.update { state ->
+                        if (state.formFingerprint() != fingerprint) return@update state
+                        val discoveredModels = result.models.takeIf { result.ok }
+                        state.copy(
+                            message = if (result.ok) {
+                                "${result.message}，保存后可用于聊天。"
+                            } else {
+                                result.message
+                            },
+                            models = discoveredModels ?: state.models,
+                            model = if (discoveredModels != null && state.model.isBlank()) {
+                                discoveredModels.preferredDiscoveredChatModel()
+                            } else {
+                                state.model
+                            },
+                        )
                     }
                 }.onFailure { error ->
-                    _state.update { it.copy(message = error.message ?: "刷新模型失败。") }
+                    _state.update {
+                        if (it.formFingerprint() != fingerprint) it else it.copy(message = error.message ?: "刷新模型失败。")
+                    }
                 }
             } finally {
                 _state.update { it.copy(isRefreshingModels = false) }
@@ -388,6 +412,18 @@ internal class ProviderSettingsViewModel(
         }
     }
 
+    private fun ProviderSettingsUiState.formFingerprint(): ProviderFormFingerprint =
+        ProviderFormFingerprint(
+            editingId = editingId,
+            type = type,
+            baseUrl = baseUrl.trim(),
+            model = model.trim(),
+            imageModel = imageModel.trim(),
+            apiKey = apiKey.trim(),
+            headers = headers.trim(),
+            allowHttp = allowHttp,
+        )
+
     private fun currentProvider(): ProviderConfig {
         val current = _state.value
         val providerId = ProviderId(current.editingId ?: UUID.randomUUID().toString())
@@ -415,22 +451,27 @@ internal class ProviderSettingsViewModel(
         modelRolePreferenceRepository.setRoleModel(providerId, ModelRole.Image, current.imageModel)
     }
 
-    private suspend fun discoverModelsFor(provider: ProviderConfig): List<ModelConfig>? {
+    private suspend fun discoverModelsFor(
+        provider: ProviderConfig,
+        updateMessage: Boolean = true,
+    ): ProviderModelDiscoveryResult {
         val current = _state.value
         val storedKey = if (current.apiKey.isBlank()) providerRepository.getApiKey(provider.id) else null
         val result = modelDiscoveryClient.discover(
             provider = provider,
             apiKey = current.apiKey.trim().ifBlank { storedKey.orEmpty() },
         )
-        _state.update {
-            it.copy(
-                message = if (result.ok) {
-                    "${result.message}，保存后可用于聊天。"
-                } else {
-                    result.message
-                },
-            )
+        if (updateMessage) {
+            _state.update {
+                it.copy(
+                    message = if (result.ok) {
+                        "${result.message}，保存后可用于聊天。"
+                    } else {
+                        result.message
+                    },
+                )
+            }
         }
-        return result.models.takeIf { result.ok }
+        return result
     }
 }

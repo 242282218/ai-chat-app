@@ -99,6 +99,7 @@ class ChatTurnOrchestrator(
 
         callbacks.onInputAccepted()
         if (userMessage != null) {
+            request.editedMessage?.let { conversationRepository.deleteMessageAndFollowing(it) }
             conversationRepository.saveMessage(userMessage)
             maybeRenameConversation(conversation, userMessage.content)
         }

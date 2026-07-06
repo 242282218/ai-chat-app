@@ -143,6 +143,70 @@ class AiChatDatabaseTest {
     }
 
     @Test
+    fun conversationPreviews_useLatestMessageByCreatedAtAndId() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        val conversation = CreateConversationUseCase(repository, clock)(title = "Preview chat")
+        val createdAt = clock.instant().plusMillis(1)
+        repository.saveMessage(
+            message(conversation.id).copy(
+                id = MessageId("message-a"),
+                content = "Earlier id",
+                contentParts = listOf(MessagePart.Text("Earlier id")),
+                createdAt = createdAt,
+                updatedAt = createdAt,
+            ),
+        )
+        repository.saveMessage(
+            message(conversation.id).copy(
+                id = MessageId("message-b"),
+                role = MessageRole.Assistant,
+                content = "Later id",
+                contentParts = listOf(MessagePart.Text("Later id")),
+                createdAt = createdAt,
+                updatedAt = createdAt,
+            ),
+        )
+
+        val preview = repository.observeConversationsWithPreview().first().single()
+
+        assertEquals("Later id", preview.lastMessageContent)
+        assertEquals("Assistant", preview.lastMessageRole)
+    }
+
+    @Test
+    fun deleteMessageAndFollowing_removesEditedMessageBranch() = runTest {
+        val repository = RoomConversationRepository(database.conversationDao(), clock)
+        val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
+        val first = message(conversation.id).copy(
+            id = MessageId("message-1"),
+            content = "Keep",
+            contentParts = listOf(MessagePart.Text("Keep")),
+            createdAt = clock.instant().plusMillis(1),
+            updatedAt = clock.instant().plusMillis(1),
+        )
+        val edited = message(conversation.id).copy(
+            id = MessageId("message-2"),
+            content = "Old question",
+            contentParts = listOf(MessagePart.Text("Old question")),
+            createdAt = clock.instant().plusMillis(2),
+            updatedAt = clock.instant().plusMillis(2),
+        )
+        val oldAssistant = message(conversation.id).copy(
+            id = MessageId("message-3"),
+            role = MessageRole.Assistant,
+            content = "Old answer",
+            contentParts = listOf(MessagePart.Text("Old answer")),
+            createdAt = clock.instant().plusMillis(3),
+            updatedAt = clock.instant().plusMillis(3),
+        )
+        listOf(first, edited, oldAssistant).forEach { repository.saveMessage(it) }
+
+        repository.deleteMessageAndFollowing(edited)
+
+        assertEquals(listOf("Keep"), repository.getMessages(conversation.id).map { it.content })
+    }
+
+    @Test
     fun compressedMessages_roundTripThroughRoom() = runTest {
         val repository = RoomConversationRepository(database.conversationDao(), clock)
         val conversation = CreateConversationUseCase(repository, clock)(title = "Chat")
@@ -262,7 +326,6 @@ class AiChatDatabaseTest {
             database.providerConfigDao(),
             secretStore,
             clock,
-            modelRolePreferenceDao = database.modelRolePreferenceDao(),
         )
         val modelRoleRepository = RoomModelRolePreferenceRepository(database.modelRolePreferenceDao(), clock)
         val providerId = ProviderId("provider-1")
@@ -307,7 +370,6 @@ class AiChatDatabaseTest {
             database.providerConfigDao(),
             FakeSecretStore(),
             clock,
-            database.modelRolePreferenceDao(),
         )
         val providerId = ProviderId("provider-1")
         val saveProvider = SaveProviderConfigUseCase(providerRepository)
@@ -339,7 +401,6 @@ class AiChatDatabaseTest {
             database.providerConfigDao(),
             secretStore,
             clock,
-            database.modelRolePreferenceDao(),
         )
         val providerId = ProviderId("provider-1")
         val saveProvider = SaveProviderConfigUseCase(providerRepository)
@@ -355,6 +416,25 @@ class AiChatDatabaseTest {
 
         require(error is SecretStoreException)
         assertEquals("API Key 解密失败，请重新保存模型连接中的 API Key。", error.message)
+    }
+
+    @Test
+    fun providerConfigs_deleteProviderKeepsDatabaseDeleteWhenSecretCleanupFails() = runTest {
+        val secretStore = FakeSecretStore()
+        val providerRepository = RoomProviderConfigRepository(
+            database.providerConfigDao(),
+            secretStore,
+            clock,
+        )
+        val providerId = ProviderId("provider-1")
+        val saveProvider = SaveProviderConfigUseCase(providerRepository)
+        saveProvider(providerConfig(providerId), plaintextApiKey = "test-secret", allowInsecureHttp = false)
+        secretStore.failOnDelete = true
+
+        providerRepository.deleteProvider(providerId)
+
+        assertNull(database.providerConfigDao().getProvider(providerId.value))
+        assertEquals(listOf("provider:provider-1:api-key"), secretStore.deleteAttempts)
     }
 
     @Test
@@ -452,7 +532,9 @@ class AiChatDatabaseTest {
 
     private class FakeSecretStore : SecretStore {
         private val values = mutableMapOf<String, String>()
+        val deleteAttempts = mutableListOf<String>()
         var failOnGet: Boolean = false
+        var failOnDelete: Boolean = false
 
         override suspend fun putSecret(ref: String, value: String) {
             values[ref] = value
@@ -464,6 +546,8 @@ class AiChatDatabaseTest {
         }
 
         override suspend fun deleteSecret(ref: String) {
+            deleteAttempts += ref
+            if (failOnDelete) throw SecretStoreException("delete failed")
             values.remove(ref)
         }
     }

@@ -46,7 +46,8 @@ fun Map<String, String>.toJsonObjectString(): String =
 
 fun stringMapFromJson(value: String): Map<String, String> {
     if (value.isBlank()) return emptyMap()
-    return MAPPER_JSON.decodeFromString(value)
+    return runCatching { MAPPER_JSON.decodeFromString<Map<String, String>>(value) }
+        .getOrDefault(emptyMap())
 }
 
 fun List<ModelConfig>.toModelConfigsJson(): String =
@@ -54,7 +55,9 @@ fun List<ModelConfig>.toModelConfigsJson(): String =
 
 fun modelConfigsFromJson(value: String): List<ModelConfig> {
     if (value.isBlank()) return emptyList()
-    return MAPPER_JSON.decodeFromString<List<ModelConfigJson>>(value).map { it.toDomain() }
+    return runCatching {
+        MAPPER_JSON.decodeFromString<List<ModelConfigJson>>(value).map { it.toDomain() }
+    }.getOrDefault(emptyList())
 }
 
 fun ModelCapability.toJson(): String =

@@ -51,6 +51,17 @@ class OpenAiChatCompletionsProtocolTest {
         assertEquals(listOf(ProviderStreamEvent.Completed), completed)
     }
 
+    @Test
+    fun mapSse_mapsErrorEnvelopeToFailedEvent() {
+        val events = OpenAiChatCompletionsProtocol.mapSse(
+            """{"error":{"code":"bad_key","message":"bad key"}}""",
+        )
+
+        val failed = events.single() as ProviderStreamEvent.Failed
+        assertEquals("bad_key", failed.error.code)
+        assertEquals("bad key", failed.error.message)
+    }
+
     private fun request(): ChatProviderRequest =
         ChatProviderRequest(
             provider = ProviderConfig(

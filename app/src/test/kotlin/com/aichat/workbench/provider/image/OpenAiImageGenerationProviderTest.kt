@@ -43,6 +43,8 @@ class OpenAiImageGenerationProviderTest {
 
         assertEquals("/v1/images/generations", recorded.path)
         assertEquals("Bearer test-key", recorded.getHeader("Authorization"))
+        assertEquals("trace-1", recorded.getHeader("X-Trace"))
+        assertEquals(null, recorded.getHeader("x-api-key"))
         assertTrue(body.contains(""""model":"gpt-image-1""""))
         assertTrue(body.contains(""""prompt":"A cat""""))
         assertTrue(body.contains(""""n":1"""))
@@ -71,28 +73,63 @@ class OpenAiImageGenerationProviderTest {
     }
 
     @Test
-    fun generate_downloadsUrlImagesAsBase64Images() = runTest {
+    fun generate_rejectsHttpUrlImagesBeforeDownload() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
                 .setBody("""{"data":[{"url":"${server.url("/generated.png")}"}]}"""),
         )
+        val provider = provider()
+
+        val error = runCatching {
+            provider.generate(request())
+        }.exceptionOrNull()
+        val postRequest = server.takeRequest()
+
+        require(error is IllegalArgumentException)
+        assertTrue(error.message.orEmpty().contains("只支持 HTTPS 图片 URL"))
+        assertEquals("/v1/images/generations", postRequest.path)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun generate_rejectsPrivateHttpsUrlImagesBeforeDownload() = runTest {
         server.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setHeader("Content-Type", "image/png")
-                .setBody("image"),
+                .setBody("""{"data":[{"url":"https://127.0.0.1/generated.png"}]}"""),
         )
         val provider = provider()
 
-        val response = provider.generate(request())
+        val error = runCatching {
+            provider.generate(request())
+        }.exceptionOrNull()
         val postRequest = server.takeRequest()
-        val downloadRequest = server.takeRequest()
 
+        require(error is IllegalArgumentException)
+        assertTrue(error.message.orEmpty().contains("不支持下载本地或内网图片 URL"))
         assertEquals("/v1/images/generations", postRequest.path)
-        assertEquals("/generated.png", downloadRequest.path)
-        assertEquals("aW1hZ2U=", response.images.single().base64)
-        assertEquals(server.url("/generated.png").toString(), response.images.single().url)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun generate_rejectsUrlImagesWithUserInfoBeforeDownload() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"data":[{"url":"https://user:pass@example.com/generated.png"}]}"""),
+        )
+        val provider = provider()
+
+        val error = runCatching {
+            provider.generate(request())
+        }.exceptionOrNull()
+        val postRequest = server.takeRequest()
+
+        require(error is IllegalArgumentException)
+        assertTrue(error.message.orEmpty().contains("图片 URL 不支持用户信息"))
+        assertEquals("/v1/images/generations", postRequest.path)
+        assertEquals(1, server.requestCount)
     }
 
     @Test
@@ -145,7 +182,10 @@ class OpenAiImageGenerationProviderTest {
                 type = type,
                 baseUrl = baseUrl,
                 apiKeyRef = null,
-                headers = emptyMap(),
+                headers = mapOf(
+                    "X-Trace" to "trace-1",
+                    "x-api-key" to "stale-secret",
+                ),
                 models = emptyList(),
                 defaultModel = null,
                 enabled = true,
